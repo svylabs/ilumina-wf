@@ -6,6 +6,7 @@ import json
 from dotenv import load_dotenv
 from lib.lib import Contract, Project, RunContext
 from lib.lib import extract_solidity_functions_and_contract_name
+from lib.context import RunContext, example_contexts
 
 load_dotenv()
 
@@ -170,7 +171,7 @@ class Analyzer:
 
 
 if __name__ == "__main__":
-    context = RunContext("2", "https://github.com/svylabs/stablebase", "/tmp/workspaces")
+    context = example_contexts[1]
     analyzer = Analyzer(context)
     if not analyzer.analysis_exists():
         analyzer.analyze()

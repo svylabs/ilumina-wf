@@ -1,6 +1,7 @@
 import re
 import json
 from pydantic import BaseModel
+import os
 
 def extract_solidity_functions_and_contract_name(content):
     """Extract the contract name and public/external functions from a Solidity contract file."""
@@ -31,22 +32,6 @@ def extract_solidity_functions_and_contract_name(content):
         })
 
     return {"contract_name": contract_name, "functions": functions}
-
-class RunContext:
-    def __init__(self, run_id, repo, workspace):
-        self.run_id = run_id
-        self.repo = repo
-        self.workspace = workspace
-        self.name = repo.split("/")[-1]
-
-    def get_run_id(self):
-        return self.run_id
-
-    def cwd(self):
-        return self.workspace + "/" + self.run_id
-
-    def cws(self):
-        return self.cwd() + "/" + self.name
 
 class Function(BaseModel):
     name: str
@@ -113,3 +98,12 @@ class Project(BaseModel):
     @classmethod
     def load(cls, data):
         return cls(**data)
+    
+    @classmethod
+    def load_summary(self, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return Project.load(content)
+        return None
