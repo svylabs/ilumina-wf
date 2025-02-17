@@ -14,6 +14,9 @@ class RunContext:
     def cws(self):
         return self.cwd() + "/" + self.name
     
+    def summary_path(self):
+        return self.cws() + "/summary.json"
+    
 example_contexts = [
     RunContext("1", "https://github.com/svylabs/predify", "/tmp/workspaces"),
     RunContext("2", "https://github.com/svylabs/stablebase", "/tmp/workspaces")
