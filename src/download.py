@@ -26,5 +26,5 @@ class Git:
         pass
 
 if __name__ == "__main__":
-    git = Git("1")
-    git.clone("https://github.com/svylabs/predify")
+    git = Git("2")
+    git.clone("https://github.com/svylabs/stablebase")
