@@ -9,9 +9,16 @@ def extract_solidity_functions_and_contract_name(content):
     #    content = f.read()
 
     # Extract contract name
-    contract_name_pattern = r'\b(contract|interface|library)\s+(\w+)'
-    contract_match = re.search(contract_name_pattern, content)
-    contract_name = contract_match.group(2) if contract_match else "Unknown"
+    # Extract contract type and name
+    contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)'
+    contract_match = re.search(contract_pattern, content)
+    
+    if contract_match:
+        contract_type, contract_name = contract_match.groups()
+        contract_type = contract_type.replace("abstract contract", "abstract")  # Normalize for consistency
+    else:
+        contract_name = "Unknown"
+        contract_type = "Unknown"
 
     # Updated regex to capture public/external function definitions across multiple lines
     function_pattern = r'function\s+(\w+)\s*\(([^)]*)\)\s*(?:public|external)\s*(?:view|pure|payable)?\s*(?:returns\s*\(([^)]*)\))?'
@@ -31,7 +38,7 @@ def extract_solidity_functions_and_contract_name(content):
             "returns": returns
         })
 
-    return {"contract_name": contract_name, "functions": functions}
+    return {"contract_name": contract_name, "type": contract_type, "functions": functions}
 
 class Function(BaseModel):
     name: str
