@@ -111,7 +111,7 @@ class Analyzer:
         #print("Analyzing " + contract["name"])
 
     def save(self):
-        with open(self.context.cws() + "/summary.json", "w") as f:
+        with open(self.context.cwd() + "/summary.json", "w") as f:
             f.write(json.dumps(self.project_summary.to_dict()))
 
     def load_summary(self):

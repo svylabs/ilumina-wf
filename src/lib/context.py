@@ -15,10 +15,10 @@ class RunContext:
         return self.cwd() + "/" + self.name
     
     def summary_path(self):
-        return self.cws() + "/summary.json"
+        return self.cwd() + "/summary.json"
     
     def actor_summary_path(self):
-        return self.cws() + "/actor_summary.json"
+        return self.cwd() + "/actor_summary.json"
     
 example_contexts = [
     RunContext("1", "https://github.com/svylabs/predify", "/tmp/workspaces"),

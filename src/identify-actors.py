@@ -6,7 +6,6 @@ import json
 import os
 from pydantic import BaseModel
 
-
 class Action(BaseModel):
     name: str
     summary: str
@@ -121,7 +120,7 @@ class ActorAnalyzer:
         return self.actors
 
     def save(self):
-        with open(self.context.cws() + "/actor_summary.json", "w") as f:
+        with open(self.context.cwd() + "/actor_summary.json", "w") as f:
             f.write(json.dumps(self.actors.to_dict()))
 
     def load_summary(self):
