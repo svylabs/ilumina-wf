@@ -111,7 +111,7 @@ class Analyzer:
         #print("Analyzing " + contract["name"])
 
     def save(self):
-        with open(self.context.cwd() + "/summary.json", "w") as f:
+        with open(self.context.summary_path(), 'w') as f:
             f.write(json.dumps(self.project_summary.to_dict()))
 
     def load_summary(self):
@@ -123,11 +123,11 @@ class Analyzer:
         return None
     
     def analysis_exists(self):
-        return os.path.exists(self.context.cws() + "/summary.json")
+        return os.path.exists(self.context.summary_path())
 
 
 if __name__ == "__main__":
-    context = example_contexts[0]
+    context = example_contexts[1]
     analyzer = Analyzer(context)
     if not analyzer.analysis_exists():
         analyzer.analyze()

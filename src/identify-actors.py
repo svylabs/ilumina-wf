@@ -120,7 +120,7 @@ class ActorAnalyzer:
         return self.actors
 
     def save(self):
-        with open(self.context.cwd() + "/actor_summary.json", "w") as f:
+        with open(self.context.actor_summary(), "w") as f:
             f.write(json.dumps(self.actors.to_dict()))
 
     def load_summary(self):
@@ -132,10 +132,10 @@ class ActorAnalyzer:
         return None
     
     def analysis_exists(self):
-        return os.path.exists(self.context.cws() + "/summary.json")
+        return os.path.exists(self.context.summary_path())
 
 if __name__ == "__main__":
-    context = example_contexts[0]
+    context = example_contexts[1]
     summary = Project.load_summary(context.summary_path())
     analyzer = ActorAnalyzer(context, summary)
     actors = analyzer.analyze()
