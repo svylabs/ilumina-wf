@@ -5,6 +5,7 @@ from lib.openai import ask_openai
 import json
 import os
 from pydantic import BaseModel
+import sys
 
 class Action(BaseModel):
     name: str
@@ -120,12 +121,12 @@ class ActorAnalyzer:
         return self.actors
 
     def save(self):
-        with open(self.context.actor_summary(), "w") as f:
+        with open(self.context.actor_summary_path(), "w") as f:
             f.write(json.dumps(self.actors.to_dict()))
 
     def load_summary(self):
-        if (os.path.exists(self.context.actor_summary())):
-            with open(self.context.actor_summary(), "r") as f:
+        if (os.path.exists(self.context.actor_summary_path())):
+            with open(self.context.actor_summary_path(), "r") as f:
                 content = json.loads(f.read())
                 #print(json.dumps(content))
                 return Actor.load(content)
@@ -135,7 +136,12 @@ class ActorAnalyzer:
         return os.path.exists(self.context.summary_path())
 
 if __name__ == "__main__":
-    context = example_contexts[1]
+    context_num = 0
+    try:
+        context_num = int(sys.argv[1])
+    except:
+        pass
+    context = example_contexts[context_num]
     summary = Project.load_summary(context.summary_path())
     analyzer = ActorAnalyzer(context, summary)
     actors = analyzer.analyze()

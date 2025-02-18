@@ -2,8 +2,9 @@
 import subprocess as process
 import os
 from lib.context import RunContext, example_contexts
+import sys
 
-class Git:
+class Downloader:
 
     def __init__(self, run_context):
         self.context = run_context
@@ -17,7 +18,7 @@ class Git:
         return "git@github.com:" + parts[1] + ".git"
 
 
-    def clone(self):
+    def download(self):
         # Clone the repository
         #git@github.com:svylabs/predify.git
         ssh_url = self.convert_url(self.context.repo)
@@ -27,5 +28,10 @@ class Git:
         pass
 
 if __name__ == "__main__":
-    git = Git(example_contexts[0])
-    git.clone()
+    context_num = 0
+    try:
+        context_num = int(sys.argv[1])
+    except:
+        pass
+    downloader = Downloader(example_contexts[context_num])
+    downloader.download()

@@ -8,6 +8,7 @@ from lib.lib import Contract, Project
 from lib.lib import extract_solidity_functions_and_contract_name
 from lib.context import example_contexts
 from lib.openai import ask_openai
+import sys
 
 MAX_TOKENS = 7600  # Adjust based on your model's limit
 conversation = [
@@ -127,7 +128,12 @@ class Analyzer:
 
 
 if __name__ == "__main__":
-    context = example_contexts[1]
+    context_num = 0
+    try:
+        context_num = int(sys.argv[1])
+    except:
+        pass
+    context = example_contexts[context_num]
     analyzer = Analyzer(context)
     if not analyzer.analysis_exists():
         analyzer.analyze()
