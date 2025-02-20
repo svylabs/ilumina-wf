@@ -1,0 +1,27 @@
+classDiagram
+    class Predify {
+        +createMarket(
+        uint256 marketId,
+        string memory description,
+        address resolutionStrategy,
+        bytes calldata resolutionData,
+        uint256 votingStartTime,
+        uint256 votingEndTime,
+        address betTokenAddress,
+        uint256 creatorFee
+    )
+        +predict(
+        uint256 marketId,
+        uint256 betValue,
+        Outcome predictedOutcome
+    )
+        +resolveMarket(uint256 marketId)
+        +claim(
+        uint256 marketId,
+        address frontend,
+        uint256 frontendFee
+    )
+        +withdrawBet(uint256 marketId)
+    }
+    IPredify <|-- Predify
+    ReentrancyGuard <|-- Predify

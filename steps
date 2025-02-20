@@ -1,0 +1,7 @@
+docker build -t gcr.io/YOUR_PROJECT_ID/your-app .
+
+gcloud app deploy
+
+gcloud app logs tail -s default
+
+gcloud app browse

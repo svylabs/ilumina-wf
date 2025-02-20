@@ -2,3 +2,5 @@ openai
 pydantic
 python-dotenv
 peewee
+flask
+gunicorn
