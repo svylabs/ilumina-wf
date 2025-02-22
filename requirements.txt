@@ -4,3 +4,5 @@ python-dotenv
 peewee
 flask
 gunicorn
+google-cloud-datastore
+google-cloud-tasks
