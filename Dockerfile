@@ -30,6 +30,8 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 # Add Foundry to PATH
 ENV PATH="/root/.foundry/bin:${PATH}"
 
+RUN mkdir /tmp/workspaces
+
 # Set working directory
 WORKDIR /app
 
