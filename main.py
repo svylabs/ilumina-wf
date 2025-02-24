@@ -9,6 +9,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
+from app.context import prepare_context
 
 # Ensure logs are written to stdout instead of Supervisor capturing them
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -88,6 +89,10 @@ def begin_analysis():
 def analyse():
     data = request.get_json()
     print("Received task data:", data)
+    context = prepare_context(data)
+    analyzer = Analyzer(context)
+    while analyzer.not_done():
+        analyzer.step()
     return jsonify({"message": "Task received", "data": data}), 200
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import subprocess as process
 import os
-from lib.context import RunContext, example_contexts
+from app.context import RunContext, example_contexts
 import sys
 
 class Downloader:
@@ -9,8 +9,6 @@ class Downloader:
     def __init__(self, run_context):
         self.context = run_context
         self.run_id = self.context.run_id
-        if (os.path.exists(self.context.cwd()) == False):
-            process.run(["mkdir", self.context.cwd()])
 
     def convert_url(self, url):
         # Convert the URL to SSH
@@ -21,11 +19,13 @@ class Downloader:
     def download(self):
         # Clone the repository
         #git@github.com:svylabs/predify.git
+        if (os.path.exists(self.context.cws())):
+            print("Workspace already exists")
+            return
         ssh_url = self.convert_url(self.context.repo)
         print(ssh_url)
         #process.run(["mkdir", str(self.run_id)], cwd=self.cwd)
         process.run(["git", "clone", ssh_url], cwd=self.context.cwd())
-        pass
 
 if __name__ == "__main__":
     context_num = 0

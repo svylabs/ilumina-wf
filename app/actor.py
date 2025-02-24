@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from .context import RunContext, example_contexts
-from .lib import Project
+from .models import Project
 from .openai import ask_openai
 import json
 import os
@@ -115,9 +115,15 @@ class ActorAnalyzer:
         pass
 
     def analyze(self):
-        self.prepare()
-        self.identify_actors()
+        if (os.path.exists(self.context.actor_summary_path())):
+            print("Actor summary exists")
+            with open(self.context.actor_summary_path(), "r") as f:
+                content = json.loads(f.read())
+                self.actors = Actor.load(content)
+                return self.actors
         print("Analyzing actors for the contracts")
+        self.identify_actors()
+        self.save()
         return self.actors
 
     def save(self):
