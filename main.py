@@ -8,6 +8,7 @@ import os
 import datetime
 import logging
 import sys
+from app.analyse import Analyzer
 
 # Ensure logs are written to stdout instead of Supervisor capturing them
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)

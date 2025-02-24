@@ -4,7 +4,6 @@ from collections import defaultdict
 import os
 
 
-
 def solidity_to_mermaid(file_path):
     with open(file_path, 'r') as f:
         solidity_code = f.read()

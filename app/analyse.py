@@ -4,10 +4,10 @@ from openai import OpenAI
 from pydantic import BaseModel
 import json
 from dotenv import load_dotenv
-from lib.lib import Contract, Project
-from lib.lib import extract_solidity_functions_and_contract_name
-from lib.context import example_contexts
-from lib.openai import ask_openai
+from .lib import Contract, Project
+from .lib import extract_solidity_functions_and_contract_name
+from .context import example_contexts
+from .openai import ask_openai
 import sys
 
 MAX_TOKENS = 7600  # Adjust based on your model's limit

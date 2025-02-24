@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from lib.context import RunContext, example_contexts
-from lib.lib import Project
-from lib.openai import ask_openai
+from .context import RunContext, example_contexts
+from .lib import Project
+from .openai import ask_openai
 import json
 import os
 from pydantic import BaseModel
