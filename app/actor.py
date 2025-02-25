@@ -119,7 +119,7 @@ class ActorAnalyzer:
             print("Actor summary exists")
             with open(self.context.actor_summary_path(), "r") as f:
                 content = json.loads(f.read())
-                self.actors = Actor.load(content)
+                self.actors = Actors.load(content)
                 return self.actors
         print("Analyzing actors for the contracts")
         self.identify_actors()
