@@ -93,6 +93,7 @@ def analyse():
     analyzer = Analyzer(context)
     while analyzer.not_done():
         analyzer.step()
+        analyzer.save()
     return jsonify({"message": "Task received", "data": data}), 200
 
 if __name__ == '__main__':

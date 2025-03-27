@@ -63,6 +63,16 @@ class Analyzer:
         elif self.current_step == "actor_analysis":
             self.current_step = "done"
 
+    def save(self):
+        # Save the step in DB
+        print("Saving step " + str(self.current_step))
+        if self.current_step == "download":
+            pass
+        elif self.current_step == "summarize":
+            pass
+        elif self.current_step == "actor_analysis":
+            pass
+
     def print_current_step(self):
         if self.current_step == None:
             print("Run not started")
