@@ -31,7 +31,7 @@ class RunContext:
         self.workspace = workspace
         self.name = repo.split("/")[-1]
         if (os.path.exists(self.cwd()) == False):
-            os.mkdirs(self.cwd())
+            os.makedirs(self.cwd())
 
     def get_run_id(self):
         return self.run_id
