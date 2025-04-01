@@ -12,10 +12,10 @@ env_variables:
   FOUNDARY_HOME: "/root/.foundry"
 
 automatic_scaling:
-  min_num_instances: 1
+  min_num_instances: 0
   max_num_instances: 1
   max_idle_instances: 1
   min_idle_instances: 0
-  max_instances: 2
+  max_instances: 1
   cpu_utilization:
     target_utilization: 0.7
