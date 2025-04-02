@@ -1,11 +1,6 @@
-#!/usr/bin/env python3
-from .context import RunContext, example_contexts
-from .models import Project
+from pydantic import BaseModel
 from .openai import ask_openai
 import json
-import os
-from pydantic import BaseModel
-import sys
 
 class Action(BaseModel):
     name: str
@@ -13,7 +8,6 @@ class Action(BaseModel):
     contract_name: str
     function_name: str
     probability: float
-    #actors: list[Actor]
 
     def to_dict(self):
         return {
@@ -23,17 +17,12 @@ class Action(BaseModel):
             "function_name": self.function_name,
             "probability": self.probability
         }
-    
 
 class Actor(BaseModel):
     name: str
     summary: str
     actions: list[Action]
 
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
     def to_dict(self):
         return {
             "name": self.name,
@@ -41,52 +30,8 @@ class Actor(BaseModel):
             "actions": [action.to_dict() for action in self.actions]
         }
 
-class UserJourney(BaseModel):
-    name: str
-    summary: str
-    actions: list[Action]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-    
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "summary": self.summary,
-            "actions": [action.to_dict() for action in self.actions]
-        }
-    
-class UserJourneys(BaseModel):
-    user_journeys: list[UserJourney]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "user_journeys": [user_journey.to_dict() for user_journey in self.user_journeys]
-        }
-    
-class Actions(BaseModel):
-    actions: list[Action]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "actions": [action.to_dict() for action in self.actions]
-        }
-    
 class Actors(BaseModel):
     actors: list[Actor]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
 
     def to_dict(self):
         return {
@@ -94,64 +39,32 @@ class Actors(BaseModel):
         }
 
 class ActorAnalyzer:
-    
-    def __init__(self, context, summary):
+    def __init__(self, context, project_summary):
         self.context = context
-        self.project_summary = summary
-        self.actors = []
+        self.project_summary = project_summary
+        self.actors = None
 
     def identify_actors(self):
-        response = ask_openai("The following is the json description of the smart contract project.\n"  
-                                         + json.dumps(self.project_summary.to_dict()) 
-                                         + " \n\n " 
-                                         + """Can you identify the list of market participants in this project?
-                                            Identify actions that each of the market participant can take.
-                                         """, 
-                                Actors, task="reasoning")
-        self.actors = response[1]
-        #print(json.dumps(self.actors.to_dict()))
-
-    def prepare(self):
-        pass
+        prompt = f"""
+        Analyze this smart contract project:
+        {json.dumps(self.project_summary.to_dict())}
+        
+        Identify:
+        1. All actor roles (users, contracts, external services)
+        2. Actions each actor can perform
+        3. Probability of each action being executed
+        """
+        _, actors = ask_openai(prompt, Actors, task="reasoning")
+        self.actors = actors
 
     def analyze(self):
-        if (os.path.exists(self.context.actor_summary_path())):
-            print("Actor summary exists")
-            with open(self.context.actor_summary_path(), "r") as f:
-                content = json.loads(f.read())
-                self.actors = Actors.load(content)
-                return self.actors
-        print("Analyzing actors for the contracts")
+        if self.context.gcs.file_exists(self.context.actor_summary_path()):
+            content = self.context.gcs.read_json(self.context.actor_summary_path())
+            return Actors(**content)
+        
         self.identify_actors()
-        self.save()
+        self.context.gcs.write_json(
+            self.context.actor_summary_path(),
+            self.actors.to_dict()
+        )
         return self.actors
-
-    def save(self):
-        with open(self.context.actor_summary_path(), "w") as f:
-            f.write(json.dumps(self.actors.to_dict()))
-
-    def load_summary(self):
-        if (os.path.exists(self.context.actor_summary_path())):
-            with open(self.context.actor_summary_path(), "r") as f:
-                content = json.loads(f.read())
-                #print(json.dumps(content))
-                return Actor.load(content)
-        return None
-    
-    def analysis_exists(self):
-        return os.path.exists(self.context.summary_path())
-
-if __name__ == "__main__":
-    context_num = 0
-    try:
-        context_num = int(sys.argv[1])
-    except:
-        pass
-    context = example_contexts[context_num]
-    summary = Project.load_summary(context.summary_path())
-    analyzer = ActorAnalyzer(context, summary)
-    actors = analyzer.analyze()
-    analyzer.save()
-    print(json.dumps(actors.to_dict()))
-
-

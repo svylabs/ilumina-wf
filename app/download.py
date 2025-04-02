@@ -1,37 +1,43 @@
-#!/usr/bin/env python3
-import subprocess as process
+import subprocess
 import os
-from app.context import RunContext, example_contexts
-import sys
+import shutil
+from datetime import datetime
 
 class Downloader:
+    def __init__(self, context):
+        self.context = context
 
-    def __init__(self, run_context):
-        self.context = run_context
-        self.run_id = self.context.run_id
+    def prepare_local_workspace(self):
+        os.makedirs("/tmp/workspace", exist_ok=True)
 
-    def convert_url(self, url):
-        # Convert the URL to SSH
-        parts = url.split("https://github.com/")
-        return "git@github.com:" + parts[1] + ".git"
+    def clone_repository(self):
+        repo_dir = f"/tmp/workspace/{self.context.repo_name}"
+        if os.path.exists(repo_dir):
+            shutil.rmtree(repo_dir)
+        
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", self.context.repo_url, repo_dir],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Clone failed: {result.stderr}")
+        
+        return repo_dir
 
+    def cleanup(self):
+        try:
+            shutil.rmtree("/tmp/workspace")
+        except Exception as e:
+            print(f"Cleanup warning: {str(e)}")
 
     def download(self):
-        # Clone the repository
-        #git@github.com:svylabs/predify.git
-        if (os.path.exists(self.context.cws())):
-            print("Workspace already exists")
-            return
-        ssh_url = self.convert_url(self.context.repo)
-        print(ssh_url)
-        #process.run(["mkdir", str(self.run_id)], cwd=self.cwd)
-        process.run(["git", "clone", ssh_url], cwd=self.context.cwd())
-
-if __name__ == "__main__":
-    context_num = 0
-    try:
-        context_num = int(sys.argv[1])
-    except:
-        pass
-    downloader = Downloader(example_contexts[context_num])
-    downloader.download()
+        try:
+            self.prepare_local_workspace()
+            repo_dir = self.clone_repository()
+            
+            self.context.initialize_run_log()
+            return True
+        finally:
+            self.cleanup()
