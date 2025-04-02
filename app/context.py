@@ -14,7 +14,7 @@ def prepare_context(data):
     # Store context metadata in GCS
     ctx_data = {
         **data,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now().isoformat()
     }
     context.write_context_file(ctx_data)
     
@@ -52,5 +52,5 @@ class RunContext:
         """Create initial run log in GCS"""
         self.gcs.write_json(f"{self.logs_path()}/init.log", {
             "status": "started",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         })

@@ -23,19 +23,25 @@ class GCSStorage:
         try:
             # Validate configuration
             self.bucket_name = os.getenv("GCS_BUCKET_NAME")
-            creds_path = os.getenv("GCS_CREDENTIALS_PATH")
-            
+
+            if os.getenv("USE_CREDENTIAL_FILE") == "true":
+                creds_path = os.getenv("GCS_CREDENTIALS_PATH")
+                if not creds_path or not os.path.exists(creds_path):
+                    raise ValueError("Service account JSON file not found")
+                self.client = storage.Client.from_service_account_json(creds_path)
+            else:
+                # Use injected credentials
+                self.client = storage.Client()
+
             if not self.bucket_name:
                 raise ValueError("GCS_BUCKET_NAME not set in .env")
-            if not creds_path or not os.path.exists(creds_path):
-                raise ValueError("Service account JSON file not found")
 
             # Initialize client (without retry parameter)
-            self.client = storage.Client.from_service_account_json(creds_path)
+            
             self.bucket = self.client.bucket(self.bucket_name)
             
             # Lightweight permission check
-            self._verify_permissions()
+            #self._verify_permissions()
             
             logger.info(f"Successfully connected to GCS bucket: {self.bucket_name}")
 
