@@ -300,7 +300,7 @@ def reanalyze_actors(submission_id):
 @app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
 @authenticate
 def create_simulation_repo(submission_id):
-    """Create ilumina-based simulation repository"""
+    """Create simulation repo from pre-scaffolded template"""
     try:
         data = request.get_json()
         project_name = data.get("project_name", f"project-{submission_id}")
@@ -318,18 +318,20 @@ def create_simulation_repo(submission_id):
         repo_data = github_api.create_repository(
             name=repo_name,
             private=True,
-            description=f"ilumina simulation for {project_name}"
+            description=f"Simulation repository for {project_name} (pre-scaffolded)"
         )
         
-        # 2. Setup ilumina project
+        # 2. Prepare local workspace
         repo_path = f"/tmp/{repo_name}"
+        
+        # 3. Clone template and initialize
         template_repo = os.getenv(
             "SIMULATION_TEMPLATE_REPO",
-            "https://github.com/svylabs/ilumina-template.git"
+            "https://github.com/svylabs/ilumina-scaffolded-template.git"
         )
         
-        setup_result = GitUtils.setup_ilumina_project(
-            template_repo_url=template_repo,
+        GitUtils.create_from_template(
+            template_url=template_repo,
             new_repo_path=repo_path,
             new_origin_url=repo_data["clone_url"],
             project_name=project_name
@@ -346,8 +348,8 @@ def create_simulation_repo(submission_id):
             "repo_name": repo_name,
             "repo_url": repo_data["html_url"],
             "clone_url": repo_data["clone_url"],
-            "ilumina_version": setup_result["ilumina_version"],
-            "scaffolded": True
+            "template_source": template_repo,
+            "scaffolded": False  # False because we used pre-scaffolded template
         }), 200
         
     except Exception as e:

@@ -9,26 +9,26 @@ logger = logging.getLogger(__name__)
 
 class GitUtils:
     @staticmethod
-    def setup_ilumina_project(
-        template_repo_url: str,
+    def create_from_template(
+        template_url: str,
         new_repo_path: str,
         new_origin_url: str,
         project_name: str
     ) -> Dict[str, Any]:
         """
-        Setup ilumina simulation project from template
+        Create new repo from pre-scaffolded template
         Args:
-            template_repo_url: URL of ilumina template
+            template_url: URL of pre-scaffolded template
             new_repo_path: Path for new repository
             new_origin_url: GitHub URL for new repository
             project_name: Name of the project
         """
         try:
-            # Clone template
+            # Clone template (shallow clone)
             subprocess.run([
                 "git", "clone",
                 "--depth", "1",
-                template_repo_url,
+                template_url,
                 new_repo_path
             ], check=True)
 
@@ -38,29 +38,14 @@ class GitUtils:
             # Initialize new repository
             subprocess.run(["git", "init"], cwd=new_repo_path, check=True)
 
-            # Install ilumina
-            subprocess.run([
-                "npm", "install", "--save-dev", "@svylabs/ilumina"
-            ], cwd=new_repo_path, check=True)
-
-            # Scaffold ilumina tests
-            subprocess.run([
-                "npx", "@svylabs/ilumina", "scaffold"
-            ], cwd=new_repo_path, check=True)
-
-            # Customize for project
-            with open(os.path.join(new_repo_path, "package.json"), "r+") as f:
-                data = json.load(f)
-                data["name"] = f"{project_name}-simulation"
-                f.seek(0)
-                json.dump(data, f, indent=2)
-                f.truncate()
+            # Update project-specific configurations
+            GitUtils._customize_project(new_repo_path, project_name)
 
             # Initial commit
             subprocess.run(["git", "add", "."], cwd=new_repo_path, check=True)
             subprocess.run([
                 "git", "commit",
-                "-m", f"Initialized ilumina simulation for {project_name}"
+                "-m", f"Initialized simulation for {project_name}"
             ], cwd=new_repo_path, check=True)
 
             # Push to new origin
@@ -73,24 +58,31 @@ class GitUtils:
 
             return {
                 "status": "success",
-                "ilumina_version": GitUtils.get_ilumina_version(new_repo_path)
+                "template_source": template_url
             }
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Setup failed: {str(e)}")
-            raise RuntimeError(f"ilumina setup failed: {str(e)}")
+            raise RuntimeError(f"Repository creation failed: {str(e)}")
 
     @staticmethod
-    def get_ilumina_version(repo_path: str) -> str:
-        """Get installed ilumina version"""
+    def _customize_project(repo_path: str, project_name: str):
+        """Update project-specific files"""
         try:
-            result = subprocess.run(
-                ["npm", "list", "@svylabs/ilumina"],
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return result.stdout.split('@')[-1].strip()
-        except Exception:
-            return "unknown"
+            # Update package.json
+            package_json = os.path.join(repo_path, "package.json")
+            if os.path.exists(package_json):
+                with open(package_json, "r+") as f:
+                    data = json.load(f)
+                    data["name"] = f"{project_name}-simulation"
+                    f.seek(0)
+                    json.dump(data, f, indent=2)
+                    f.truncate()
+
+            # Update README
+            readme = os.path.join(repo_path, "README.md")
+            if os.path.exists(readme):
+                with open(readme, "a") as f:
+                    f.write(f"\n\n## Project Specifics\nCreated for {project_name}")
+        except Exception as e:
+            logger.warning(f"Customization skipped: {str(e)}")
