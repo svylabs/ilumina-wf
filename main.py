@@ -16,6 +16,7 @@ from app.summarizer import ProjectSummarizer
 from app.models import Project
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
+import shutil
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -299,7 +300,7 @@ def reanalyze_actors(submission_id):
 @app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
 @authenticate
 def create_simulation_repo(submission_id):
-    """Create a simulation repository in GitHub"""
+    """Create simulation repository from template"""
     try:
         data = request.get_json()
         project_name = data.get("project_name", f"project-{submission_id}")
@@ -309,11 +310,11 @@ def create_simulation_repo(submission_id):
 
         # Ensure no consecutive hyphens and strip leading/trailing hyphens
         project_name = re.sub(r'-+', '-', project_name).strip('-')
-        
+
         # Create repository name
         repo_name = f"{project_name}-simulation"
         
-        # 1. Create the GitHub repository
+        # 1. Create GitHub repository
         repo_data = github_api.create_repository(
             name=repo_name,
             private=True,
@@ -322,26 +323,33 @@ def create_simulation_repo(submission_id):
         
         # 2. Prepare local workspace
         repo_path = f"/tmp/{repo_name}"
-        os.makedirs(repo_path, exist_ok=True)
         
-        # 3. Initialize and push
-        GitUtils.init_and_push_repo(
-            repo_path=repo_path,
-            github_url=repo_data["clone_url"]
+        # 3. Clone template and initialize
+        template_repo = os.getenv(
+            "SIMULATION_TEMPLATE_REPO",
+            "https://github.com/svylabs/simulation-template.git"
         )
         
-        # Clean up
+        GitUtils.clone_template_and_init(
+            template_repo_url=template_repo,
+            new_repo_path=repo_path,
+            new_origin_url=repo_data["clone_url"],
+            project_name=project_name
+        )
+        
+        # Cleanup
         try:
-            import shutil
             shutil.rmtree(repo_path)
         except Exception as e:
-            app.logger.warning(f"Cleanup failed: {str(e)}")
+            app.logger.warning(f"Cleanup warning: {str(e)}")
         
         return jsonify({
             "status": "success",
             "repo_name": repo_name,
             "repo_url": repo_data["html_url"],
-            "clone_url": repo_data["clone_url"]
+            "clone_url": repo_data["clone_url"],
+            "template_source": template_repo,
+            "project_name": project_name
         }), 200
         
     except Exception as e:
@@ -349,6 +357,7 @@ def create_simulation_repo(submission_id):
             "error": str(e),
             "message": "Failed to create simulation repository"
         }), 500
+
     
 @app.route('/')
 def home():
