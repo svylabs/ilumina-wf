@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import os
+import re
 from dotenv import load_dotenv
 from google.cloud import datastore, tasks_v2
 from functools import wraps
@@ -302,6 +303,12 @@ def create_simulation_repo(submission_id):
     try:
         data = request.get_json()
         project_name = data.get("project_name", f"project-{submission_id}")
+
+        # Replace invalid characters with hyphens and convert to lowercase
+        project_name = re.sub(r'[^a-zA-Z0-9-]', '-', project_name).lower()
+
+        # Ensure no consecutive hyphens and strip leading/trailing hyphens
+        project_name = re.sub(r'-+', '-', project_name).strip('-')
         
         # Create repository name
         repo_name = f"{project_name}-simulation"
