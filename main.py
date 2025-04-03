@@ -300,7 +300,7 @@ def reanalyze_actors(submission_id):
 @app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
 @authenticate
 def create_simulation_repo(submission_id):
-    """Create simulation repository from template"""
+    """Create ilumina-based simulation repository"""
     try:
         data = request.get_json()
         project_name = data.get("project_name", f"project-{submission_id}")
@@ -318,19 +318,17 @@ def create_simulation_repo(submission_id):
         repo_data = github_api.create_repository(
             name=repo_name,
             private=True,
-            description=f"Simulation repository for {project_name}"
+            description=f"ilumina simulation for {project_name}"
         )
         
-        # 2. Prepare local workspace
+        # 2. Setup ilumina project
         repo_path = f"/tmp/{repo_name}"
-        
-        # 3. Clone template and initialize
         template_repo = os.getenv(
             "SIMULATION_TEMPLATE_REPO",
-            "https://github.com/svylabs/simulation-template.git"
+            "https://github.com/svylabs/ilumina-template.git"
         )
         
-        GitUtils.clone_template_and_init(
+        setup_result = GitUtils.setup_ilumina_project(
             template_repo_url=template_repo,
             new_repo_path=repo_path,
             new_origin_url=repo_data["clone_url"],
@@ -348,8 +346,8 @@ def create_simulation_repo(submission_id):
             "repo_name": repo_name,
             "repo_url": repo_data["html_url"],
             "clone_url": repo_data["clone_url"],
-            "template_source": template_repo,
-            "project_name": project_name
+            "ilumina_version": setup_result["ilumina_version"],
+            "scaffolded": True
         }), 200
         
     except Exception as e:
@@ -357,7 +355,6 @@ def create_simulation_repo(submission_id):
             "error": str(e),
             "message": "Failed to create simulation repository"
         }), 500
-
     
 @app.route('/')
 def home():
