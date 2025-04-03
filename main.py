@@ -12,8 +12,9 @@ from app.context import prepare_context, RunContext
 from app.storage import GCSStorage
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
-from app.models import Project 
+from app.models import Project
 from app.actor import ActorAnalyzer
+from app.git_utils import GitUtils
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -205,6 +206,36 @@ def test_upload():
             "message": "GCS upload test failed"
         }), 500
 
+@app.route('/api/submission/<submission_id>/summary', methods=['GET'])
+@authenticate
+def get_project_summary(submission_id):
+    """Get project summary"""
+    try:
+        summary = gcs.read_json(f"workspaces/{submission_id}/summary.json")
+        return jsonify(summary), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
+@app.route('/api/submission/<submission_id>/actors', methods=['GET'])
+@authenticate
+def get_actor_summary(submission_id):
+    """Get actor summary"""
+    try:
+        actors = gcs.read_json(f"workspaces/{submission_id}/actor-summary.json")
+        return jsonify(actors), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
+@app.route('/api/submission/<submission_id>/simulations', methods=['GET'])
+@authenticate
+def get_simulation_results(submission_id):
+    """Get simulation results"""
+    try:
+        sims = gcs.read_json(f"workspaces/{submission_id}/simulations.json")
+        return jsonify(sims), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
 @app.route('/api/submission/<submission_id>/reanalyze_summary', methods=['POST'])
 @authenticate
 def reanalyze_summary(submission_id):
@@ -263,36 +294,54 @@ def reanalyze_actors(submission_id):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route('/api/submission/<submission_id>/summary', methods=['GET'])
+    
+@app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
 @authenticate
-def get_project_summary(submission_id):
-    """Get project summary"""
+def create_simulation_repo(submission_id):
+    """Create a simulation repository in GitHub"""
     try:
-        summary = gcs.read_json(f"workspaces/{submission_id}/summary.json")
-        return jsonify(summary), 200
+        data = request.get_json()
+        project_name = data.get("project_name", f"project-{submission_id}")
+        
+        # Create repository name
+        repo_name = f"{project_name}-simulation"
+        
+        # 1. Create the GitHub repository
+        repo_data = github_api.create_repository(
+            name=repo_name,
+            private=True,
+            description=f"Simulation repository for {project_name}"
+        )
+        
+        # 2. Prepare local workspace
+        repo_path = f"/tmp/{repo_name}"
+        os.makedirs(repo_path, exist_ok=True)
+        
+        # 3. Initialize and push
+        GitUtils.init_and_push_repo(
+            repo_path=repo_path,
+            github_url=repo_data["clone_url"]
+        )
+        
+        # Clean up
+        try:
+            import shutil
+            shutil.rmtree(repo_path)
+        except Exception as e:
+            app.logger.warning(f"Cleanup failed: {str(e)}")
+        
+        return jsonify({
+            "status": "success",
+            "repo_name": repo_name,
+            "repo_url": repo_data["html_url"],
+            "clone_url": repo_data["clone_url"]
+        }), 200
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 404
-
-@app.route('/api/submission/<submission_id>/actors', methods=['GET'])
-@authenticate
-def get_actor_summary(submission_id):
-    """Get actor summary"""
-    try:
-        actors = gcs.read_json(f"workspaces/{submission_id}/actor-summary.json")
-        return jsonify(actors), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
-
-@app.route('/api/submission/<submission_id>/simulations', methods=['GET'])
-@authenticate
-def get_simulation_results(submission_id):
-    """Get simulation results"""
-    try:
-        sims = gcs.read_json(f"workspaces/{submission_id}/simulations.json")
-        return jsonify(sims), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
+        return jsonify({
+            "error": str(e),
+            "message": "Failed to create simulation repository"
+        }), 500
     
 @app.route('/')
 def home():

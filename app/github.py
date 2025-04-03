@@ -142,6 +142,39 @@ class GitHubAPI:
             logger.warning(f"Using fallback 'main' branch due to: {str(e)}")
             return "main"
 
+    def create_repository(self, name: str, private: bool = True, description: str = "") -> Dict:
+        """
+        Create a new GitHub repository
+        Args:
+            name: Repository name
+            private: Whether repository should be private
+            description: Repository description
+        Returns:
+            Dictionary with repository details
+        """
+        try:
+            url = f"{self.base_url}/user/repos"
+            data = {
+                "name": name,
+                "private": private,
+                "description": description,
+                "auto_init": False  # We'll initialize it ourselves
+            }
+            
+            response = requests.post(
+                url,
+                headers=self.headers,
+                json=data,
+                timeout=self.timeout
+            )
+            
+            self._check_response(response)
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Repository creation failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise ValueError(error_msg)
 
 # Test function for direct execution
 if __name__ == "__main__":
