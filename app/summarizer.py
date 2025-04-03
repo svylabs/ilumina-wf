@@ -14,20 +14,27 @@ class ProjectSummarizer:
             return "foundry"
         return "unknown"
 
-    def summarize(self):
-        if self.context.gcs.file_exists(self.context.summary_path()):
+    def summarize(self, user_prompt=None):
+        if not user_prompt and self.context.gcs.file_exists(self.context.summary_path()):
             content = self.context.gcs.read_json(self.context.summary_path())
             self.project_summary = Project(**content)
             return
         
         dev_tool = self.find_dev_tool()
-        prompt = f"""
+        
+        base_prompt = f"""
         Analyze this smart contract project (dev tool: {dev_tool}).
         Provide a comprehensive summary including:
         1. Project purpose
         2. Main components
         3. Key functionality
         """
+        
+        # Add user prompt if provided
+        prompt = base_prompt
+        if user_prompt:
+            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
+        
         _, summary = ask_openai(prompt, Project)
         self.project_summary = summary
         self.project_summary.dev_tool = dev_tool

@@ -11,6 +11,9 @@ from app.analyse import Analyzer
 from app.context import prepare_context, RunContext
 from app.storage import GCSStorage
 from app.github import GitHubAPI
+from app.summarizer import ProjectSummarizer
+from app.models import Project 
+from app.actor import ActorAnalyzer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -153,7 +156,8 @@ def test_predify():
         return jsonify({
             "status": "success",
             "files_found": len(file_list),
-            "first_5_files": file_list[:5]
+            # "first_5_files": file_list[:5],
+            "all_files": file_list
         })
         
     except Exception as e:
@@ -200,6 +204,65 @@ def test_upload():
             "error": str(e),
             "message": "GCS upload test failed"
         }), 500
+
+@app.route('/api/submission/<submission_id>/reanalyze_summary', methods=['POST'])
+@authenticate
+def reanalyze_summary(submission_id):
+    """Re-analyze project summary with optional user prompt"""
+    try:
+        data = request.get_json()
+        user_prompt = data.get("prompt", "")
+        
+        # Get existing context
+        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
+        context = RunContext(
+            submission_id=submission_id,
+            run_id=context_data["run_id"],
+            repo_url=context_data["github_repository_url"],
+            gcs=gcs
+        )
+        
+        # Re-run summarization with prompt
+        summarizer = ProjectSummarizer(context)
+        summarizer.summarize(user_prompt=user_prompt)
+        
+        # Return updated summary
+        summary = gcs.read_json(f"workspaces/{submission_id}/summary.json")
+        return jsonify(summary), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/submission/<submission_id>/reanalyze_actors', methods=['POST'])
+@authenticate
+def reanalyze_actors(submission_id):
+    """Re-analyze actors with optional user prompt"""
+    try:
+        data = request.get_json()
+        user_prompt = data.get("prompt", "")
+        
+        # Get existing context
+        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
+        context = RunContext(
+            submission_id=submission_id,
+            run_id=context_data["run_id"],
+            repo_url=context_data["github_repository_url"],
+            gcs=gcs
+        )
+        
+        # Get project summary
+        summary_data = gcs.read_json(f"workspaces/{submission_id}/summary.json")
+        project_summary = Project(**summary_data)
+        
+        # Re-run actor analysis with prompt
+        actor_analyzer = ActorAnalyzer(context, project_summary)
+        actors = actor_analyzer.analyze(user_prompt=user_prompt)
+        
+        # Return updated actors
+        return jsonify(actors.to_dict()), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/submission/<submission_id>/summary', methods=['GET'])
 @authenticate

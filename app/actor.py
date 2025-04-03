@@ -44,8 +44,8 @@ class ActorAnalyzer:
         self.project_summary = project_summary
         self.actors = None
 
-    def identify_actors(self):
-        prompt = f"""
+    def identify_actors(self, user_prompt=None):
+        base_prompt = f"""
         Analyze this smart contract project:
         {json.dumps(self.project_summary.to_dict())}
         
@@ -54,15 +54,21 @@ class ActorAnalyzer:
         2. Actions each actor can perform
         3. Probability of each action being executed
         """
+        
+        # Add user prompt if provided
+        prompt = base_prompt
+        if user_prompt:
+            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
+        
         _, actors = ask_openai(prompt, Actors, task="reasoning")
         self.actors = actors
 
-    def analyze(self):
-        if self.context.gcs.file_exists(self.context.actor_summary_path()):
+    def analyze(self, user_prompt=None):
+        if not user_prompt and self.context.gcs.file_exists(self.context.actor_summary_path()):
             content = self.context.gcs.read_json(self.context.actor_summary_path())
             return Actors(**content)
         
-        self.identify_actors()
+        self.identify_actors(user_prompt)
         self.context.gcs.write_json(
             self.context.actor_summary_path(),
             self.actors.to_dict()
