@@ -5,6 +5,7 @@ FROM python:3.9
 ENV DEBIAN_FRONTEND=noninteractive
 ENV VIRTUAL_ENV=/app/venv
 ENV PYTHONUNBUFFERED=1
+ENV GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -13,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     ca-certificates \
     supervisor \
+    openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm (LTS version)
@@ -30,10 +32,25 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 # Add Foundry to PATH
 ENV PATH="/root/.foundry/bin:${PATH}"
 
+# Create SSH directory and set permissions
+RUN mkdir -p /root/.ssh && \
+    chmod 700 /root/.ssh
+
+# Configure SSH to use the provided key
+RUN echo "Host github.com\n\tIdentityFile /root/.ssh/id_ed25519" > /root/.ssh/config && \
+    chmod 600 /root/.ssh/config
+
+# Create directory for workspace
 RUN mkdir /tmp/workspaces
 
 # Set working directory
 WORKDIR /app
+
+# --- 🔒 SECURE REPO CLONING ---
+# Clone using build-time SSH mount (keys never enter image)
+RUN --mount=type=ssh \
+    git clone git@github.com:svylabs/ilumina.git /tmp/workspaces/ilumina && \
+    git -C /tmp/workspaces/ilumina config --global --add safe.directory /tmp/workspaces/ilumina
 
 # Copy project files (if needed)
 COPY . /app
