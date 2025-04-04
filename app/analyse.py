@@ -4,6 +4,8 @@ from .download import Downloader
 from .summarizer import ProjectSummarizer
 from .models import Project
 from .simulation import SimulationEngine
+from .deployer import ContractDeployer
+import datetime
 
 class Analyzer:
     STEPS = [
@@ -11,7 +13,9 @@ class Analyzer:
         "summarize_project",
         "analyze_actors",
         "setup_environment",
-        "run_simulations"
+        "run_simulations",
+        "compile_contracts",
+        "deploy_contracts"
     ]
 
     def __init__(self, context):
@@ -35,6 +39,10 @@ class Analyzer:
             self.setup_test_environment()
         elif step == "run_simulations":
             self.run_simulations()
+        elif step == "compile_contracts":
+            self.compile_contracts()
+        elif step == "deploy_contracts":
+            self.deploy_contracts()
         
         self.current_step_index += 1
 
@@ -66,12 +74,59 @@ class Analyzer:
         results = simulation.run()
         self.results["simulations"] = results
 
+    def compile_contracts(self):
+        """Compile smart contracts and store ABIs"""
+        deployer = ContractDeployer(self.context)
+        compiled_data = deployer.compile_contracts()
+        self.results["compilation"] = {
+            "status": "completed",
+            "compiler": compiled_data["compiler"],
+            "contracts": list(compiled_data["contracts"].keys()),
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
+        # Store full compilation details separately
+        self.context.gcs.write_json(
+            f"{self.context.project_root()}/compilation.json",
+            compiled_data
+        )
+
+    def deploy_contracts(self):
+        """Deploy compiled contracts to blockchain"""
+        # Load compilation results
+        compiled_data = self.context.gcs.read_json(
+            f"{self.context.project_root()}/compilation.json"
+        )
+        
+        deployer = ContractDeployer(self.context)
+        deployment_data = deployer.deploy_contracts(compiled_data, "sepolia")
+        
+        self.results["deployment"] = {
+            "status": "completed",
+            "network": "sepolia",
+            "deployed_contracts": deployment_data["deployed_contracts"],
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
+        # Store full deployment details separately
+        deployer.save_deployment_results(deployment_data)
+
     def save_progress(self):
         step = self.STEPS[self.current_step_index]
         log_file = f"{self.context.logs_path()}/{step}.json"
         self.context.gcs.write_json(log_file, self.results.get(step, {}))
         
+        # Save complete results
         self.context.gcs.write_json(
             f"{self.context.project_root()}/results.json",
             self.results
+        )
+        
+        # Save context with current step
+        context_data = {
+            "current_step": step,
+            "current_step_index": self.current_step_index,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
+        self.context.gcs.write_json(
+            f"{self.context.project_root()}/progress.json",
+            context_data
         )
