@@ -8,22 +8,6 @@ from .download import Downloader
 from .summarizer import ProjectSummarizer
 from .models import Project
 
-MAX_TOKENS = 7600  # Adjust based on your model's limit
-conversation = [
-]
-
-def count_tokens(messages):
-    """Estimate token count based on message content length."""
-    return sum(len(msg["content"]) for msg in messages)
-
-""" def summarize_conversation(messages):
-    Summarize long conversation to maintain context.
-    summary_prompt = f"Can you summarize this content? {messages}"
-    response = client.completions.create(model="chatgpt-4o-latest",
-        prompt=summary_prompt)
-    summary = response.choices[0].text.strip()
-    return [{"role": "system", "content": "Conversation summary: " + summary}]
- """
 class Analyzer:
     def __init__(self, context):
         self.context = context

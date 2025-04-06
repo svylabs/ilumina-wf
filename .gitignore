@@ -1,2 +1,4 @@
 *.pyc
+devaccount.json
+.localenv
 .env

@@ -24,15 +24,21 @@ def home():
     return "Hello from Python!"
 
 # Define a secret password for authentication
-SECRET_PASSWORD = "my_secure_password"
+SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 
-# Google Cloud Tasks configuration
-PROJECT_ID = "ilumina-451416"
-QUEUE_ID = "analysis-tasks"
-LOCATION = "us-central1"
-TASK_HANDLER_URL = "https://ilumina-451416.uc.r.appspot.com/analyse"  # URL where the task will be processed
+PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
+QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
+LOCATION = os.getenv("TASK_LOCATION", "us-central1")
+TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/analyse")
 
-client = tasks_v2.CloudTasksClient()
+client = None
+# client = tasks_v2.CloudTasksClient()
+if os.getenv("USE_CREDENTIAL_FILE") == "true":
+    creds_path = os.getenv("GCS_CREDENTIALS_PATH")
+    client = tasks_v2.CloudTasksClient.from_service_account_file(creds_path)
+else:
+    client = tasks_v2.CloudTasksClient()
+    
 parent = client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
 def authenticate(f):
