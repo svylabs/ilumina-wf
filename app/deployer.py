@@ -1,7 +1,7 @@
 import json
 import subprocess
 import os
-from pathlib import Path
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,8 +11,8 @@ class ContractDeployer:
         self.context = context
         self.local_repo_path = f"/tmp/workspace/{self.context.repo_name}"
 
-    def compile_contracts(self) -> dict:
-        """Compile smart contracts and return ABIs/bytecode"""
+    def compile_contracts(self) -> Dict[str, Any]:
+        """Compile smart contracts using detected dev tool"""
         try:
             if self._has_file("hardhat.config.js"):
                 return self._compile_with_hardhat()
@@ -27,7 +27,7 @@ class ContractDeployer:
     def _has_file(self, filename: str) -> bool:
         return os.path.exists(os.path.join(self.local_repo_path, filename))
 
-    def _compile_with_hardhat(self) -> dict:
+    def _compile_with_hardhat(self) -> Dict[str, Any]:
         result = subprocess.run(
             ["npx", "hardhat", "compile"],
             cwd=self.local_repo_path,
@@ -40,7 +40,7 @@ class ContractDeployer:
         artifacts_dir = os.path.join(self.local_repo_path, "artifacts")
         return self._parse_hardhat_artifacts(artifacts_dir)
 
-    def _compile_with_foundry(self) -> dict:
+    def _compile_with_foundry(self) -> Dict[str, Any]:
         result = subprocess.run(
             ["forge", "build"],
             cwd=self.local_repo_path,
@@ -53,7 +53,7 @@ class ContractDeployer:
         artifacts_dir = os.path.join(self.local_repo_path, "out")
         return self._parse_foundry_artifacts(artifacts_dir)
 
-    def _parse_hardhat_artifacts(self, artifacts_dir: str) -> dict:
+    def _parse_hardhat_artifacts(self, artifacts_dir: str) -> Dict[str, Any]:
         contracts = {}
         for root, _, files in os.walk(artifacts_dir):
             for file in files:
@@ -64,11 +64,12 @@ class ContractDeployer:
                             contract_name = file.replace(".json", "")
                             contracts[contract_name] = {
                                 "abi": artifact["abi"],
-                                "bytecode": artifact["bytecode"]
+                                "bytecode": artifact["bytecode"],
+                                "metadata": artifact.get("metadata", {})
                             }
         return {"compiler": "hardhat", "contracts": contracts}
 
-    def _parse_foundry_artifacts(self, artifacts_dir: str) -> dict:
+    def _parse_foundry_artifacts(self, artifacts_dir: str) -> Dict[str, Any]:
         contracts = {}
         for file in os.listdir(artifacts_dir):
             if file.endswith(".json") and not file.endswith(".metadata.json"):
@@ -78,6 +79,7 @@ class ContractDeployer:
                         contract_name = file.replace(".json", "")
                         contracts[contract_name] = {
                             "abi": artifact["abi"],
-                            "bytecode": artifact["bytecode"]
+                            "bytecode": artifact["bytecode"],
+                            "metadata": artifact.get("metadata", {})
                         }
         return {"compiler": "foundry", "contracts": contracts}
