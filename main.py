@@ -383,7 +383,7 @@ def create_simulation_repo(submission_id):
         # 3. Clone template and initialize
         template_repo = os.getenv(
             "SIMULATION_TEMPLATE_REPO",
-            "https://github.com/svylabs/ilumina-scaffolded-template.git"
+            "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
         )
         
         GitUtils.create_from_template(
