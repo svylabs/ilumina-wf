@@ -3,6 +3,7 @@ import subprocess as process
 import os
 from app.context import RunContext, example_contexts
 import sys
+import shutil
 
 class Downloader:
 
@@ -14,6 +15,13 @@ class Downloader:
         # Convert the URL to SSH
         parts = url.split("https://github.com/")
         return "git@github.com:" + parts[1] + ".git"
+    
+
+    def cleanup(self):
+        try:
+            shutil.rmtree(self.context.cws())
+        except Exception as e:
+            print(f"Cleanup warning: {str(e)}")
 
 
     def download(self):
