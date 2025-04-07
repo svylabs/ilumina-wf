@@ -242,9 +242,8 @@ def get_simulation_results(submission_id):
 @app.route('/api/submission/<submission_id>/compile', methods=['POST'])
 @authenticate
 def compile_contracts(submission_id):
-    """Compile smart contracts endpoint"""
+    """Compile contracts endpoint"""
     try:
-        # Get existing context
         context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
         context = RunContext(
             submission_id=submission_id,
@@ -253,7 +252,6 @@ def compile_contracts(submission_id):
             gcs=gcs
         )
         
-        # Run compilation
         deployer = ContractDeployer(context)
         compiled_data = deployer.compile_contracts()
         
@@ -269,15 +267,11 @@ def compile_contracts(submission_id):
             "error": str(e)
         }), 500
 
-@app.route('/api/submission/<submission_id>/deploy', methods=['POST'])
+@app.route('/api/submission/<submission_id>/setup_simulation', methods=['POST'])
 @authenticate
-def deploy_contracts(submission_id):
-    """Deploy compiled contracts endpoint"""
+def setup_simulation(submission_id):
+    """Setup simulation environment endpoint"""
     try:
-        data = request.get_json()
-        network = data.get("network", "sepolia")
-        
-        # Get existing context
         context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
         context = RunContext(
             submission_id=submission_id,
@@ -286,19 +280,12 @@ def deploy_contracts(submission_id):
             gcs=gcs
         )
         
-        # Run deployment
-        deployer = ContractDeployer(context)
-        
-        # Load compilation results
-        compiled_data = gcs.read_json(f"workspaces/{submission_id}/compilation.json")
-        
-        # Deploy to specified network
-        deployment_data = deployer.deploy_contracts(compiled_data, network)
+        analyzer = Analyzer(context)
+        analyzer._setup_simulation_environment()
         
         return jsonify({
             "status": "success",
-            "deployed_contracts": deployment_data["deployed_contracts"],
-            "network": network
+            "simulation_setup": analyzer.results.get("simulation_setup", {})
         }), 200
         
     except Exception as e:
@@ -306,23 +293,6 @@ def deploy_contracts(submission_id):
             "status": "error",
             "error": str(e)
         }), 500
-
-@app.route('/api/submission/<submission_id>/deployment', methods=['GET'])
-@authenticate
-def get_deployment_results(submission_id):
-    """Get deployment results endpoint"""
-    try:
-        deployment = gcs.read_json(f"workspaces/{submission_id}/deployment.json")
-        return jsonify({
-            "status": "success",
-            "deployment": deployment
-        }), 200
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e),
-            "message": "Deployment results not found"
-        }), 404
 
 @app.route('/api/submission/<submission_id>/reanalyze_summary', methods=['POST'])
 @authenticate
