@@ -1,9 +1,8 @@
-import threading
 import logging
-import time
 import os
 import subprocess
 import json
+from datetime import datetime, timezone
 from .context import RunContext
 from .actor import ActorAnalyzer
 from .download import Downloader
@@ -13,7 +12,6 @@ from .simulation import SimulationEngine
 from .deployer import ContractDeployer
 from .git_utils import GitUtils
 from .github import GitHubAPI
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +20,8 @@ class Analyzer:
         "download",
         "summarize_project",
         "analyze_actors",
-        "setup_simulation_parallel",
+        "setup_simulation_environment",
+        "compile_contracts",
         "run_simulations"
     ]
 
@@ -30,8 +29,7 @@ class Analyzer:
         self.context = context
         self.current_step_index = 0
         self.results = {}
-        self.completed_parallel_steps = set()
-        self.lock = threading.Lock()
+        self.simulation_repo_path = f"/tmp/simulation_{self.context.submission_id}"
 
     def has_next_step(self):
         return self.current_step_index < len(self.STEPS)
@@ -45,8 +43,10 @@ class Analyzer:
             self.summarize_project()
         elif step == "analyze_actors":
             self.analyze_actors()
-        elif step == "setup_simulation_parallel":
-            self.setup_simulation_parallel()
+        elif step == "setup_simulation_environment":
+            self.setup_simulation_environment()
+        elif step == "compile_contracts":
+            self.compile_contracts()
         elif step == "run_simulations":
             self.run_simulations()
         
@@ -68,28 +68,8 @@ class Analyzer:
         actors = actor_analyzer.analyze()
         self.results["actor_analysis"] = actors.to_dict()
 
-    def setup_simulation_parallel(self):
-        """Run Step A and Step B in parallel"""
-        threads = []
-        
-        # Thread for Simulation Setup (Step A)
-        t1 = threading.Thread(target=self._setup_simulation_environment)
-        threads.append(t1)
-        
-        # Thread for Contract Compilation (Step B)
-        t2 = threading.Thread(target=self._compile_project_contracts)
-        threads.append(t2)
-        
-        # Start all threads
-        for t in threads:
-            t.start()
-        
-        # Wait for all threads to complete
-        for t in threads:
-            t.join()
-
-    def _setup_simulation_environment(self):
-        """Step A: Setup simulation environment"""
+    def setup_simulation_environment(self):
+        """Setup simulation environment"""
         try:
             # 1. Git clone template
             self._clone_simulation_template()
@@ -103,47 +83,57 @@ class Analyzer:
             # 4. Git push
             self._push_simulation_to_origin()
             
-            with self.lock:
-                self.results["simulation_setup"] = {"status": "completed"}
-                self.completed_parallel_steps.add("simulation_setup")
-                
+            self.results["simulation_setup"] = {"status": "completed"}
+            
         except Exception as e:
             logger.error(f"Simulation setup failed: {str(e)}")
-            with self.lock:
-                self.results["simulation_setup"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+            self.results["simulation_setup"] = {
+                "status": "failed",
+                "error": str(e)
+            }
+            raise
 
-    def _compile_project_contracts(self):
-        """Step B: Compile project contracts"""
+    def compile_contracts(self):
+        """Compile project contracts"""
         try:
-            # 1. Git clone the contract repo (already done in download step)
-            # 2. Compile contracts (abi, bytecode)
             deployer = ContractDeployer(self.context)
             compiled_data = deployer.compile_contracts()
             
-            with self.lock:
-                self.results["compilation"] = {
-                    "status": "completed",
-                    "compiler": compiled_data["compiler"],
-                    "contracts": list(compiled_data["contracts"].keys()),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-                self.completed_parallel_steps.add("compilation")
-                # Store full compilation details
-                self.context.gcs.write_json(
-                    f"{self.context.project_root()}/compilation.json",
-                    compiled_data
-                )
-                
+            self.results["compilation"] = {
+                "status": "completed",
+                "compiler": compiled_data["compiler"],
+                "contracts": list(compiled_data["contracts"].keys()),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            # Store full compilation details
+            self.context.gcs.write_json(
+                f"{self.context.project_root()}/compilation.json",
+                compiled_data
+            )
+            
         except Exception as e:
             logger.error(f"Contract compilation failed: {str(e)}")
-            with self.lock:
-                self.results["compilation"] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+            self.results["compilation"] = {
+                "status": "failed",
+                "error": str(e)
+            }
+            raise
+
+    def run_simulations(self):
+        """Run simulations after both steps complete"""
+        if (self.results.get("simulation_setup", {}).get("status") == "completed" and
+            self.results.get("compilation", {}).get("status") == "completed"):
+            
+            # Copy compiled contracts to simulation repo
+            compiled_data = self.context.gcs.read_json(
+                f"{self.context.project_root()}/compilation.json"
+            )
+            self._setup_simulation_contracts(compiled_data)
+            
+            # Run simulations
+            simulation = SimulationEngine(self.context)
+            results = simulation.run()
+            self.results["simulations"] = results
 
     def _clone_simulation_template(self):
         """Clone simulation template repository"""
@@ -151,7 +141,6 @@ class Analyzer:
             "SIMULATION_TEMPLATE_REPO",
             "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
         )
-        self.simulation_repo_path = f"/tmp/simulation_{self.context.submission_id}"
         
         GitUtils.clone_repository(
             template_repo,
@@ -198,26 +187,6 @@ class Analyzer:
         )
         self.results["simulation_setup"]["push"] = "completed"
 
-    def run_simulations(self):
-        """Run simulations after both parallel steps complete"""
-        # Wait for both steps to complete
-        while len(self.completed_parallel_steps) < 2:
-            time.sleep(1)
-        
-        if (self.results.get("simulation_setup", {}).get("status") == "completed" and
-            self.results.get("compilation", {}).get("status") == "completed"):
-            
-            # Copy compiled contracts to simulation repo
-            compiled_data = self.context.gcs.read_json(
-                f"{self.context.project_root()}/compilation.json"
-            )
-            self._setup_simulation_contracts(compiled_data)
-            
-            # Run simulations
-            simulation = SimulationEngine(self.context)
-            results = simulation.run()
-            self.results["simulations"] = results
-
     def _setup_simulation_contracts(self, compiled_data):
         """Setup contracts in simulation environment"""
         contracts_dir = os.path.join(self.simulation_repo_path, "contracts")
@@ -242,7 +211,6 @@ class Analyzer:
             f"{self.context.logs_path()}/progress.json",
             {
                 "current_step": self.STEPS[self.current_step_index] if self.current_step_index < len(self.STEPS) else "completed",
-                "completed_parallel_steps": list(self.completed_parallel_steps),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )

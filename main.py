@@ -238,61 +238,6 @@ def get_simulation_results(submission_id):
         return jsonify(sims), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 404
-    
-@app.route('/api/submission/<submission_id>/compile', methods=['POST'])
-@authenticate
-def compile_contracts(submission_id):
-    """Compile contracts endpoint"""
-    try:
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
-        deployer = ContractDeployer(context)
-        compiled_data = deployer.compile_contracts()
-        
-        return jsonify({
-            "status": "success",
-            "compiled_contracts": list(compiled_data["contracts"].keys()),
-            "compiler": compiled_data["compiler"]
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
-
-@app.route('/api/submission/<submission_id>/setup_simulation', methods=['POST'])
-@authenticate
-def setup_simulation(submission_id):
-    """Setup simulation environment endpoint"""
-    try:
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
-        analyzer = Analyzer(context)
-        analyzer._setup_simulation_environment()
-        
-        return jsonify({
-            "status": "success",
-            "simulation_setup": analyzer.results.get("simulation_setup", {})
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
 
 @app.route('/api/submission/<submission_id>/reanalyze_summary', methods=['POST'])
 @authenticate
@@ -412,6 +357,60 @@ def create_simulation_repo(submission_id):
         return jsonify({
             "error": str(e),
             "message": "Failed to create simulation repository"
+        }), 500
+    
+@app.route('/api/submission/<submission_id>/setup_simulation', methods=['POST'])
+@authenticate
+def setup_simulation(submission_id):
+    """Endpoint to setup simulation environment"""
+    try:
+        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
+        context = RunContext(
+            submission_id=submission_id,
+            run_id=context_data["run_id"],
+            repo_url=context_data["github_repository_url"],
+            gcs=gcs
+        )
+        
+        analyzer = Analyzer(context)
+        analyzer.setup_simulation_environment()
+        
+        return jsonify({
+            "status": "success",
+            "simulation_setup": analyzer.results.get("simulation_setup", {})
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/api/submission/<submission_id>/compile', methods=['POST'])
+@authenticate
+def compile_contracts(submission_id):
+    """Endpoint to compile contracts"""
+    try:
+        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
+        context = RunContext(
+            submission_id=submission_id,
+            run_id=context_data["run_id"],
+            repo_url=context_data["github_repository_url"],
+            gcs=gcs
+        )
+        
+        analyzer = Analyzer(context)
+        analyzer.compile_contracts()
+        
+        return jsonify({
+            "status": "success",
+            "compilation": analyzer.results.get("compilation", {})
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
         }), 500
     
 @app.route('/')
