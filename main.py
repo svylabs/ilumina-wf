@@ -10,7 +10,7 @@ import logging
 import sys
 from app.analyse import Analyzer
 from app.context import prepare_context
-from app.storage import GCSStorage
+from app.storage import GCSStorage, storage_blueprint
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
 from app.models import Project
@@ -18,7 +18,7 @@ from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
-from app.clients import datastore_client, tasks_client
+from app.clients import datastore_client, tasks_client, storage_client
 from app.submission import store_analysis_metadata, update_analysis_status
 
 # Ensure logs are written to stdout
@@ -155,6 +155,12 @@ def analyze_project(submission, request_context):
         analyzer = Analyzer(context)
         analyzer.create_summary()
         
+        # Upload project summary to Google Cloud Storage
+        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(f"summaries/{submission['submission_id']}/project_summary.json")
+        blob.upload_from_filename(context.summary_path())
+        
         if request_context == "bg":
             # Update the task queue
             create_task({"submission_id": submission.submission_id})
@@ -180,6 +186,12 @@ def analyze_actors(submission, request_context):
         # Perform the actor analysis
         analyzer = Analyzer(context)
         analyzer.create_actors()
+
+        # Upload actors summary to Google Cloud Storage
+        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(f"summaries/{submission['submission_id']}/actors_summary.json")
+        blob.upload_from_filename(context.actor_summary_path())
 
         if request_context == "bg": 
         # Update the task queue
@@ -215,6 +227,9 @@ def analyze_deployment(submission, request_context):
 @app.route('/')
 def home():
     return "Smart Contract Analysis Service is running", 200
+
+# Register the storage blueprint
+app.register_blueprint(storage_blueprint)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

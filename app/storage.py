@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional
 from google.cloud import storage
 from google.api_core.exceptions import GoogleAPIError, NotFound
 from dotenv import load_dotenv
+from flask import Blueprint, jsonify
+from app.clients import storage_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -130,3 +132,31 @@ class GCSStorage:
         except GoogleAPIError as e:
             logger.error(f"Failed to delete {blob_name}: {str(e)}")
             raise
+
+storage_blueprint = Blueprint('storage', __name__)
+
+@storage_blueprint.route('/api/project_summary/<submission_id>', methods=['GET'])
+def get_project_summary(submission_id):
+    """Fetch project summary from Google Cloud Storage."""
+    bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(f"summaries/{submission_id}/project_summary.json")
+
+    if not blob.exists():
+        return jsonify({"error": "Project summary not found"}), 404
+
+    summary_data = blob.download_as_text()
+    return jsonify({"project_summary": summary_data}), 200
+
+@storage_blueprint.route('/api/actors_summary/<submission_id>', methods=['GET'])
+def get_actors_summary(submission_id):
+    """Fetch actors summary from Google Cloud Storage."""
+    bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(f"summaries/{submission_id}/actors_summary.json")
+
+    if not blob.exists():
+        return jsonify({"error": "Actors summary not found"}), 404
+
+    summary_data = blob.download_as_text()
+    return jsonify({"actors_summary": summary_data}), 200
