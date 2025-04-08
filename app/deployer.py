@@ -3,6 +3,7 @@ import subprocess
 import os
 from typing import Dict, Any
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -10,11 +11,38 @@ class ContractDeployer:
     def __init__(self, context):
         self.context = context
         self.local_repo_path = f"/tmp/workspace/{self.context.repo_name}"
+        self.contracts_dir = os.path.join(self.local_repo_path, "contracts")
 
+    def _setup_build_environment(self):
+        """Automatically set up build tools if none exist"""
+        if not os.path.exists(self.contracts_dir):
+            os.makedirs(self.contracts_dir)
+            
+        # Initialize package.json if doesn't exist
+        if not os.path.exists(os.path.join(self.local_repo_path, "package.json")):
+            subprocess.run(["npm", "init", "-y"], cwd=self.local_repo_path, check=True)
+        
+        # Install Hardhat by default if no build tool detected
+        hardhat_configs = [
+            os.path.join(self.local_repo_path, "hardhat.config.js"),
+            os.path.join(self.local_repo_path, "hardhat.config.ts"),
+            os.path.join(self.local_repo_path, "foundry.toml")
+        ]
+        if not any(os.path.exists(config) for config in hardhat_configs):
+            logger.info("No build tool detected, installing Hardhat...")
+            subprocess.run(["npm", "install", "--save-dev", "hardhat"], 
+                         cwd=self.local_repo_path, check=True)
+            subprocess.run(["npx", "hardhat", "init"], 
+                         cwd=self.local_repo_path, check=True)
+            
     def compile_contracts(self) -> Dict[str, Any]:
         """Compile smart contracts using detected dev tool"""
         try:
-            if self._has_file("hardhat.config.js"):
+            # Ensure the build environment is set up
+            self._setup_build_environment()
+            
+            # if self._has_file("hardhat.config.js"):
+            if self._has_file("hardhat.config.js") or self._has_file("hardhat.config.ts"):
                 return self._compile_with_hardhat()
             elif self._has_file("foundry.toml"):
                 return self._compile_with_foundry()

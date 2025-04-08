@@ -15,6 +15,7 @@ from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
 from app.models import Project
 from app.deployer import ContractDeployer
+from app.download import Downloader
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
@@ -208,7 +209,184 @@ def test_upload():
             "error": str(e),
             "message": "GCS upload test failed"
         }), 500
+    
+@app.route('/test_compile', methods=['GET'])
+def test_compile():
+    """Test endpoint for compilation workflow"""
+    try:
+        # Create test context
+        test_submission_id = "test_" + str(datetime.datetime.now().timestamp())
+        test_repo_url = "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
+        
+        context_data = {
+            "submission_id": test_submission_id,
+            "run_id": "test_run",
+            "github_repository_url": test_repo_url
+        }
+        context = prepare_context(context_data)
+        
+        # Step 1: Download repository
+        downloader = Downloader(context)
+        downloader.download()
+        
+        # Step 2: Compile contracts
+        deployer = ContractDeployer(context)
+        compiled_data = deployer.compile_contracts()
+        
+        # Store results
+        context.gcs.write_json(
+            f"workspaces/{test_submission_id}/compilation.json",
+            compiled_data
+        )
+        
+        return jsonify({
+            "status": "success",
+            "submission_id": test_submission_id,
+            "compiled_contracts": list(compiled_data["contracts"].keys()),
+            "compiler": compiled_data["compiler"]
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
+@app.route('/test_full_workflow', methods=['GET'])
+def test_full_workflow():
+    """Test endpoint for full workflow up to compilation"""
+    try:
+        # Create test context
+        test_submission_id = "test_" + str(datetime.datetime.now().timestamp())
+        test_repo_url = "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
+        
+        context_data = {
+            "submission_id": test_submission_id,
+            "run_id": "test_run",
+            "github_repository_url": test_repo_url
+        }
+        context = prepare_context(context_data)
+        
+        analyzer = Analyzer(context)
+        
+        # Execute steps up to compilation
+        steps_to_execute = [
+            "download",
+            "summarize_project",
+            "analyze_actors",
+            "setup_simulation_environment",
+            "compile_contracts"
+        ]
+        
+        for step in steps_to_execute:
+            if analyzer.has_next_step() and analyzer.STEPS[analyzer.current_step_index] == step:
+                analyzer.execute_next_step()
+                analyzer.save_progress()
+        
+        return jsonify({
+            "status": "success",
+            "submission_id": test_submission_id,
+            "completed_steps": steps_to_execute,
+            "compilation_result": analyzer.results.get("compilation", {})
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/compile_repo', methods=['POST'])
+@authenticate
+def compile_repo():
+    """Endpoint to compile contracts from any GitHub repo"""
+    try:
+        data = request.get_json()
+        if not data or "repo_url" not in data:
+            return jsonify({"error": "Missing repo_url parameter"}), 400
+            
+        # Create context
+        submission_id = f"compile_{datetime.now().timestamp()}"
+        context_data = {
+            "submission_id": submission_id,
+            "run_id": "direct_compile",
+            "github_repository_url": data["repo_url"]
+        }
+        context = prepare_context(context_data)
+        
+        # Download repo
+        downloader = Downloader(context)
+        downloader.download()
+        
+        # Compile contracts
+        analyzer = Analyzer(context)
+        analyzer.compile_contracts()
+        
+        # Get compilation results
+        compilation = context.gcs.read_json(
+            f"{context.project_root()}/compilation.json"
+        )
+        
+        return jsonify({
+            "status": "success",
+            "submission_id": submission_id,
+            "compiled_contracts": list(compilation["contracts"].keys()),
+            "abis_location": f"{context.project_root()}/abis"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "repo_url": data.get("repo_url", "") if 'data' in locals() else ""
+        }), 500
+    
+@app.route('/test_compile_repo', methods=['POST'])
+def test_compile_repo():
+    """Test endpoint for compiling predify"""
+    try:
+        # Create test context
+        test_submission_id = "test_" + str(datetime.datetime.now().timestamp())
+        test_repo_url = "https://github.com/svylabs/predify" 
+        
+        context_data = {
+            "submission_id": test_submission_id,
+            "run_id": "test_run",
+            "github_repository_url": test_repo_url
+        }
+        context = prepare_context(context_data)
+        
+        # Step 1: Download repository
+        downloader = Downloader(context)
+        downloader.download()
+        
+        # Step 2: Compile contracts
+        deployer = ContractDeployer(context)
+        compiled_data = deployer.compile_contracts()
+        
+        # Store results
+        context.gcs.write_json(
+            f"workspaces/{test_submission_id}/compilation.json",
+            compiled_data
+        )
+        
+        return jsonify({
+            "status": "success",
+            "submission_id": test_submission_id,
+            "compiled_contracts": list(compiled_data["contracts"].keys()),
+            "compiler": compiled_data["compiler"],
+            "abi_paths": {
+                contract: f"workspaces/{test_submission_id}/abis/{contract}.json"
+                for contract in compiled_data["contracts"].keys()
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+    
 @app.route('/api/submission/<submission_id>/summary', methods=['GET'])
 @authenticate
 def get_project_summary(submission_id):

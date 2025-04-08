@@ -8,7 +8,13 @@ class ProjectSummarizer:
         self.project_summary = None
 
     def find_dev_tool(self):
-        if os.path.exists("/tmp/workspace/hardhat.config.js"):
+        hardhat_config_paths = [
+            "/tmp/workspace/hardhat.config.js",
+            "/tmp/workspace/hardhat.config.ts"
+        ]
+
+        if any(os.path.exists(path) for path in hardhat_config_paths):
+        # if os.path.exists("/tmp/workspace/hardhat.config.js"):
             return "hardhat"
         elif os.path.exists("/tmp/workspace/foundry.toml"):
             return "foundry"

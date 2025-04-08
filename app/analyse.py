@@ -93,29 +93,82 @@ class Analyzer:
             }
             raise
 
+    # def compile_contracts(self):
+    #     """Compile project contracts"""
+    #     try:
+    #         deployer = ContractDeployer(self.context)
+    #         compiled_data = deployer.compile_contracts()
+            
+    #         self.results["compilation"] = {
+    #             "status": "completed",
+    #             "compiler": compiled_data["compiler"],
+    #             "contracts": list(compiled_data["contracts"].keys()),
+    #             "timestamp": datetime.now(timezone.utc).isoformat()
+    #         }
+    #         # Store full compilation details
+    #         self.context.gcs.write_json(
+    #             f"{self.context.project_root()}/compilation.json",
+    #             compiled_data
+    #         )
+            
+    #     except Exception as e:
+    #         logger.error(f"Contract compilation failed: {str(e)}")
+    #         self.results["compilation"] = {
+    #             "status": "failed",
+    #             "error": str(e)
+    #         }
+    #         raise
+
     def compile_contracts(self):
-        """Compile project contracts"""
+        """Compile project contracts with comprehensive error handling"""
         try:
             deployer = ContractDeployer(self.context)
-            compiled_data = deployer.compile_contracts()
             
-            self.results["compilation"] = {
-                "status": "completed",
-                "compiler": compiled_data["compiler"],
-                "contracts": list(compiled_data["contracts"].keys()),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-            # Store full compilation details
-            self.context.gcs.write_json(
-                f"{self.context.project_root()}/compilation.json",
-                compiled_data
-            )
-            
+            try:
+                compiled_data = deployer.compile_contracts()
+                
+                # Store compilation results
+                self.results["compilation"] = {
+                    "status": "completed",
+                    "compiler": compiled_data["compiler"],
+                    "contracts": list(compiled_data["contracts"].keys()),
+                    "original_path": compiled_data.get("original_path", ""),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Store full compilation details
+                self.context.gcs.write_json(
+                    f"{self.context.project_root()}/compilation.json",
+                    compiled_data
+                )
+                
+                # Store ABIs separately for easy access
+                abis_dir = f"{self.context.project_root()}/abis"
+                for contract_name, data in compiled_data["contracts"].items():
+                    self.context.gcs.write_json(
+                        f"{abis_dir}/{contract_name}.json",
+                        {
+                            "abi": data["abi"],
+                            "bytecode": data["bytecode"],
+                            "file_path": data.get("file_path", "")
+                        }
+                    )
+                    
+            finally:
+                deployer.cleanup()
+                
         except Exception as e:
-            logger.error(f"Contract compilation failed: {str(e)}")
+            error_msg = f"Contract compilation failed: {str(e)}"
+            logger.error(error_msg)
+            
             self.results["compilation"] = {
                 "status": "failed",
-                "error": str(e)
+                "error": error_msg,
+                "suggestions": [
+                    "Ensure the repository contains Solidity (.sol) files",
+                    "Check contracts are in standard locations (contracts/, src/)",
+                    "Verify the contracts can compile with Hardhat locally"
+                ]
             }
             raise
 
