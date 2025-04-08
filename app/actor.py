@@ -100,16 +100,22 @@ class ActorAnalyzer:
         self.project_summary = summary
         self.actors = []
 
-    def identify_actors(self):
-        prompt = f"""
+    def identify_actors(self, user_prompt=None):
+        base_prompt = f"""
         Analyze this smart contract project:
         {json.dumps(self.project_summary.to_dict())}
         
         Identify:
-        1. All actors(market participants)
+        1. All market participants (actors) in the project
         2. Actions each actor can perform
         3. Probability of each action being executed
         """
+        
+        # Add user prompt if provided
+        prompt = base_prompt
+        if user_prompt:
+            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
+        
         _, actors = ask_openai(prompt, Actors, task="reasoning")
         self.actors = actors
         #print(json.dumps(self.actors.to_dict()))

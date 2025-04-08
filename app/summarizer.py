@@ -62,7 +62,7 @@ class ProjectSummarizer:
         response = ask_openai(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty", Project, "understand")
         return response[1]
 
-    def summarize(self):
+    def summarize(self, user_prompt=None):
         if (self.summary_exists()):
             print("Summary already exists")
             self.project_summary = self.load_summary()
@@ -70,8 +70,25 @@ class ProjectSummarizer:
         self.prepare()
         print("Analyzing the contracts")
         project_from_readme = None
+        base_prompt = f"""
+        Analyze this smart contract project.
+
+        Provide a comprehensive summary including:
+        1. Project purpose
+        2. Main components
+        3. Key functionality
+
+        Do not add anything to t he contract list yet.
+
+        """
+        prompt = base_prompt
+        if user_prompt:
+            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
+        
         if (self.readme != ""):
-            response = ask_openai(self.readme + " \n\n Can you summarize this above project? \n Keep the contract list empty in the return value", Project, task="understand")
+            prompt_with_readme = prompt + f"\n\n Project Readme:\n\n {self.readme}"
+            # Add user prompt if provided
+            response = ask_openai(prompt_with_readme, Project, task="understand")
             project_from_readme = response[1]
             print("Project summary from README")
             print(json.dumps(project_from_readme.to_dict()))
@@ -81,7 +98,8 @@ class ProjectSummarizer:
             contracts_summary.append({
                 "name": contract["name"]
             })
-        response = ask_openai(json.dumps(contracts_summary) + " \n Can you summarize what the project could potentially be doing based on these contract names? Don't add anything to the contract list yet.", Project, task="understand")
+        prompt_with_contracts = prompt + f"\n\n Project Contracts:\n\n {json.dumps(contracts_summary)}"
+        response = ask_openai(prompt_with_contracts, Project, task="understand")
         project_from_contracts = response[1]
         project_summary = project_from_contracts
         print("Project summary from contract names")
