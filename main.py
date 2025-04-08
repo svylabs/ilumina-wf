@@ -18,6 +18,7 @@ from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
+from app.clients import datastore_client, tasks_client
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -38,15 +39,7 @@ QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
 TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/analyse")
 
-client = None
-# client = tasks_v2.CloudTasksClient()
-if os.getenv("USE_CREDENTIAL_FILE") == "true":
-    creds_path = os.getenv("GCS_CREDENTIALS_PATH")
-    client = tasks_v2.CloudTasksClient.from_service_account_file(creds_path)
-else:
-    client = tasks_v2.CloudTasksClient()
-    
-parent = client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
+parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
 def authenticate(f):
     @wraps(f)
@@ -59,8 +52,7 @@ def authenticate(f):
 
 def store_analysis_metadata(data):
     """Store submission metadata in Datastore"""
-    client = datastore.Client()
-    entity = datastore.Entity(key=client.key("Submission", data["submission_id"]))
+    entity = datastore.Entity(key=datastore_client.key("Submission", data["submission_id"]))
     entity.update({
         "github_repository_url": data["github_repository_url"],
         "submission_id": data["submission_id"],
@@ -68,7 +60,7 @@ def store_analysis_metadata(data):
         "created_at": datetime.datetime.now(),
         "updated_at": datetime.datetime.now()
     })
-    client.put(entity)
+    datastore_client.put(entity)
 
 def create_task(data):
     """Create a Cloud Task for async processing"""
@@ -80,13 +72,12 @@ def create_task(data):
             "body": json.dumps(data).encode(),
         }
     }
-    return client.create_task(request={"parent": parent, "task": task}).name
+    return tasks_client.create_task(request={"parent": parent, "task": task}).name
 
 def update_analysis_status(submission_id, status, error=None):
     """Update analysis status in Datastore"""
-    client = datastore.Client()
-    key = client.key("Submission", submission_id)
-    entity = client.get(key)
+    key = datastore_client.key("Submission", submission_id)
+    entity = datastore_client.get(key)
     if entity:
         updates = {
             "status": status,
@@ -95,7 +86,7 @@ def update_analysis_status(submission_id, status, error=None):
         if error:
             updates["error"] = error
         entity.update(updates)
-        client.put(entity)
+        datastore_client.put(entity)
 
 @app.route('/begin_analysis', methods=['POST'])
 @authenticate
@@ -325,7 +316,7 @@ def analyze():
         # Determine the next step
         analyzer = Analyzer(context)
         if not analyzer.is_step_done("summary"):
-            create_task({"submission_id": submission_id, "step": "analyze_project"})
+            create_task({"step": "analyze_project", "data": data})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
         elif not analyzer.is_step_done("actors"):
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
