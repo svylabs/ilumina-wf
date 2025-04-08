@@ -11,6 +11,11 @@ def prepare_context(data):
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
     context = RunContext(submission_id, run_id, repo, workspace)
+
+    # TODO: Modify this to create the following
+    # 1. Create a new repo from the template (if not available already)
+    # 2. Create a private github repo
+    # 2. Push the repo to github
     if (os.path.exists(context.ctx_path()) == False): 
         with open(context.ctx_path(), "w") as f:
             ctx_data = data

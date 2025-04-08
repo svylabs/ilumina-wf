@@ -9,7 +9,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.context import prepare_context, RunContext
+from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
@@ -41,6 +41,34 @@ TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.ap
 
 parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
+from functools import wraps
+from flask import request, jsonify
+from google.cloud import datastore
+
+# Annotation to inject submission from Datastore
+def inject_submission(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        key = datastore_client.key("Submission", submission_id)
+        submission = datastore_client.get(key)
+
+        request_context = data.get("request_context")
+        if request_context == None:
+            request_context = "bg"
+
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Pass the submission to the wrapped function
+        return f(submission, request_context, *args, **kwargs)
+
+    return decorated_function
+
 def authenticate(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -68,19 +96,19 @@ def create_task(data):
         "http_request": {
             "http_method": "POST",
             "url": TASK_HANDLER_URL,
-            "headers": {"Content-Type": "application/json"},
+            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
             "body": json.dumps(data).encode(),
         }
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
 
-def update_analysis_status(submission_id, status, error=None):
+def update_analysis_status(submission_id, step, error=None):
     """Update analysis status in Datastore"""
     key = datastore_client.key("Submission", submission_id)
     entity = datastore_client.get(key)
     if entity:
         updates = {
-            "status": status,
+            "step": step,
             "updated_at": datetime.datetime.now()
         }
         if error:
@@ -110,13 +138,14 @@ def begin_analysis():
     }), 200
 
 @app.route('/analyse', methods=['POST'])
+@authenticate
 def analyse():
     """Process the analysis task"""
     data = request.get_json()
     app.logger.info(f"Starting analysis for {data['submission_id']}")
     
     try:
-        context = prepare_context(data)
+        context = prepare_context_lazy(data)
         analyzer = Analyzer(context)
         
         while analyzer.not_done():
@@ -132,169 +161,7 @@ def analyse():
     except Exception as e:
         app.logger.error(f"Analysis failed: {str(e)}")
         update_analysis_status(data["submission_id"], "failed", str(e))
-        return jsonify({"error": str(e)}), 500
-    
-@app.route('/test_predify', methods=['GET'])
-def test_predify():
-    try:
-        # Initialize clients
-        github = GitHubAPI()
-        gcs = GCSStorage()
-        
-        # Fetch Predify repo contents
-        contents = github.get_repo_contents("https://github.com/svylabs/predify")
-        file_list = [item['name'] for item in contents if isinstance(item, dict)]
-        
-        # Store in GCS
-        gcs.write_json(
-            "predify_test/files.json",
-            {"files": file_list}
-        )
-        
-        return jsonify({
-            "status": "success",
-            "files_found": len(file_list),
-            # "first_5_files": file_list[:5],
-            "all_files": file_list
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "message": "Make sure your GCS service account has Storage Object Admin permissions"
-        }), 500
-    
-@app.route('/test_upload', methods=['GET'])
-def test_upload():
-    """Test endpoint for GCS upload"""
-    try:
-        # Initialize clients
-        github = GitHubAPI()
-        gcs = GCSStorage()
-        
-        # 1. Fetch Predify repo contents
-        contents = github.get_repo_contents("https://github.com/svylabs/predify")
-        file_list = [item['name'] for item in contents if isinstance(item, dict)]
-        
-        # 2. Prepare test data
-        test_data = {
-            "repository": "svylabs/predify",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "files": file_list,
-            "status": "test_successful"
-        }
-        
-        # 3. Upload to GCS
-        blob_path = f"tests/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        gcs.write_json(blob_path, test_data)
-        
-        # 4. Verify upload
-        uploaded_data = gcs.read_json(blob_path)
-        
-        return jsonify({
-            "status": "success",
-            "blob_path": blob_path,
-            "uploaded_data": uploaded_data
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "message": "GCS upload test failed"
-        }), 500
-
-@app.route('/api/submission/<submission_id>/summary', methods=['GET'])
-@authenticate
-def get_project_summary(submission_id):
-    """Get project summary"""
-    try:
-        summary = gcs.read_json(f"workspaces/{submission_id}/summary.json")
-        return jsonify(summary), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
-
-@app.route('/api/submission/<submission_id>/actors', methods=['GET'])
-@authenticate
-def get_actor_summary(submission_id):
-    """Get actor summary"""
-    try:
-        actors = gcs.read_json(f"workspaces/{submission_id}/actor-summary.json")
-        return jsonify(actors), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
-
-@app.route('/api/submission/<submission_id>/simulations', methods=['GET'])
-@authenticate
-def get_simulation_results(submission_id):
-    """Get simulation results"""
-    try:
-        sims = gcs.read_json(f"workspaces/{submission_id}/simulations.json")
-        return jsonify(sims), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 404
-
-
-@app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
-@authenticate
-def create_simulation_repo(submission_id):
-    """Create simulation repo from pre-scaffolded template"""
-    try:
-        data = request.get_json()
-        project_name = data.get("project_name", f"project-{submission_id}")
-
-        # Replace invalid characters with hyphens and convert to lowercase
-        project_name = re.sub(r'[^a-zA-Z0-9-]', '-', project_name).lower()
-
-        # Ensure no consecutive hyphens and strip leading/trailing hyphens
-        project_name = re.sub(r'-+', '-', project_name).strip('-')
-
-        # Create repository name
-        repo_name = f"{project_name}-simulation"
-        
-        # 1. Create GitHub repository
-        repo_data = github_api.create_repository(
-            name=repo_name,
-            private=True,
-            description=f"Simulation repository for {project_name} (pre-scaffolded)"
-        )
-        
-        # 2. Prepare local workspace
-        repo_path = f"/tmp/{repo_name}"
-        
-        # 3. Clone template and initialize
-        template_repo = os.getenv(
-            "SIMULATION_TEMPLATE_REPO",
-            "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
-        )
-        
-        GitUtils.create_from_template(
-            template_url=template_repo,
-            new_repo_path=repo_path,
-            new_origin_url=repo_data["clone_url"],
-            project_name=project_name
-        )
-        
-        # Cleanup
-        try:
-            shutil.rmtree(repo_path)
-        except Exception as e:
-            app.logger.warning(f"Cleanup warning: {str(e)}")
-        
-        return jsonify({
-            "status": "success",
-            "repo_name": repo_name,
-            "repo_url": repo_data["html_url"],
-            "clone_url": repo_data["clone_url"],
-            "template_source": template_repo,
-            "scaffolded": False  # False because we used pre-scaffolded template
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "message": "Failed to create simulation repository"
-        }), 500
-    
+        return jsonify({"error": str(e)}), 500    
 
 
 # Modify the APIs to use prepare_context for creating RunContext
@@ -311,17 +178,15 @@ def analyze():
             return jsonify({"error": "Missing submission_id"}), 400
 
         # Get the current context using prepare_context
-        context = prepare_context(data)
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
-        # Determine the next step
-        analyzer = Analyzer(context)
-        if not analyzer.is_step_done("summary"):
-            create_task({"step": "analyze_project", "data": data})
+        if submission.step is None:
+            create_task({"submission_id": submission_id, "step": "analyze_project"})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
-        elif not analyzer.is_step_done("actors"):
+        elif submission.step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
-        elif not analyzer.is_step_done("deployment"):
+        elif submission.step == "analyze_actors":
             create_task({"submission_id": submission_id, "step": "analyze_deployment"})
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
@@ -329,27 +194,27 @@ def analyze():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+    
 @app.route('/api/analyze_project', methods=['POST'])
 @authenticate
-def analyze_project():
+@inject_submission
+def analyze_project(submission, request_context):
     """Perform the project analysis step"""
     try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
         # Get the current context using prepare_context
-        context = prepare_context(data)
+        context = prepare_context(submission)
 
         # Perform the project analysis
         analyzer = Analyzer(context)
         analyzer.create_summary()
-
-        # Update the task queue
-        create_task({"submission_id": submission_id, "step": "analyze_actors"})
+        
+        if request_context == "bg":
+            # Update the task queue
+            create_task({"submission_id": submission.submission_id})
+            update_analysis_status(submission.submission_id, "analyze_project")
+        else:
+            update_analysis_status(submission.submission_id, "analyze_project")
+            return jsonify({"summary": analyzer.project_summary.to_dict()}), 200
 
         return jsonify({"message": "Project analysis completed"}), 200
 
@@ -358,43 +223,38 @@ def analyze_project():
 
 @app.route('/api/analyze_actors', methods=['POST'])
 @authenticate
-def analyze_actors():
+@inject_submission
+def analyze_actors(submission, request_context):
     """Perform the actor analysis step"""
     try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
         # Get the current context using prepare_context
-        context = prepare_context(data)
+        context = prepare_context(submission)
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
         analyzer.create_actors()
 
+        if request_context == "bg": 
         # Update the task queue
-        create_task({"submission_id": submission_id, "step": "analyze_deployment"})
-
-        return jsonify({"message": "Actor analysis completed"}), 200
+            create_task({"submission_id": submission.submission_id})
+            update_analysis_status(submission.submission_id, "analyze_project")
+        else:
+            update_analysis_status(submission.submission_id, "analyze_project")
+            # If in foreground, return the result
+            return jsonify({"actors": analyzer.actors.to_dict()}), 200
+        return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
-def analyze_deployment():
+@inject_submission
+def analyze_deployment(submission, request_context):
     """Perform the deployment analysis step"""
     try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
         # Get the current context using prepare_context
-        context = prepare_context(data)
+        context = prepare_context(submission)
 
         # Perform the deployment analysis
         analyzer = Analyzer(context)
