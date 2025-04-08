@@ -1,7 +1,8 @@
-
 import os
 import json
 import uuid
+from .github_utils import create_github_repo, set_github_repo_origin_and_push
+from .filesystem_utils import ensure_directory_exists, clone_repo
 
 APP_VERSION = "v1"
 
@@ -12,20 +13,39 @@ def prepare_context(data):
     workspace = "/tmp/workspaces"
     context = RunContext(submission_id, run_id, repo, workspace)
 
-    # TODO: Modify this to create the following
-    # 1. Create a new repo from the template (if not available already)
-    # 2. Create a private github repo
-    # 2. Push the repo to github
-    if (os.path.exists(context.ctx_path()) == False): 
-        with open(context.ctx_path(), "w") as f:
-            ctx_data = data
-            ctx_data["version"] = APP_VERSION
-            f.write(json.dumps(ctx_data))
-    else:
-        with open(context.ctx_path(), "r") as f:
-            data = json.loads(f.read())
-            if (data["version"] != APP_VERSION):
-                raise Exception("Version mismatch")
+    # Ensure the root workspace exists
+    ensure_directory_exists(workspace)
+
+    # Create a project directory if it doesn't exist
+    project_dir = os.path.join(workspace, context.name)
+    ensure_directory_exists(project_dir)
+
+    # Clone the project repo into the project directory if not already cloned
+    project_repo_path = os.path.join(project_dir, context.name)
+    clone_repo(repo, project_repo_path)
+
+    # Clone the simulation repo into the project directory if not already cloned
+    simulation_repo_name = f"{context.name}-simulation"
+    simulation_repo_path = os.path.join(project_dir, simulation_repo_name)
+    simulation_template_repo = os.getenv(
+        "SIMULATION_TEMPLATE_REPO",
+        "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
+    )
+    clone_repo(simulation_template_repo, simulation_repo_path)
+
+    # Create a private GitHub repository for the simulation repo if it doesn't already exist
+    github_token = os.getenv("GITHUB_TOKEN")
+    github_username = os.getenv("GITHUB")
+    if not github_token or not github_username:
+        raise Exception("GitHub credentials are not set in the environment variables")
+
+    repo_name = simulation_repo_name
+    github_repo_url = f"https://github.com/{github_username}/{repo_name}.git"
+    create_github_repo(github_token, github_username, repo_name)
+
+    # Set the origin of the simulation repo to the GitHub repo and push if not already set
+    set_github_repo_origin_and_push(simulation_repo_path, github_repo_url)
+
     return context
 
 class RunContext:
