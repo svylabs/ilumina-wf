@@ -9,7 +9,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.context import prepare_context, prepare_context_lazy
+from app.context import prepare_context
 from app.storage import GCSStorage
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
@@ -19,6 +19,7 @@ from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client
+from app.submission import store_analysis_metadata, update_analysis_status
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -37,7 +38,7 @@ SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
-TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/analyse")
+TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/analyze")
 
 parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
@@ -78,18 +79,6 @@ def authenticate(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def store_analysis_metadata(data):
-    """Store submission metadata in Datastore"""
-    entity = datastore.Entity(key=datastore_client.key("Submission", data["submission_id"]))
-    entity.update({
-        "github_repository_url": data["github_repository_url"],
-        "submission_id": data["submission_id"],
-        "status": "pending",
-        "created_at": datetime.datetime.now(),
-        "updated_at": datetime.datetime.now()
-    })
-    datastore_client.put(entity)
-
 def create_task(data):
     """Create a Cloud Task for async processing"""
     task = {
@@ -101,20 +90,6 @@ def create_task(data):
         }
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
-
-def update_analysis_status(submission_id, step, error=None):
-    """Update analysis status in Datastore"""
-    key = datastore_client.key("Submission", submission_id)
-    entity = datastore_client.get(key)
-    if entity:
-        updates = {
-            "step": step,
-            "updated_at": datetime.datetime.now()
-        }
-        if error:
-            updates["error"] = error
-        entity.update(updates)
-        datastore_client.put(entity)
 
 @app.route('/begin_analysis', methods=['POST'])
 @authenticate
@@ -137,35 +112,7 @@ def begin_analysis():
         "run_id": data["run_id"]
     }), 200
 
-@app.route('/analyse', methods=['POST'])
-@authenticate
-def analyse():
-    """Process the analysis task"""
-    data = request.get_json()
-    app.logger.info(f"Starting analysis for {data['submission_id']}")
-    
-    try:
-        context = prepare_context_lazy(data)
-        analyzer = Analyzer(context)
-        
-        while analyzer.not_done():
-            analyzer.step()
-            #analyzer.print_current_step()
-        
-        update_analysis_status(data["submission_id"], "completed")
-        
-        return jsonify({
-            "message": "Analysis completed",
-            "submission_id": data["submission_id"]
-        }), 200
-    except Exception as e:
-        app.logger.error(f"Analysis failed: {str(e)}")
-        update_analysis_status(data["submission_id"], "failed", str(e))
-        return jsonify({"error": str(e)}), 500    
-
-
 # Modify the APIs to use prepare_context for creating RunContext
-
 @app.route('/api/analyze', methods=['POST'])
 @authenticate
 def analyze():
@@ -211,9 +158,9 @@ def analyze_project(submission, request_context):
         if request_context == "bg":
             # Update the task queue
             create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project")
+            update_analysis_status(submission.submission_id, "analyze_project", "success")
         else:
-            update_analysis_status(submission.submission_id, "analyze_project")
+            #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": analyzer.project_summary.to_dict()}), 200
 
         return jsonify({"message": "Project analysis completed"}), 200
@@ -237,9 +184,9 @@ def analyze_actors(submission, request_context):
         if request_context == "bg": 
         # Update the task queue
             create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project")
+            update_analysis_status(submission.submission_id, "analyze_project", "success")
         else:
-            update_analysis_status(submission.submission_id, "analyze_project")
+            #update_analysis_status(submission.submission_id, "analyze_project")
             # If in foreground, return the result
             return jsonify({"actors": analyzer.actors.to_dict()}), 200
         return jsonify({"message": "Project analysis completed"}), 200
