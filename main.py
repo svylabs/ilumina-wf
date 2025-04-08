@@ -128,9 +128,9 @@ def analyse():
         context = prepare_context(data)
         analyzer = Analyzer(context)
         
-        while analyzer.has_next_step():
-            analyzer.execute_next_step()
-            analyzer.save_progress()
+        while analyzer.not_done():
+            analyzer.step()
+            #analyzer.print_current_step()
         
         update_analysis_status(data["submission_id"], "completed")
         
@@ -242,65 +242,7 @@ def get_simulation_results(submission_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 404
 
-@app.route('/api/submission/<submission_id>/reanalyze_summary', methods=['POST'])
-@authenticate
-def reanalyze_summary(submission_id):
-    """Re-analyze project summary with optional user prompt"""
-    try:
-        data = request.get_json()
-        user_prompt = data.get("prompt", "")
-        
-        # Get existing context
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
-        # Re-run summarization with prompt
-        summarizer = ProjectSummarizer(context)
-        summarizer.summarize(user_prompt=user_prompt)
-        
-        # Return updated summary
-        summary = gcs.read_json(f"workspaces/{submission_id}/summary.json")
-        return jsonify(summary), 200
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/submission/<submission_id>/reanalyze_actors', methods=['POST'])
-@authenticate
-def reanalyze_actors(submission_id):
-    """Re-analyze actors with optional user prompt"""
-    try:
-        data = request.get_json()
-        user_prompt = data.get("prompt", "")
-        
-        # Get existing context
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
-        # Get project summary
-        summary_data = gcs.read_json(f"workspaces/{submission_id}/summary.json")
-        project_summary = Project(**summary_data)
-        
-        # Re-run actor analysis with prompt
-        actor_analyzer = ActorAnalyzer(context, project_summary)
-        actors = actor_analyzer.analyze(user_prompt=user_prompt)
-        
-        # Return updated actors
-        return jsonify(actors.to_dict()), 200
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
 @app.route('/api/submission/<submission_id>/create_simulation_repo', methods=['POST'])
 @authenticate
 def create_simulation_repo(submission_id):
@@ -362,60 +304,116 @@ def create_simulation_repo(submission_id):
             "message": "Failed to create simulation repository"
         }), 500
     
-@app.route('/api/submission/<submission_id>/setup_simulation', methods=['POST'])
-@authenticate
-def setup_simulation(submission_id):
-    """Endpoint to setup simulation environment"""
-    try:
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
-        analyzer = Analyzer(context)
-        analyzer.setup_simulation_environment()
-        
-        return jsonify({
-            "status": "success",
-            "simulation_setup": analyzer.results.get("simulation_setup", {})
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
 
-@app.route('/api/submission/<submission_id>/compile', methods=['POST'])
+
+# Modify the APIs to use prepare_context for creating RunContext
+
+@app.route('/api/analyze', methods=['POST'])
 @authenticate
-def compile_contracts(submission_id):
-    """Endpoint to compile contracts"""
+def analyze():
+    """Determine the next step and enqueue it"""
     try:
-        context_data = gcs.read_json(f"workspaces/{submission_id}/context.json")
-        context = RunContext(
-            submission_id=submission_id,
-            run_id=context_data["run_id"],
-            repo_url=context_data["github_repository_url"],
-            gcs=gcs
-        )
-        
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        # Get the current context using prepare_context
+        context = prepare_context(data)
+
+        # Determine the next step
         analyzer = Analyzer(context)
-        analyzer.compile_contracts()
-        
-        return jsonify({
-            "status": "success",
-            "compilation": analyzer.results.get("compilation", {})
-        }), 200
-        
+        if not analyzer.is_step_done("summary"):
+            create_task({"submission_id": submission_id, "step": "analyze_project"})
+            return jsonify({"message": "Enqueued step: analyze_project"}), 200
+        elif not analyzer.is_step_done("actors"):
+            create_task({"submission_id": submission_id, "step": "analyze_actors"})
+            return jsonify({"message": "Enqueued step: analyze_actors"}), 200
+        elif not analyzer.is_step_done("deployment"):
+            create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+            return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
+        else:
+            return jsonify({"message": "All steps are completed"}), 200
+
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
-    
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze_project', methods=['POST'])
+@authenticate
+def analyze_project():
+    """Perform the project analysis step"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        # Get the current context using prepare_context
+        context = prepare_context(data)
+
+        # Perform the project analysis
+        analyzer = Analyzer(context)
+        analyzer.create_summary()
+
+        # Update the task queue
+        create_task({"submission_id": submission_id, "step": "analyze_actors"})
+
+        return jsonify({"message": "Project analysis completed"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze_actors', methods=['POST'])
+@authenticate
+def analyze_actors():
+    """Perform the actor analysis step"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        # Get the current context using prepare_context
+        context = prepare_context(data)
+
+        # Perform the actor analysis
+        analyzer = Analyzer(context)
+        analyzer.create_actors()
+
+        # Update the task queue
+        create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+
+        return jsonify({"message": "Actor analysis completed"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze_deployment', methods=['POST'])
+@authenticate
+def analyze_deployment():
+    """Perform the deployment analysis step"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        # Get the current context using prepare_context
+        context = prepare_context(data)
+
+        # Perform the deployment analysis
+        analyzer = Analyzer(context)
+        analyzer.create_deployment_instructions()
+
+        return jsonify({"message": "Deployment analysis completed"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/')
 def home():
     return "Smart Contract Analysis Service is running", 200
