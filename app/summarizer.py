@@ -66,7 +66,7 @@ class ProjectSummarizer:
         if (self.summary_exists()):
             print("Summary already exists")
             self.project_summary = self.load_summary()
-            return
+            return self.project_summary
         self.prepare()
         print("Analyzing the contracts")
         project_from_readme = None
@@ -111,6 +111,7 @@ class ProjectSummarizer:
         print(json.dumps(project_summary.to_dict()))
         self.project_summary = project_summary
         self.save()
+        return self.project_summary
         #print("Analyzing " + contract["name"])
 
     def save(self):
@@ -127,4 +128,11 @@ class ProjectSummarizer:
     
     def summary_exists(self):
         return os.path.exists(self.context.summary_path())
+    
+
+def __init__(context):
+    """
+    Initialize the summarizer with the given context.
+    """
+    return ProjectSummarizer(context)
     

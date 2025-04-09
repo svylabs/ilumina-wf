@@ -118,6 +118,7 @@ class ActorAnalyzer:
         
         _, actors = ask_openai(prompt, Actors, task="reasoning")
         self.actors = actors
+        return self.actors
         #print(json.dumps(self.actors.to_dict()))
 
     def prepare(self):

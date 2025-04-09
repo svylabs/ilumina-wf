@@ -24,14 +24,14 @@ class Analyzer:
 
     def summarize(self):
         summarizer = ProjectSummarizer(self.context)
-        summarizer.summarize()
+        return summarizer.summarize()
 
     def identify_actors(self):
         project_summary = None
         with open(self.context.summary_path(), 'r') as f:
             project_summary = Project.load(json.loads(f.read()))
         actor_analyzer = ActorAnalyzer(self.context, project_summary)
-        actor_analyzer.analyze()
+        return actor_analyzer.identify_actors()
     
     def step(self):
         print("Running step " + str(self.current_step))

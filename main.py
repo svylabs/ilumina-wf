@@ -153,7 +153,7 @@ def analyze_project(submission, request_context):
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        analyzer.summarize()
+        project_summary = analyzer.summarize()
         
         # Upload project summary to Google Cloud Storage
         bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
@@ -166,7 +166,7 @@ def analyze_project(submission, request_context):
             update_analysis_status(submission.submission_id, "analyze_project", "success")
         else:
             #update_analysis_status(submission.submission_id, "analyze_project", "success")
-            return jsonify({"summary": analyzer.project_summary.to_dict()}), 200
+            return jsonify({"summary": project_summary.to_dict()}), 200
 
         return jsonify({"message": "Project analysis completed"}), 200
 
@@ -184,7 +184,7 @@ def analyze_actors(submission, request_context):
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        analyzer.identify_actors()
+        actors = analyzer.identify_actors()
 
         # Upload actors summary to Google Cloud Storage
         bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
@@ -198,7 +198,7 @@ def analyze_actors(submission, request_context):
         else:
             #update_analysis_status(submission.submission_id, "analyze_project")
             # If in foreground, return the result
-            return jsonify({"actors": analyzer.actors.to_dict()}), 200
+            return jsonify({"actors": actors.to_dict()}), 200
         return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
