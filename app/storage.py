@@ -133,6 +133,12 @@ class GCSStorage:
             logger.error(f"Failed to delete {blob_name}: {str(e)}")
             raise
 
+def upload_to_gcs(bucket_name, blob_name, file_path):
+    """Uploads a file to Google Cloud Storage."""
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(file_path)
+
 storage_blueprint = Blueprint('storage', __name__)
 
 @storage_blueprint.route('/api/project_summary/<submission_id>', methods=['GET'])

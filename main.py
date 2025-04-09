@@ -10,7 +10,7 @@ import logging
 import sys
 from app.analyse import Analyzer
 from app.context import prepare_context
-from app.storage import GCSStorage, storage_blueprint
+from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
 from app.models import Project
@@ -153,13 +153,12 @@ def analyze_project(submission, request_context):
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        analyzer.create_summary()
+        analyzer.summarize()
         
         # Upload project summary to Google Cloud Storage
         bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(f"summaries/{submission['submission_id']}/project_summary.json")
-        blob.upload_from_filename(context.summary_path())
+        blob_name = f"summaries/{submission['submission_id']}/project_summary.json"
+        upload_to_gcs(bucket_name, blob_name, context.summary_path())
         
         if request_context == "bg":
             # Update the task queue
@@ -185,13 +184,12 @@ def analyze_actors(submission, request_context):
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        analyzer.create_actors()
+        analyzer.identify_actors()
 
         # Upload actors summary to Google Cloud Storage
         bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(f"summaries/{submission['submission_id']}/actors_summary.json")
-        blob.upload_from_filename(context.actor_summary_path())
+        blob_name = f"summaries/{submission['submission_id']}/actors_summary.json"
+        upload_to_gcs(bucket_name, blob_name, context.actor_summary_path())
 
         if request_context == "bg": 
         # Update the task queue
