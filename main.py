@@ -21,6 +21,7 @@ from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client, storage_client
 from app.submission import store_analysis_metadata, update_analysis_status
+from app.tools import authenticate
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -34,9 +35,6 @@ for key, value in os.environ.items():
 # Initialize services
 gcs = GCSStorage()
 github_api = GitHubAPI()
-
-# Authentication
-SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
@@ -71,15 +69,6 @@ def inject_submission(f):
         # Pass the submission to the wrapped function
         return f(submission, request_context, *args, **kwargs)
 
-    return decorated_function
-
-def authenticate(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or auth_header != f"Bearer {SECRET_PASSWORD}":
-            return jsonify({"error": "Unauthorized access"}), 401
-        return f(*args, **kwargs)
     return decorated_function
 
 def create_task(data):

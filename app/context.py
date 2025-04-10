@@ -79,7 +79,7 @@ class RunContext:
         return self.simulation_path() + "/actor_summary.json"
     
     def commit(self, message):
-        command = "cd " + self.simulation_path() + f" && git add . && git commit -m {message} && git push"
+        command = "cd " + self.simulation_path() + f" && git add . && git commit -m '{message}' && git push"
         ret_val = os.system(command)
         if ret_val != 0:
             raise Exception("Failed to commit changes to the simulation repo")

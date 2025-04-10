@@ -6,6 +6,7 @@ from google.cloud import storage
 from google.api_core.exceptions import GoogleAPIError, NotFound
 from flask import Blueprint, jsonify
 from app.clients import storage_client
+from app.tools import authenticate
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -139,6 +140,7 @@ def upload_to_gcs(bucket_name, blob_name, file_path):
 storage_blueprint = Blueprint('storage', __name__)
 
 @storage_blueprint.route('/api/project_summary/<submission_id>', methods=['GET'])
+@authenticate
 def get_project_summary(submission_id):
     """Fetch project summary from Google Cloud Storage."""
     bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
@@ -152,6 +154,7 @@ def get_project_summary(submission_id):
     return jsonify({"project_summary": summary_data}), 200
 
 @storage_blueprint.route('/api/actors_summary/<submission_id>', methods=['GET'])
+@authenticate
 def get_actors_summary(submission_id):
     """Fetch actors summary from Google Cloud Storage."""
     bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
