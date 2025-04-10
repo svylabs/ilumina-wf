@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import re
 from dotenv import load_dotenv
+load_dotenv()
 from google.cloud import datastore, tasks_v2
 from functools import wraps
 import json
@@ -25,8 +26,6 @@ from app.submission import store_analysis_metadata, update_analysis_status
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
-
-load_dotenv()
 
 # Initialize services
 gcs = GCSStorage()
@@ -153,6 +152,7 @@ def analyze_project(submission, request_context):
     """Perform the project analysis step"""
     try:
         # Get the current context using prepare_context
+        print (submission)
         context = prepare_context(submission)
 
         # Perform the project analysis

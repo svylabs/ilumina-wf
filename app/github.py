@@ -9,8 +9,6 @@ from typing import List, Dict, Optional
 logging.basicConfig(level=logging.DEBUG)  # Changed to DEBUG for more detailed logs
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 class GitHubAPI:
     def __init__(self):
         """
@@ -179,6 +177,7 @@ class GitHubAPI:
 # Test function for direct execution
 if __name__ == "__main__":
     try:
+        load_dotenv()  # Load environment variables from .env file
         print("Testing GitHub API...")
         api = GitHubAPI()
         contents = api.get_repo_contents("https://github.com/svylabs/predify")

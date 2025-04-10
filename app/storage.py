@@ -4,15 +4,12 @@ import logging
 from typing import Dict, Any, Optional
 from google.cloud import storage
 from google.api_core.exceptions import GoogleAPIError, NotFound
-from dotenv import load_dotenv
 from flask import Blueprint, jsonify
 from app.clients import storage_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-load_dotenv()
 
 class GCSStorage:
     """Google Cloud Storage client with robust error handling"""

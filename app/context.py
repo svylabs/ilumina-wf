@@ -36,7 +36,7 @@ def prepare_context(data):
 
     # Create a private GitHub repository for the simulation repo if it doesn't already exist
     github_token = os.getenv("GITHUB_TOKEN")
-    github_username = os.getenv("GITHUB")
+    github_username = os.getenv("GITHUB_USERNAME")
     if not github_token or not github_username:
         raise Exception("GitHub credentials are not set in the environment variables")
 
