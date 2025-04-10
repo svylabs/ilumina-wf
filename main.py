@@ -80,11 +80,14 @@ def authenticate(f):
     return decorated_function
 
 def create_task(data):
+    api_suffix = "/analyze"
+    if "step" in data:
+        api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
     task = {
         "http_request": {
             "http_method": "POST",
-            "url": TASK_HANDLER_URL + ("/" + data["step"] if "step" in data else "/analyze"),
+            "url": TASK_HANDLER_URL + api_suffix,
             "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
             "body": json.dumps(data).encode(),
         }
@@ -127,7 +130,8 @@ def analyze():
         # Get the current context using prepare_context
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
-        if submission.step is None:
+        # Ensure submission has a 'step' attribute
+        if not hasattr(submission, 'step') or submission.step is None:
             create_task({"submission_id": submission_id, "step": "analyze_project"})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
         elif submission.step == "analyze_project":
