@@ -2,3 +2,6 @@
 devaccount.json
 .localenv
 .env
+ilumina
+ilumina.pub
+__pycache__/*

@@ -38,7 +38,7 @@ SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
-TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/analyze")
+TASK_HANDLER_URL = os.getenv("TASK_HANDLER_URL", "https://ilumina-451416.uc.r.appspot.com/api")
 
 parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
@@ -84,14 +84,14 @@ def create_task(data):
     task = {
         "http_request": {
             "http_method": "POST",
-            "url": TASK_HANDLER_URL,
+            "url": TASK_HANDLER_URL + ("/" + data["step"] if "step" in data else "/analyze"),
             "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
             "body": json.dumps(data).encode(),
         }
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
 
-@app.route('/begin_analysis', methods=['POST'])
+@app.route('/api/begin_analysis', methods=['POST'])
 @authenticate
 def begin_analysis():
     """Start a new analysis task"""

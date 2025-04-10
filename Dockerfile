@@ -37,8 +37,10 @@ RUN mkdir -p /root/.ssh && \
     chmod 700 /root/.ssh
 
 # Configure SSH to use the provided key
-RUN echo "Host github.com\n\tIdentityFile /root/.ssh/id_ed25519" > /root/.ssh/config && \
-    chmod 600 /root/.ssh/config
+COPY ilumina /root/.ssh/id_ed25519
+COPY ilumina.pub /root/.ssh/id_ed25519.pub
+RUN chmod 600 /root/.ssh/id_ed25519 && \
+    chmod 644 /root/.ssh/id_ed25519.pub
 
 # Create directory for workspace
 RUN mkdir /tmp/workspaces
@@ -48,9 +50,9 @@ WORKDIR /app
 
 # --- 🔒 SECURE REPO CLONING ---
 # Clone using build-time SSH mount (keys never enter image)
-RUN --mount=type=ssh \
-    git clone git@github.com:svylabs/ilumina.git /tmp/workspaces/ilumina && \
-    git -C /tmp/workspaces/ilumina config --global --add safe.directory /tmp/workspaces/ilumina
+#RUN --mount=type=ssh \
+#    git clone git@github.com:svylabs/ilumina.git /tmp/workspaces/ilumina && \
+#    git -C /tmp/workspaces/ilumina config --global --add safe.directory /tmp/workspaces/ilumina
 
 # Copy project files (if needed)
 COPY . /app

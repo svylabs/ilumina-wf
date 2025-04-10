@@ -23,6 +23,7 @@ def prepare_context(data):
     # Clone the project repo into the project directory if not already cloned
     project_repo_path = os.path.join(project_dir, context.name)
     clone_repo(repo, project_repo_path)
+    # compile the project
 
     # Clone the simulation repo into the project directory if not already cloned
     simulation_repo_name = f"{context.name}-simulation"
