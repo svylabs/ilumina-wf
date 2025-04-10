@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import re
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(".env")
 from google.cloud import datastore, tasks_v2
 from functools import wraps
 import json
@@ -26,6 +26,10 @@ from app.submission import store_analysis_metadata, update_analysis_status
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
+
+# Debug: Log all environment variables
+for key, value in os.environ.items():
+    print(f"ENV {key}: {value}")
 
 # Initialize services
 gcs = GCSStorage()
