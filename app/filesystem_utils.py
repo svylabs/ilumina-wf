@@ -9,3 +9,6 @@ def clone_repo(repo_url, destination_path):
     """Clone a repository if it doesn't already exist."""
     if not os.path.exists(destination_path):
         os.system(f"git clone {repo_url} {destination_path}")
+    else:
+        print(f"Repository already exists at {destination_path}")
+        os.system(f"cd {destination_path} && git pull")
