@@ -17,17 +17,15 @@ def prepare_context(data):
     ensure_directory_exists(workspace)
 
     # Create a project directory if it doesn't exist
-    project_dir = os.path.join(workspace, context.name)
+    project_dir = context.cwd()
     ensure_directory_exists(project_dir)
 
-    # Clone the project repo into the project directory if not already cloned
-    project_repo_path = os.path.join(project_dir, context.name)
-    clone_repo(repo, project_repo_path)
+    clone_repo(repo, context.cws())
     # compile the project
 
     # Clone the simulation repo into the project directory if not already cloned
     simulation_repo_name = f"{context.name}-simulation"
-    simulation_repo_path = os.path.join(project_dir, simulation_repo_name)
+    simulation_repo_path = context.simulation_path()
     simulation_template_repo = os.getenv(
         "SIMULATION_TEMPLATE_REPO",
         "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
@@ -63,10 +61,13 @@ class RunContext:
         return self.run_id
 
     def cwd(self):
-        return self.workspace + "/" + self.run_id
+        return self.workspace + "/" + self.submission_id
 
     def cws(self):
         return self.cwd() + "/" + self.name
+    
+    def simulation_path(self):
+        return self.cwd() + "/" + self.name + "-simulation"
     
     def ctx_path(self):
         return self.cwd() + "/context.json"
