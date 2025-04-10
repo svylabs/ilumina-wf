@@ -73,10 +73,16 @@ class RunContext:
         return self.cwd() + "/context.json"
     
     def summary_path(self):
-        return self.cwd() + "/summary.json"
+        return self.simulation_path() + "/summary.json"
     
     def actor_summary_path(self):
-        return self.cwd() + "/actor_summary.json"
+        return self.simulation_path() + "/actor_summary.json"
+    
+    def commit(self, message):
+        command = "cd " + self.simulation_path() + f" && git add . && git commit -m {message} && git push"
+        ret_val = os.system(command)
+        if ret_val != 0:
+            raise Exception("Failed to commit changes to the simulation repo")
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),

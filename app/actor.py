@@ -124,7 +124,8 @@ class ActorAnalyzer:
     def prepare(self):
         pass
 
-    def analyze(self):
+    def analyze(self, user_prompt=None):
+        '''
         if (os.path.exists(self.context.actor_summary_path())):
             print("Actor summary exists")
             with open(self.context.actor_summary_path(), "r") as f:
@@ -132,13 +133,15 @@ class ActorAnalyzer:
                 self.actors = Actors.load(content)
                 return self.actors
         print("Analyzing actors for the contracts")
-        self.identify_actors()
+        '''
+        self.identify_actors(user_prompt=user_prompt)
         self.save()
         return self.actors
 
     def save(self):
         with open(self.context.actor_summary_path(), "w") as f:
             f.write(json.dumps(self.actors.to_dict()))
+        self.context.commit("Updating actor summary")
 
     def load_summary(self):
         if (os.path.exists(self.context.actor_summary_path())):

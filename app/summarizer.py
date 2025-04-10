@@ -63,10 +63,12 @@ class ProjectSummarizer:
         return response[1]
 
     def summarize(self, user_prompt=None):
+        '''
         if (self.summary_exists()):
             print("Summary already exists")
             self.project_summary = self.load_summary()
             return self.project_summary
+        '''
         self.prepare()
         print("Analyzing the contracts")
         project_from_readme = None
@@ -117,6 +119,7 @@ class ProjectSummarizer:
     def save(self):
         with open(self.context.summary_path(), 'w') as f:
             f.write(json.dumps(self.project_summary.to_dict()))
+        self.context.commit("Updating project summary")
 
     def load_summary(self):
         if (os.path.exists(self.context.summary_path())):

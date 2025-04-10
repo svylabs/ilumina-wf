@@ -22,16 +22,16 @@ class Analyzer:
         downloader = Downloader(self.context)
         downloader.download()
 
-    def summarize(self):
+    def summarize(self, user_prompt=None):
         summarizer = ProjectSummarizer(self.context)
-        return summarizer.summarize()
+        return summarizer.summarize(user_prompt=user_prompt)
 
-    def identify_actors(self):
+    def identify_actors(self, user_prompt=None):
         project_summary = None
         with open(self.context.summary_path(), 'r') as f:
             project_summary = Project.load(json.loads(f.read()))
         actor_analyzer = ActorAnalyzer(self.context, project_summary)
-        return actor_analyzer.identify_actors()
+        return actor_analyzer.analyze(user_prompt=user_prompt)
     
     def step(self):
         print("Running step " + str(self.current_step))
