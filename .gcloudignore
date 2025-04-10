@@ -26,8 +26,8 @@
 .gitignore
 datastore/
 .venv
-\*.pyc
-\*\*/**pycache**
+*.pyc
+**/__pycache__/**
 
 # Node.js dependencies:
 
