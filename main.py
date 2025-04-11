@@ -25,7 +25,6 @@ from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
-from datetime import datetime, timezone
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -82,7 +81,7 @@ def create_task(data):
     if "step" in data:
         api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
-    scheduled_time = datetime.now(timezone.utc) + datetime.timedelta(seconds=10)
+    scheduled_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
     timestamp = timestamp_pb2.Timestamp()
     timestamp.FromDatetime(scheduled_time)
     task = {
