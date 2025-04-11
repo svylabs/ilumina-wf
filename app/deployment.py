@@ -26,12 +26,17 @@ class DeploymentAnalyzer:
                     "abi": contract_data["abi"]
                 })
         return deployable_contracts
+    
+    def save_deployment_instructions(self, instructions):
+        """Save deployment instructions to a JSON file in the simulation repo"""
+        deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
+        with open(deployment_path, 'w') as f:
+            json.dump([instruction.to_dict() for instruction in instructions], f, indent=2)
 
     def analyze(self):
         deployable_contracts = self.identify_deployable_contracts()
         if not deployable_contracts:
             print("Warning: No deployable contracts found. Proceeding without deployment instructions.")
-            # return DeploymentInstruction(sequence=[])
 
         readme_path = os.path.join(self.context.project_path(), "README.md")
         deployment_script_path = os.path.join(self.context.project_path(), "scripts/deploy.js")
@@ -62,8 +67,13 @@ class DeploymentAnalyzer:
         try:
             _, deployment_instructions = ask_openai(prompt, list[DeploymentInstruction], task="reasoning")
 
+            # Save and commit the deployment instructions
+            self.save_deployment_instructions(deployment_instructions)
+            self.context.commit("Added deployment instructions")
+            
+            return deployment_instructions
+
         except Exception as e:
             print(f"Error: Failed to generate deployment instructions: {e}")
-            deployment_instructions = []
+            return []
 
-        return deployment_instructions
