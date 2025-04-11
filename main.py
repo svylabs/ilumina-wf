@@ -160,9 +160,13 @@ def analyze_project(submission, request_context):
         
         if request_context == "bg":
             # Update the task queue
-            update_analysis_status(submission.submission_id, "analyze_project", "success", metadata={"summary_version": version})
-            create_task({"submission_id": submission.submission_id})
+            update_analysis_status(submission["submission_id"], "analyze_project", "success", metadata={"summary_version": version})
+            create_task({"submission_id": submission["submission_id"]})
         else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"summary_version": version})
             #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": project_summary.to_dict()}), 200
 
@@ -191,9 +195,13 @@ def analyze_actors(submission, request_context):
 
         if request_context == "bg": 
         # Update the task queue
-            update_analysis_status(submission.submission_id, "analyze_project", "success", metadata={"actor_version": version})
-            create_task({"submission_id": submission.submission_id})
+            update_analysis_status(submission["submission_id"], "analyze_project", "success", metadata={"actor_version": version})
+            create_task({"submission_id": submission["submission_id"]})
         else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
             #update_analysis_status(submission.submission_id, "analyze_project")
             # If in foreground, return the result
             return jsonify({"actors": actors.to_dict()}), 200

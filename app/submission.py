@@ -28,5 +28,9 @@ def update_analysis_status(submission_id, step, status, metadata=None):
         if (metadata):
             for key, value in metadata.items():
                 updates[key] = value
+        if entity.get("completed_steps") is None:
+            entity["completed_steps"] = []
+        if step not in entity["completed_steps"]:
+            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
         entity.update(updates)
         datastore_client.put(entity)
