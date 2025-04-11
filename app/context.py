@@ -23,7 +23,7 @@ def prepare_context(data):
     # compile the project
 
     # Clone the simulation repo into the project directory if not already cloned
-    simulation_repo_name = f"{context.name}-simulation"
+    simulation_repo_name = f"{context.name}-simulation-" + run_id
     simulation_repo_path = context.simulation_path()
     simulation_template_repo = os.getenv(
         "SIMULATION_TEMPLATE_REPO",
@@ -76,7 +76,7 @@ class RunContext:
         return self.cwd() + "/" + self.name
     
     def simulation_path(self):
-        return self.cwd() + "/" + self.name + "-simulation"
+        return self.cwd() + "/" + self.name + "-simulation-" + self.run_id
     
     def ctx_path(self):
         return self.cwd() + "/context.json"
