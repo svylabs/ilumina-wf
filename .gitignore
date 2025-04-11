@@ -5,3 +5,5 @@ devaccount.json
 ilumina
 ilumina.pub
 __pycache__/*
+node_modules
+tests
