@@ -146,13 +146,13 @@ def analyze():
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
         # Ensure submission has a 'step' attribute
-        if not hasattr(submission, 'step') or submission.step is None:
+        if hasattr(submission, 'step') == False or submission['step'] == None:
             create_task({"submission_id": submission_id, "step": "analyze_project"})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
-        elif submission.step == "analyze_project":
+        elif submission["step"] == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
-        elif submission.step == "analyze_actors":
+        elif submission["step"] == "analyze_actors":
             create_task({"submission_id": submission_id, "step": "analyze_deployment"})
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
