@@ -178,7 +178,7 @@ def analyze_project(submission, request_context):
         version, path = context.new_gcs_summary_path()
 
         # Upload actors summary to Google Cloud Storage
-        upload_to_gcs(path, context.actor_summary_path())
+        upload_to_gcs(path, context.summary_path())
         
         if request_context == "bg":
             # Update the task queue
