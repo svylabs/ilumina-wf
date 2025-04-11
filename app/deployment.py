@@ -77,3 +77,46 @@ class DeploymentAnalyzer:
             print(f"Error: Failed to generate deployment instructions: {e}")
             return []
 
+    def generate_deploy_ts(self):
+        """Generates contracts/deploy.ts from deployment_instructions.json"""
+        deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
+        deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
+
+        if not os.path.exists(deployment_path):
+            print(f"Error: {deployment_path} not found. Cannot generate deploy.ts.")
+            return
+
+        with open(deployment_path, "r") as f:
+            deployment_instructions = json.load(f)
+
+        prompt = f"""
+        Using the following deployment instructions:
+        {json.dumps(deployment_instructions, indent=2)}
+
+        Generate a TypeScript file for deploying the contracts. The file should:
+        - Import necessary libraries like ethers.js.
+        - Iterate over the deployment instructions.
+        - Deploy each contract with the specified constructor arguments.
+        - Log the deployed contract addresses.
+        """
+
+        try:
+            # Generate and sanitize code
+            # _, raw_code = ask_openai(prompt, str, task="code-generation")
+            # code = raw_code.strip().removeprefix("```typescript").removesuffix("```").strip()
+            
+            deploy_ts_content = ask_openai(prompt, str, task="code-generation")
+            os.makedirs(os.path.dirname(deploy_ts_path), exist_ok=True)
+
+            # Write file
+            with open(deploy_ts_path, "w") as f:
+                # f.write(code)
+                f.write(deploy_ts_content)
+            print(f"Generated deploy.ts at {deploy_ts_path}")
+
+            self.context.commit("Added generated deploy.ts")
+            return deploy_ts_path
+        
+        except Exception as e:
+            print(f"Error: Failed to generate deploy.ts: {e}")
+
