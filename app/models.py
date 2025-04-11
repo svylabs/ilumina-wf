@@ -1,5 +1,6 @@
 import re
 import json
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 import os
 
@@ -114,3 +115,50 @@ class Project(BaseModel):
                 #print(json.dumps(content))
                 return Project.load(content)
         return None
+
+class DeploymentInstruction(BaseModel):
+    sequence: list[dict]
+
+    def to_dict(self):
+        return {"sequence": self.sequence}
+
+    @staticmethod
+    def prepare_sequence(contracts):
+        sequence = []
+        for contract in contracts:
+            # Extract constructor parameters from ABI if available
+            constructor_params = []
+            if hasattr(contract, 'abi'):
+                for item in contract.abi:
+                    if item.get("type") == "constructor":
+                        constructor_params = [
+                            {"name": input.get("name", f"param_{i}"), "type": input.get("type", "unknown"), "value": None}
+                            for i, input in enumerate(item.get("inputs", []))
+                        ]
+                        break
+
+            # Create deploy step
+            deploy_step = {
+                "Type": "deploy",
+                "Contract": {"Name": contract.name},
+                "Params": constructor_params if constructor_params else [
+                    {"name": "default_param", "type": "unknown", "value": None}
+                ]
+            }
+            sequence.append(deploy_step)
+
+            # Create call steps for each function
+            if hasattr(contract, 'functions'):
+                for function in contract.functions:
+                    call_step = {
+                        "Type": "call",
+                        "Contract": contract.name,
+                        "Function": function.name,
+                        "Params": [
+                            {"name": input.get("name", f"param_{i}"), "type": input.get("type", "unknown"), "value": None}
+                            for i, input in enumerate(function.inputs)
+                        ]
+                    }
+                    sequence.append(call_step)
+
+        return sequence
