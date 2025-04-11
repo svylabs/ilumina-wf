@@ -145,30 +145,6 @@ def upload_to_gcs(blob_name, file_path):
 
 storage_blueprint = Blueprint('storage', __name__)
 
-# Annotation to inject submission from Datastore
-def inject_submission(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
-        key = datastore_client.key("Submission", submission_id)
-        submission = datastore_client.get(key)
-
-        request_context = data.get("request_context")
-        if request_context == None:
-            request_context = "bg"
-
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
-
-        # Pass the submission to the wrapped function
-        return f(submission, request_context, *args, **kwargs)
-
-    return decorated_function
-
 @storage_blueprint.route('/api/project_summary/<submission_id>', methods=['GET'])
 @authenticate
 def get_project_summary(submission_id):
