@@ -87,6 +87,25 @@ def create_task(data):
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
 
+@app.route('/api/submission/<submission_id>', methods=['GET'])
+@authenticate
+def get_submission(submission_id):
+    """Fetch submission from Datastore"""
+    key = datastore_client.key("Submission", submission_id)
+    submission = datastore_client.get(key)
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+    return jsonify({
+        "submission_id": submission["submission_id"],
+        "github_repository_url": submission["github_repository_url"],
+        "run_id": submission["run_id"],
+        "created_at": submission["created_at"],
+        "updated_at": submission["updated_at"],
+        "step": submission.get("step"),
+        "status": submission.get("status"),
+        "completed_steps": submission.get("completed_steps", [])
+    }), 200
+
 @app.route('/api/begin_analysis', methods=['POST'])
 @authenticate
 def begin_analysis():
