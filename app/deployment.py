@@ -40,36 +40,30 @@ class DeploymentAnalyzer:
         if os.path.exists(readme_path):
             with open(readme_path, "r") as f:
                 readme_content = f.read()
-        else:
-            print(f"Warning: README.md not found at {readme_path}. Proceeding without README content.")
 
         deployment_script_content = ""
         if os.path.exists(deployment_script_path):
             with open(deployment_script_path, "r") as f:
                 deployment_script_content = f.read()
-        else:
-            print(f"Warning: Deployment script not found at {deployment_script_path}. Proceeding without deployment script content.")
 
         prompt = f"""
         The following are the deployable contracts and their ABIs:
         {json.dumps(deployable_contracts)}
-
-        {'The project also contains the following README content:\n' + readme_content if readme_content else 'No README content available.'}
-
-        {'And the following deployment script:\n' + deployment_script_content if deployment_script_content else 'No deployment script available.'}
-
-        Generate deployment instructions for each contract, including constructor arguments if required.
         """
+
+        if readme_content:
+            prompt += f"\nThe project also contains the following README content:\n{readme_content}"
+
+        if deployment_script_content:
+            prompt += f"\nAnd the following deployment script:\n{deployment_script_content}"
+
+        prompt += "\nGenerate deployment instructions for each contract, including constructor arguments if required."
 
         try:
             _, deployment_instructions = ask_openai(prompt, list[DeploymentInstruction], task="reasoning")
-            # if not deployment_instructions:
-            #     print("Warning: No deployment instructions generated.")
-            #     return DeploymentInstruction(sequence=[])
 
         except Exception as e:
             print(f"Error: Failed to generate deployment instructions: {e}")
-            # return DeploymentInstruction(sequence=[])
             deployment_instructions = []
 
         return deployment_instructions
