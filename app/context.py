@@ -27,7 +27,7 @@ def prepare_context(data):
     simulation_repo_path = context.simulation_path()
     simulation_template_repo = os.getenv(
         "SIMULATION_TEMPLATE_REPO",
-        "https://github.com/svylabs-com/ilumina-scaffolded-template.git"
+        "git@github.com:svylabs-com/ilumina-scaffolded-template.git"
     )
     clone_repo(simulation_template_repo, simulation_repo_path)
 
@@ -38,7 +38,7 @@ def prepare_context(data):
         raise Exception("GitHub credentials are not set in the environment variables")
 
     repo_name = simulation_repo_name
-    github_repo_url = f"https://github.com/{github_username}/{repo_name}.git"
+    github_repo_url = f"git@github.com:{github_username}/{repo_name}.git"
     create_github_repo(github_token, github_username, repo_name)
 
     # Set the origin of the simulation repo to the GitHub repo and push if not already set
