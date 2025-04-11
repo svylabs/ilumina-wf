@@ -22,6 +22,7 @@ import shutil
 from app.clients import datastore_client, tasks_client, storage_client
 from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
+import uuid
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -152,15 +153,15 @@ def analyze_project(submission, request_context):
         analyzer = Analyzer(context)
         project_summary = analyzer.summarize()
         
-        # Upload project summary to Google Cloud Storage
-        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        blob_name = f"summaries/{submission['submission_id']}/project_summary.json"
-        upload_to_gcs(bucket_name, blob_name, context.summary_path())
+        version, path = context.new_gcs_summary_path()
+
+        # Upload actors summary to Google Cloud Storage
+        upload_to_gcs(path, context.actor_summary_path())
         
         if request_context == "bg":
             # Update the task queue
+            update_analysis_status(submission.submission_id, "analyze_project", "success", metadata={"summary_version": version})
             create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project", "success")
         else:
             #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": project_summary.to_dict()}), 200
@@ -183,15 +184,15 @@ def analyze_actors(submission, request_context):
         analyzer = Analyzer(context)
         actors = analyzer.identify_actors()
 
+        version, path = context.new_gcs_actor_summary_path()
+
         # Upload actors summary to Google Cloud Storage
-        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        blob_name = f"summaries/{submission['submission_id']}/actors_summary.json"
-        upload_to_gcs(bucket_name, blob_name, context.actor_summary_path())
+        upload_to_gcs(path, context.actor_summary_path())
 
         if request_context == "bg": 
         # Update the task queue
+            update_analysis_status(submission.submission_id, "analyze_project", "success", metadata={"actor_version": version})
             create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project", "success")
         else:
             #update_analysis_status(submission.submission_id, "analyze_project")
             # If in foreground, return the result

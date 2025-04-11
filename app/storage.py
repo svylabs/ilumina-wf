@@ -7,10 +7,16 @@ from google.api_core.exceptions import GoogleAPIError, NotFound
 from flask import Blueprint, jsonify
 from app.clients import storage_client
 from app.tools import authenticate
+from functools import wraps
+from app.clients import datastore_client
+from flask import request
+from app.context import prepare_context_lazy
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "ilumina-analysis")
 
 class GCSStorage:
     """Google Cloud Storage client with robust error handling"""
@@ -131,21 +137,48 @@ class GCSStorage:
             logger.error(f"Failed to delete {blob_name}: {str(e)}")
             raise
 
-def upload_to_gcs(bucket_name, blob_name, file_path):
+def upload_to_gcs(blob_name, file_path):
     """Uploads a file to Google Cloud Storage."""
-    bucket = storage_client.bucket(bucket_name)
+    bucket = storage_client.bucket(BUCKET_NAME)
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(file_path)
 
 storage_blueprint = Blueprint('storage', __name__)
 
+# Annotation to inject submission from Datastore
+def inject_submission(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        key = datastore_client.key("Submission", submission_id)
+        submission = datastore_client.get(key)
+
+        request_context = data.get("request_context")
+        if request_context == None:
+            request_context = "bg"
+
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Pass the submission to the wrapped function
+        return f(submission, request_context, *args, **kwargs)
+
+    return decorated_function
+
 @storage_blueprint.route('/api/project_summary/<submission_id>', methods=['GET'])
 @authenticate
 def get_project_summary(submission_id):
     """Fetch project summary from Google Cloud Storage."""
-    bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(f"summaries/{submission_id}/project_summary.json")
+    bucket = storage_client.bucket(BUCKET_NAME)
+    submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+    context = prepare_context_lazy(submission)
+    blob = bucket.blob(context.gcs_summary_path_from_version(submission["summary_version"]))
 
     if not blob.exists():
         return jsonify({"error": "Project summary not found"}), 404
@@ -157,9 +190,13 @@ def get_project_summary(submission_id):
 @authenticate
 def get_actors_summary(submission_id):
     """Fetch actors summary from Google Cloud Storage."""
-    bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(f"summaries/{submission_id}/actors_summary.json")
+    submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+    bucket = storage_client.bucket(BUCKET_NAME)
+
+    context = prepare_context_lazy(submission)
+    blob = bucket.blob(context.gcs_actor_summary_path_from_version(submission["summary_version"]))
 
     if not blob.exists():
         return jsonify({"error": "Actors summary not found"}), 404

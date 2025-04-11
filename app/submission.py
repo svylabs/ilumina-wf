@@ -15,7 +15,7 @@ def store_analysis_metadata(data):
     })
     datastore_client.put(entity)
 
-def update_analysis_status(submission_id, step, status):
+def update_analysis_status(submission_id, step, status, metadata=None):
     """Update analysis status in Datastore"""
     key = datastore_client.key("Submission", submission_id)
     entity = datastore_client.get(key)
@@ -25,5 +25,8 @@ def update_analysis_status(submission_id, step, status):
             "status": status,
             "updated_at": datetime.datetime.now()
         }
+        if (metadata):
+            for key, value in metadata.items():
+                updates[key] = value
         entity.update(updates)
         datastore_client.put(entity)
