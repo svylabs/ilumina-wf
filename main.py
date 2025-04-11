@@ -42,6 +42,8 @@ QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
 TASK_HANDLER_URL = "https://ilumina-451416.uc.r.appspot.com/api"
 
+SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
+
 parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
 from functools import wraps
