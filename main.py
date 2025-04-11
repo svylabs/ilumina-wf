@@ -23,6 +23,7 @@ from app.clients import datastore_client, tasks_client, storage_client
 from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
 import uuid
+import traceback
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -252,6 +253,15 @@ def analyze_deployment(submission, request_context):
 @app.route('/')
 def home():
     return "Smart Contract Analysis Service is running", 200
+
+# Universal error handler to log exceptions with full stack trace
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log the exception with full stack trace
+    app.logger.error("Exception occurred", exc_info=e)
+    
+    # Return a generic error response
+    return jsonify({"error": "An unexpected error occurred."}), 500
 
 # Register the storage blueprint
 app.register_blueprint(storage_blueprint)
