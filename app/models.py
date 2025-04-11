@@ -116,49 +116,104 @@ class Project(BaseModel):
                 return Project.load(content)
         return None
 
+class SequenceStep(BaseModel):
+    type: str  # "deploy" or "call"
+    contract: str
+    function: Optional[str] = None
+    params: List[Dict[str, str]]
+
 class DeploymentInstruction(BaseModel):
-    sequence: list[dict]
+    sequence: List[SequenceStep]
 
     def to_dict(self):
-        return {"sequence": self.sequence}
+        return {"sequence": [step.dict() for step in self.sequence]}
 
     @staticmethod
-    def prepare_sequence(contracts):
-        sequence = []
+    def build_dependency_tree(contracts: List[Contract]) -> Dict[str, List[str]]:
+        """Build a dependency tree for the contracts."""
+        dependency_tree = {}
         for contract in contracts:
-            # Extract constructor parameters from ABI if available
-            constructor_params = []
-            if hasattr(contract, 'abi'):
-                for item in contract.abi:
-                    if item.get("type") == "constructor":
-                        constructor_params = [
-                            {"name": input.get("name", f"param_{i}"), "type": input.get("type", "unknown"), "value": None}
-                            for i, input in enumerate(item.get("inputs", []))
-                        ]
-                        break
+            dependencies = []
+            for function in contract.functions:
+                for param in function.inputs:
+                    if "address" in param:  # Assuming deployed addresses are passed as inputs
+                        dependencies.append(param)
+            dependency_tree[contract.name] = dependencies
+        return dependency_tree
 
-            # Create deploy step
-            deploy_step = {
-                "Type": "deploy",
-                "Contract": {"Name": contract.name},
-                "Params": constructor_params if constructor_params else [
-                    {"name": "default_param", "type": "unknown", "value": None}
-                ]
-            }
-            sequence.append(deploy_step)
+    @staticmethod
+    def resolve_dependencies(dependency_tree: Dict[str, List[str]]) -> List[str]:
+        """Resolve the order of contracts based on dependencies."""
+        resolved = []
+        unresolved = set()
 
-            # Create call steps for each function
-            if hasattr(contract, 'functions'):
-                for function in contract.functions:
-                    call_step = {
-                        "Type": "call",
-                        "Contract": contract.name,
-                        "Function": function.name,
-                        "Params": [
-                            {"name": input.get("name", f"param_{i}"), "type": input.get("type", "unknown"), "value": None}
-                            for i, input in enumerate(function.inputs)
-                        ]
-                    }
-                    sequence.append(call_step)
+        def resolve(contract):
+            if contract in resolved:
+                return
+            if contract in unresolved:
+                raise ValueError(f"Circular dependency detected: {contract}")
+            unresolved.add(contract)
+            for dependency in dependency_tree.get(contract, []):
+                resolve(dependency)
+            unresolved.remove(contract)
+            resolved.append(contract)
+
+        for contract in dependency_tree:
+            resolve(contract)
+
+        return resolved
+
+    @staticmethod
+    def prepare_sequence(contracts: List[Contract]) -> List[SequenceStep]:
+        """Prepare the deployment instruction sequence."""
+        dependency_tree = DeploymentInstruction.build_dependency_tree(contracts)
+        deployment_order = DeploymentInstruction.resolve_dependencies(dependency_tree)
+
+        sequence = []
+        deployed_addresses = {}
+
+        for contract_name in deployment_order:
+            DeploymentInstruction._process_contract(
+                contract_name, contracts, dependency_tree, deployed_addresses, sequence
+            )
 
         return sequence
+
+    @staticmethod
+    def _process_contract(contract_name, contracts, dependency_tree, deployed_addresses, sequence):
+        """Recursively process contracts based on dependencies."""
+        contract = next((c for c in contracts if c.name == contract_name), None)
+        if not contract:
+            return
+
+        # Prepare constructor parameters
+        constructor_params = []
+        for function in contract.functions:
+            if function.name == "constructor":
+                for param in function.inputs:
+                    param_value = deployed_addresses.get(param, None)  # Use deployed address if available
+                    if not param_value:  # If value is missing, ask the user
+                        param_value = input(f"Enter value for constructor parameter '{param}' in contract '{contract.name}': ")
+                    constructor_params.append({"name": param, "value": param_value})
+
+        # Add deploy step
+        deploy_step = SequenceStep(
+            type="deploy",
+            contract=contract.name,
+            params=constructor_params,
+        )
+        sequence.append(deploy_step)
+        deployed_addresses[contract.name] = f"{contract.name}_address"  # Mock deployed address
+
+        # Add call steps for each function
+        for function in contract.functions:
+            if function.name != "constructor":
+                call_step = SequenceStep(
+                    type="call",
+                    contract=contract.name,
+                    function=function.name,
+                    params=[
+                        {"name": input_param, "value": "unknown"} for input_param in function.inputs
+                    ],
+                )
+                sequence.append(call_step)
