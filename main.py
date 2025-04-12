@@ -222,7 +222,7 @@ def analyze_actors(submission, request_context):
 
         if request_context == "bg": 
         # Update the task queue
-            update_analysis_status(submission["submission_id"], "analyze_project", "success", metadata={"actor_version": version})
+            update_analysis_status(submission["submission_id"], "analyze_actors", "success", metadata={"actor_version": version})
             create_task({"submission_id": submission["submission_id"]})
         else:
             step = "None"
