@@ -172,7 +172,7 @@ def get_actors_summary(submission_id):
     bucket = storage_client.bucket(BUCKET_NAME)
 
     context = prepare_context_lazy(submission)
-    blob = bucket.blob(context.gcs_actor_summary_path_from_version(submission["summary_version"]))
+    blob = bucket.blob(context.gcs_actor_summary_path_from_version(submission["actor_version"]))
 
     if not blob.exists():
         return jsonify({"error": "Actors summary not found"}), 404
