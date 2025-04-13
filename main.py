@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import requests
 import os
 import re
 from dotenv import load_dotenv
@@ -103,6 +104,9 @@ def get_submission(submission_id):
     submission = datastore_client.get(key)
     if not submission:
         return jsonify({"error": "Submission not found"}), 404
+    message = ""
+    if submission.get("status") == "error":
+        message = submission.get("message", "Unknown error")
     return jsonify({
         "submission_id": submission["submission_id"],
         "github_repository_url": submission["github_repository_url"],
@@ -111,7 +115,8 @@ def get_submission(submission_id):
         "updated_at": submission["updated_at"],
         "step": submission.get("step"),
         "status": submission.get("status"),
-        "completed_steps": submission.get("completed_steps", [])
+        "completed_steps": submission.get("completed_steps", []),
+        "message": message
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -119,15 +124,26 @@ def get_submission(submission_id):
 def begin_analysis():
     """Start a new analysis task"""
     data = request.get_json()
-    
+
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
-    
+
+    # Check if the repository URL is accessible
+    repo_url = data["github_repository_url"]
+    try:
+        response = requests.get(repo_url)
+        if response.status_code != 200:
+            update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": "Repository URL is not accessible"})
+            return jsonify({"error": "Repository URL is not accessible"}), 400
+    except Exception as e:
+        update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": str(e)})
+        return jsonify({"error": "Failed to access repository URL"}), 400
+
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
-    
+
     store_analysis_metadata(data)
     task_name = create_task(data)
-    
+
     return jsonify({
         "message": "Analysis started",
         "task_name": task_name,
