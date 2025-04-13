@@ -174,7 +174,7 @@ def analyze():
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
         elif submission["step"] == "analyze_actors":
-            create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+            #create_task({"submission_id": submission_id, "step": "analyze_deployment"})
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
