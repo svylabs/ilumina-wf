@@ -78,45 +78,69 @@ class DeploymentAnalyzer:
             return []
 
     def generate_deploy_ts(self):
-        """Generates contracts/deploy.ts from deployment_instructions.json"""
+        """Deterministically generates contracts/deploy.ts from deployment_instructions.json"""
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
 
         if not os.path.exists(deployment_path):
             print(f"Error: {deployment_path} not found. Cannot generate deploy.ts.")
-            return
+            return None
 
         with open(deployment_path, "r") as f:
-            deployment_instructions = json.load(f)
+            instructions = json.load(f)
 
-        prompt = f"""
-        Using the following deployment instructions:
-        {json.dumps(deployment_instructions, indent=2)}
+        # Base template
+        ts_code = """import { ethers } from "hardhat";
+import type { Contract } from "ethers";
 
-        Generate a TypeScript file for deploying the contracts. The file should:
-        - Import necessary libraries like ethers.js.
-        - Iterate over the deployment instructions.
-        - Deploy each contract with the specified constructor arguments.
-        - Log the deployed contract addresses.
-        """
+interface DeployedContracts {
+    [name: string]: Contract;
+}
 
-        try:
-            # Generate and sanitize code
-            # _, raw_code = ask_openai(prompt, str, task="code-generation")
-            # code = raw_code.strip().removeprefix("```typescript").removesuffix("```").strip()
+async function main() {
+    const [deployer] = await ethers.getSigners();
+    console.log(`Deploying contracts with account: ${deployer.address}`);
+    
+    const deployed: DeployedContracts = {};
+    \n"""
+
+        # Add deployment logic for each contract
+        for instruction in instructions:
+            contract_name = instruction["contract_name"]
+            args = instruction.get("constructor_args", [])
             
-            deploy_ts_content = ask_openai(prompt, str, task="code-generation")
+            # Format constructor arguments
+            args_str = ", ".join([json.dumps(arg) for arg in args])
+            
+            ts_code += f"""    // Deploy {contract_name}
+    const {contract_name} = await ethers.getContractFactory("{contract_name}");
+    deployed.{contract_name} = await {contract_name}.deploy({args_str});
+    await deployed.{contract_name}.waitForDeployment();
+    console.log(`{contract_name} deployed to: ${{await deployed.{contract_name}.getAddress()}}`);
+    \n"""
+
+        # Closing template
+        ts_code += """    return deployed;
+}
+
+main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});
+
+export {};  // For ES module compatibility
+"""
+
+        # Write the file
+        try:
             os.makedirs(os.path.dirname(deploy_ts_path), exist_ok=True)
-
-            # Write file
             with open(deploy_ts_path, "w") as f:
-                # f.write(code)
-                f.write(deploy_ts_content)
-            print(f"Generated deploy.ts at {deploy_ts_path}")
-
+                f.write(ts_code)
+            
             self.context.commit("Added generated deploy.ts")
             return deploy_ts_path
-        
+            
         except Exception as e:
-            print(f"Error: Failed to generate deploy.ts: {e}")
+            print(f"Error generating deploy.ts: {e}")
+            return None
 
