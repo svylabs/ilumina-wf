@@ -6,7 +6,8 @@ import sys
 from .actor import ActorAnalyzer
 from .download import Downloader
 from .summarizer import ProjectSummarizer
-from .models import Project
+from .models import Project, DeploymentInstruction
+from .deployment import DeploymentAnalyzer
 
 class Analyzer:
     def __init__(self, context):
@@ -72,6 +73,24 @@ class Analyzer:
                 print(f.read())
         elif self.current_step == "done":
             print("Analysis complete")
+
+    def generate_deployment_instructions(self):
+        deployment_analyzer = DeploymentAnalyzer(self.context)
+        contracts = deployment_analyzer.analyze()
+
+        # Prepare deployment sequence
+        sequence = DeploymentInstruction.prepare_sequence(contracts)
+
+        # Prompt user for missing parameter values
+        for step in sequence:
+            for param in step.get("Params", []):
+                if param["value"] is None:
+                    param["value"] = input(f"Enter value for {param['name']} in {step['Type']} step: ")
+
+        # Create DeploymentInstruction object
+        deployment_instruction = DeploymentInstruction(sequence=sequence)
+        print(json.dumps(deployment_instruction.to_dict(), indent=2))
+        return deployment_instruction
 
 
 if __name__ == "__main__":
