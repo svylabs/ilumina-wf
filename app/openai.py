@@ -28,7 +28,8 @@ def ask_openai(user_input, type, task="generate"):
     # Get response
     response = client.beta.chat.completions.parse(model=model,
         messages=conversation,
-        response_format=type)
+        response_format=type,
+        timeout=30)
         #print(response)
     value = response.choices[0].message.parsed
         #conversation.append({"role": "assistant", "content": contract})

@@ -33,14 +33,20 @@ RUN curl -L https://foundry.paradigm.xyz | bash \
 ENV PATH="/root/.foundry/bin:${PATH}"
 
 # Create SSH directory and set permissions
-RUN mkdir -p /root/.ssh && \
-    chmod 700 /root/.ssh
+RUN mkdir -p /root/.ssh
 
 # Configure SSH to use the provided key
 COPY ilumina /root/.ssh/id_ed25519
 COPY ilumina.pub /root/.ssh/id_ed25519.pub
 RUN chmod 600 /root/.ssh/id_ed25519 && \
     chmod 644 /root/.ssh/id_ed25519.pub
+
+RUN echo "Host github.com\n\tIdentityFile ~/.ssh/id_ed25519" >> /root/.ssh/config
+RUN chmod 644 /root/.ssh/config
+RUN chmod 700 /root/.ssh
+
+RUN git config --global user.email  "agent@ilumina.dev"
+RUN git config --global user.name  "ilumina"
 
 # Create directory for workspace
 RUN mkdir /tmp/workspaces

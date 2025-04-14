@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+import requests
 import os
 import re
 from dotenv import load_dotenv
@@ -22,6 +23,9 @@ import shutil
 from app.clients import datastore_client, tasks_client, storage_client
 from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
+import uuid
+import traceback
+from google.protobuf import timestamp_pb2
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -40,6 +44,8 @@ PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
 TASK_HANDLER_URL = "https://ilumina-451416.uc.r.appspot.com/api"
+
+SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 
 parent = tasks_client.queue_path(PROJECT_ID, LOCATION, QUEUE_ID)
 
@@ -76,30 +82,68 @@ def create_task(data):
     if "step" in data:
         api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
+    scheduled_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
+    timestamp = timestamp_pb2.Timestamp()
+    timestamp.FromDatetime(scheduled_time)
     task = {
         "http_request": {
             "http_method": "POST",
             "url": TASK_HANDLER_URL + api_suffix,
             "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
             "body": json.dumps(data).encode(),
-        }
+        },
+        "schedule_time": timestamp,
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
+
+@app.route('/api/submission/<submission_id>', methods=['GET'])
+@authenticate
+def get_submission(submission_id):
+    """Fetch submission from Datastore"""
+    key = datastore_client.key("Submission", submission_id)
+    submission = datastore_client.get(key)
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+    message = ""
+    if submission.get("status") == "error":
+        message = submission.get("message", "Unknown error")
+    return jsonify({
+        "submission_id": submission["submission_id"],
+        "github_repository_url": submission["github_repository_url"],
+        "run_id": submission["run_id"],
+        "created_at": submission["created_at"],
+        "updated_at": submission["updated_at"],
+        "step": submission.get("step"),
+        "status": submission.get("status"),
+        "completed_steps": submission.get("completed_steps", []),
+        "message": message
+    }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
 @authenticate
 def begin_analysis():
     """Start a new analysis task"""
     data = request.get_json()
-    
+
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
-    
-    data["run_id"] = data.get("run_id", str(datetime.datetime.now().timestamp()))
-    
+
+    # Check if the repository URL is accessible
+    repo_url = data["github_repository_url"]
+    try:
+        response = requests.get(repo_url)
+        if response.status_code != 200:
+            update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": "Repository URL is not accessible"})
+            return jsonify({"error": "Repository URL is not accessible"}), 400
+    except Exception as e:
+        update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": str(e)})
+        return jsonify({"error": "Failed to access repository URL"}), 400
+
+    data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
+
     store_analysis_metadata(data)
     task_name = create_task(data)
-    
+
     return jsonify({
         "message": "Analysis started",
         "task_name": task_name,
@@ -123,14 +167,14 @@ def analyze():
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
         # Ensure submission has a 'step' attribute
-        if not hasattr(submission, 'step') or submission.step is None:
+        if "step" not in submission or submission["step"] is None or submission["step"] == "":
             create_task({"submission_id": submission_id, "step": "analyze_project"})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
-        elif submission.step == "analyze_project":
+        elif submission["step"] == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
-        elif submission.step == "analyze_actors":
-            create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+        elif submission["step"] == "analyze_actors":
+            #create_task({"submission_id": submission_id, "step": "analyze_deployment"})
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
@@ -152,16 +196,20 @@ def analyze_project(submission, request_context):
         analyzer = Analyzer(context)
         project_summary = analyzer.summarize()
         
-        # Upload project summary to Google Cloud Storage
-        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        blob_name = f"summaries/{submission['submission_id']}/project_summary.json"
-        upload_to_gcs(bucket_name, blob_name, context.summary_path())
+        version, path = context.new_gcs_summary_path()
+
+        # Upload actors summary to Google Cloud Storage
+        upload_to_gcs(path, context.summary_path())
         
         if request_context == "bg":
             # Update the task queue
-            create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project", "success")
+            update_analysis_status(submission["submission_id"], "analyze_project", "success", metadata={"summary_version": version})
+            create_task({"submission_id": submission["submission_id"]})
         else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"summary_version": version})
             #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": project_summary.to_dict()}), 200
 
@@ -183,16 +231,20 @@ def analyze_actors(submission, request_context):
         analyzer = Analyzer(context)
         actors = analyzer.identify_actors()
 
+        version, path = context.new_gcs_actor_summary_path()
+
         # Upload actors summary to Google Cloud Storage
-        bucket_name = os.getenv("GCS_BUCKET_NAME", "default-bucket")
-        blob_name = f"summaries/{submission['submission_id']}/actors_summary.json"
-        upload_to_gcs(bucket_name, blob_name, context.actor_summary_path())
+        upload_to_gcs(path, context.actor_summary_path())
 
         if request_context == "bg": 
         # Update the task queue
-            create_task({"submission_id": submission.submission_id})
-            update_analysis_status(submission.submission_id, "analyze_project", "success")
+            update_analysis_status(submission["submission_id"], "analyze_actors", "success", metadata={"actor_version": version})
+            create_task({"submission_id": submission["submission_id"]})
         else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
             #update_analysis_status(submission.submission_id, "analyze_project")
             # If in foreground, return the result
             return jsonify({"actors": actors.to_dict()}), 200
@@ -222,6 +274,15 @@ def analyze_deployment(submission, request_context):
 @app.route('/')
 def home():
     return "Smart Contract Analysis Service is running", 200
+
+# Universal error handler to log exceptions with full stack trace
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log the exception with full stack trace
+    app.logger.error("Exception occurred", exc_info=e)
+    
+    # Return a generic error response
+    return jsonify({"error": "An unexpected error occurred."}), 500
 
 # Register the storage blueprint
 app.register_blueprint(storage_blueprint)
