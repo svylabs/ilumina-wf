@@ -78,69 +78,64 @@ class DeploymentAnalyzer:
             return []
 
     def generate_deploy_ts(self):
-        """Deterministically generates contracts/deploy.ts from deployment_instructions.json"""
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
 
         if not os.path.exists(deployment_path):
-            print(f"Error: {deployment_path} not found. Cannot generate deploy.ts.")
-            return None
+            raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
 
         with open(deployment_path, "r") as f:
             instructions = json.load(f)
 
-        # Base template
-        ts_code = """import { ethers } from "hardhat";
-import type { Contract } from "ethers";
+        # Read existing deploy.ts
+        with open(deploy_ts_path, "r") as f:
+            template = f.read()
 
-interface DeployedContracts {
-    [name: string]: Contract;
-}
+        # Generate DEPLOY_BLOCK content
+        deploy_block = []
+        for step in instructions["DeploymentInstruction"]["sequence"]:
+            if step["type"] == "contract":
+                params = ", ".join([str(p["value"]) for p in step.get("params", [])])
+                deploy_block.append(f"""
+        const {step['contract']} = await ethers.getContractFactory("{step['contract']}");
+        contracts.{step['contract']} = await {step['contract']}.deploy({params});
+        await contracts.{step['contract']}.waitForDeployment();
+        console.log(`{step['contract']} deployed to: ${{await contracts.{step['contract']}.getAddress()}}`);
+    """)
 
-async function main() {
-    const [deployer] = await ethers.getSigners();
-    console.log(`Deploying contracts with account: ${deployer.address}`);
-    
-    const deployed: DeployedContracts = {};
-    \n"""
+        # Generate TRANSACTION_BLOCK content
+        transaction_block = []
+        for step in instructions["DeploymentInstruction"]["sequence"]:
+            if step["type"] == "transaction":
+                params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
+                transaction_block.append(f"""
+        await contracts.{step['contract']}.{step['method']}({params});
+        console.log(`Configured {step['contract']}.{step['method']}`);
+    """)
 
-        # Add deployment logic for each contract
-        for instruction in instructions:
-            contract_name = instruction["contract_name"]
-            args = instruction.get("constructor_args", [])
-            
-            # Format constructor arguments
-            args_str = ", ".join([json.dumps(arg) for arg in args])
-            
-            ts_code += f"""    // Deploy {contract_name}
-    const {contract_name} = await ethers.getContractFactory("{contract_name}");
-    deployed.{contract_name} = await {contract_name}.deploy({args_str});
-    await deployed.{contract_name}.waitForDeployment();
-    console.log(`{contract_name} deployed to: ${{await deployed.{contract_name}.getAddress()}}`);
-    \n"""
+        # Generate MAPPING_BLOCK content
+        mapping_block = """
+        console.log("\\nFinal contract addresses:");
+        for (const [name, contract] of Object.entries(contracts)) {
+            console.log(`${{name}}: ${{await contract.getAddress()}}`);
+        }
+    """
 
-        # Closing template
-        ts_code += """    return deployed;
-}
+        # Replace the marker blocks
+        updated_code = template.replace(
+            "// DEPLOY_BLOCK - Auto-generated contract deployments\n    // This section will be replaced with contract deployment code",
+            "".join(deploy_block).strip()
+        ).replace(
+            "// TRANSACTION_BLOCK - Auto-generated contract configurations\n    // This section will be replaced with contract setup transactions",
+            "".join(transaction_block).strip()
+        ).replace(
+            "// MAPPING_BLOCK - Auto-generated address mappings\n    // This section will be replaced with contract address mappings",
+            mapping_block.strip()
+        )
 
-main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-});
+        # Write the updated file
+        with open(deploy_ts_path, "w") as f:
+            f.write(updated_code)
 
-export {};  // For ES module compatibility
-"""
-
-        # Write the file
-        try:
-            os.makedirs(os.path.dirname(deploy_ts_path), exist_ok=True)
-            with open(deploy_ts_path, "w") as f:
-                f.write(ts_code)
-            
-            self.context.commit("Added generated deploy.ts")
-            return deploy_ts_path
-            
-        except Exception as e:
-            print(f"Error generating deploy.ts: {e}")
-            return None
-
+        self.context.commit("Updated deploy.ts with generated deployment blocks")
+        return deploy_ts_path
