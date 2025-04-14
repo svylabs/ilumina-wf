@@ -115,12 +115,17 @@ class Project(BaseModel):
                 #print(json.dumps(content))
                 return Project.load(content)
         return None
+    
+class Param(BaseModel):
+    name: str
+    value: Optional[str] = None
+    type: str # val | ref
 
 class SequenceStep(BaseModel):
     type: str  # "deploy" or "call"
     contract: str
     function: Optional[str] = None
-    params: List[Dict[str, str]]
+    params: List[Param]
 
 class DeploymentInstruction(BaseModel):
     sequence: List[SequenceStep]
