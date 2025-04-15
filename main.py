@@ -286,10 +286,8 @@ def test_generate_deploy():
         # Prepare context
         context = prepare_context({
             "submission_id": submission_id,
-            # "run_id": "test-run",
             "run_id": data["run_id"],
-            # "run_id": "1",
-            "github_repository_url": "https://github.com/svylabs/predify"
+            "github_repository_url": "https://github.com/svylabs/stablebase"
         })
 
         # Initialize DeploymentAnalyzer

@@ -78,16 +78,132 @@ class DeploymentAnalyzer:
             return []
 
     def generate_deploy_ts(self):
-        deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
-        deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
-        
-        if not os.path.exists(deployment_path):
-            raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
+        # deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
+        print(self.context.simulation_path())
+        deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
 
-        with open(deployment_path, "r") as f:
-            instructions = json.load(f)
+        instructions = {
+                "DeploymentInstruction": {
+                    "sequence": [
+                        {
+                            "type": "contract",
+                            "contract": "DFIDToken",
+                            "params": []
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "DFIREToken",
+                            "params": []
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "StabilityPool",
+                            "params": [
+                                {"name": "isActive", "value": True, "type": "val"}
+                            ]
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "MockPriceOracle",
+                            "params": []
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "StableBaseCDP",
+                            "params": []
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "DFIREStaking",
+                            "params": [
+                                {"name": "isActive", "value": True, "type": "val"}
+                            ]
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "OrderedDoublyLinkedList",
+                            "name": "redemptionQueue",
+                            "params": []
+                        },
+                        {
+                            "type": "contract",
+                            "contract": "OrderedDoublyLinkedList",
+                            "name": "liquidationQueue",
+                            "params": []
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "DFIDToken",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "DFIREToken",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "stabilityPool", "value": "StabilityPool", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "StabilityPool",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "sbdToken", "value": "DFIDToken", "type": "ref"},
+                                {"name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref"},
+                                {"name": "dfireToken", "value": "DFIREToken", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "DFIREStaking",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "dfireToken", "value": "DFIREToken", "type": "ref"},
+                                {"name": "sbdToken", "value": "DFIDToken", "type": "ref"},
+                                {"name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "redemptionQueue",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "liquidationQueue",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref"}
+                            ]
+                        },
+                        {
+                            "type": "transaction",
+                            "contract": "StableBaseCDP",
+                            "method": "setAddresses",
+                            "params": [
+                                {"name": "sbdToken", "value": "DFIDToken", "type": "ref"},
+                                {"name": "priceOracle", "value": "MockPriceOracle", "type": "ref"},
+                                {"name": "stabilityPool", "value": "StabilityPool", "type": "ref"},
+                                {"name": "dfireStaking", "value": "DFIREStaking", "type": "ref"},
+                                {"name": "liquidationQueue", "value": "liquidationQueue", "type": "ref"},
+                                {"name": "redemptionQueue", "value": "redemptionQueue", "type": "ref"}
+                            ]
+                        }
+                    ]
+                }
+            }
 
-        # Read existing deploy.ts
+        # Read existing deploy.ts template
+        if not os.path.exists(deploy_ts_path):
+            raise FileNotFoundError(f"Missing deploy.ts template at {deploy_ts_path}")
+
         with open(deploy_ts_path, "r") as f:
             template = f.read()
 
@@ -95,11 +211,13 @@ class DeploymentAnalyzer:
         all_contracts = set()
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] in ["contract", "transaction"]:
-                all_contracts.add(step["contract"])
+                contract_name = step.get("name", step["contract"])  # Use custom name if exists
+                all_contracts.add(contract_name)
 
         # Generate imports and artifact loading
         imports_block = []
         artifact_loading = []
+        missing_artifacts = []
         
         for contract in sorted(all_contracts):
             artifact_path = self.context.contract_artifact_path(contract)
@@ -114,38 +232,64 @@ class DeploymentAnalyzer:
             
             imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
             artifact_loading.append(f"""    if (!{contract}_artifact) {{
-        throw new Error(`Missing artifact for {contract}`);
-    }}
-""")
+            throw new Error(`Missing artifact for {contract}`);
+        }}
+    """)
+            
+        for contract in sorted(all_contracts):
+            artifact_path = self.context.contract_artifact_path(contract)
+            if not os.path.exists(artifact_path):
+                # Try alternative path (common variations)
+                alt_path = os.path.join(
+                    self.context.project_path(),
+                    "artifacts",
+                    f"{contract}.sol",
+                    f"{contract}.json"
+                )
+                
+                if os.path.exists(alt_path):
+                    artifact_path = alt_path
+                else:
+                    missing_artifacts.append(contract)
+
+        if missing_artifacts:
+            raise FileNotFoundError(
+                f"Missing artifacts for contracts: {', '.join(missing_artifacts)}. "
+                "Please ensure contracts are compiled and artifacts exist."
+            )
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] == "contract":
                 contract_name = step["contract"]
+                display_name = step.get("name", contract_name)  # Use custom name if exists
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
                 
                 deploy_block.append(f"""
-        // Deploy {contract_name}
-        const {contract_name}_factory = new ethers.ContractFactory(
+        // Deploy {display_name}
+        const {display_name}_factory = new ethers.ContractFactory(
             {contract_name}_artifact.abi,
             {contract_name}_artifact.bytecode,
             deployer
         );
-        contracts.{contract_name} = await {contract_name}_factory.deploy({params});
-        await contracts.{contract_name}.waitForDeployment();
-        console.log(`{contract_name} deployed to: ${{await contracts.{contract_name}.getAddress()}}`);
+        contracts.{display_name} = await {display_name}_factory.deploy({params});
+        await contracts.{display_name}.waitForDeployment();
+        console.log(`{display_name} deployed to: ${{await contracts.{display_name}.getAddress()}}`);
     """)
 
         # Generate TRANSACTION_BLOCK content
         transaction_block = []
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] == "transaction":
+                contract_name = step.get("name", step["contract"])  # Use custom name if exists
+                method = step["method"]
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
+                
                 transaction_block.append(f"""
-        // Configure {step['contract']}.{step['method']}
-        await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`{step['contract']}.{step['method']} configured`);
+        // Configure {contract_name}.{method}
+        await contracts.{contract_name}.{method}({params});
+        console.log(`{contract_name}.{method} configured`);
     """)
 
         # Generate MAPPING_BLOCK content
