@@ -109,9 +109,19 @@ def get_submission(submission_id):
     submission = datastore_client.get(key)
     if not submission:
         return jsonify({"error": "Submission not found"}), 404
+
     message = ""
     if submission.get("status") == "error":
         message = submission.get("message", "Unknown error")
+
+    # Fetch latest prompts for each step
+    steps = ["analyze_project", "analyze_actors", "analyze_deployment"]
+    latest_prompts = {}
+    for step in steps:
+        latest_prompt = user_prompt_manager.query_latest_prompt(submission_id, step)
+        if latest_prompt:
+            latest_prompts[step] = latest_prompt.get("user_prompt")
+
     return jsonify({
         "submission_id": submission["submission_id"],
         "github_repository_url": submission["github_repository_url"],
@@ -121,7 +131,8 @@ def get_submission(submission_id):
         "step": submission.get("step"),
         "status": submission.get("status"),
         "completed_steps": submission.get("completed_steps", []),
-        "message": message
+        "message": message,
+        "latest_prompts": latest_prompts
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
