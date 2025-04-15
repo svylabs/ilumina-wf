@@ -16,6 +16,7 @@ from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
 from app.models import Project
+from app.deployment import DeploymentAnalyzer
 from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
@@ -270,6 +271,48 @@ def analyze_deployment(submission, request_context):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/test_generate_deploy', methods=['POST'])
+@authenticate
+def test_generate_deploy():
+    """Test endpoint for generate_deploy_ts"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+        
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id"}), 400
+
+        # Prepare context
+        context = prepare_context({
+            "submission_id": submission_id,
+            # "run_id": "test-run",
+            "run_id": data["run_id"],
+            # "run_id": "1",
+            "github_repository_url": "https://github.com/svylabs/predify"
+        })
+
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+        
+        # Generate deploy.ts
+        result_path = deployer.generate_deploy_ts()
+        
+        # Read the generated file
+        with open(result_path, 'r') as f:
+            generated_code = f.read()
+
+        return jsonify({
+            "message": "deploy.ts generated successfully",
+            "path": result_path,
+            "code": generated_code
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
 @app.route('/')
 def home():
