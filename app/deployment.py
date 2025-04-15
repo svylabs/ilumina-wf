@@ -33,7 +33,7 @@ class DeploymentAnalyzer:
         with open(deployment_path, 'w') as f:
             json.dump([instruction.to_dict() for instruction in instructions], f, indent=2)
 
-    def analyze(self):
+    def analyze(self, user_prompt=None):
         deployable_contracts = self.identify_deployable_contracts()
         if not deployable_contracts:
             print("Warning: No deployable contracts found. Proceeding without deployment instructions.")
@@ -77,7 +77,7 @@ class DeploymentAnalyzer:
             print(f"Error: Failed to generate deployment instructions: {e}")
             return []
 
-    def generate_deploy_ts(self):
+    def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         print(self.context.simulation_path())
         # deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")

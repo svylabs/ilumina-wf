@@ -103,11 +103,21 @@ class RunContext:
         version = str(uuid.uuid4())
         return version, f"summaries/{self.submission_id}/actor_summary/{version}.json"
     
+    def new_gcs_deployment_instructions_path(self):
+        version = str(uuid.uuid4())
+        return version, f"summaries/{self.submission_id}/deployment_instructions/{version}.json"
+    
     def gcs_summary_path_from_version(self, version):
         return f"summaries/{self.submission_id}/project_summary/{version}.json"
     
     def gcs_actor_summary_path_from_version(self, version):
         return f"summaries/{self.submission_id}/actor_summary/{version}.json"
+    
+    def gcs_deployment_instructions_path_from_version(self, version):
+        return f"summaries/{self.submission_id}/deployment_instructions/{version}.json"
+    
+    def deployment_instructions_path(self):
+        return self.simulation_path() + "/deployment_instructions.json"
     
     def commit(self, message):
         command = "cd " + self.simulation_path() + f" && git add . && git commit -m '{message}' && git push"

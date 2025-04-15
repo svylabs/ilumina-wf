@@ -323,9 +323,22 @@ def analyze_deployment(submission, request_context, user_prompt):
 
         # Perform the deployment analysis
         analyzer = Analyzer(context)
-        analyzer.create_deployment_instructions()
+        deployment_instructions = analyzer.generate_deployment_instructions(user_prompt=user_prompt)
+        version, path = context.new_gcs_deployment_instructions_path()
 
-        update_analysis_status(submission["submission_id"], "analyze_deployment", "success")
+        # Upload deployment instructions to Google Cloud Storage
+        upload_to_gcs(path, context.deployment_instructions_path())
+        if request_context == "bg":
+            # Update the task queue
+            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_version": version})
+            create_task({"submission_id": submission["submission_id"]})
+        else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"deployment_instruction_version": version})
+            return jsonify({"deployment_instructions": deployment_instructions.to_dict()}), 200
+
         return jsonify({"message": "Deployment analysis completed"}), 200
 
     except Exception as e:
@@ -333,29 +346,17 @@ def analyze_deployment(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
     
-@app.route('/api/test_generate_deploy', methods=['POST'])
+@app.route('/api/implement-deployment-script', methods=['POST'])
 @authenticate
-def test_generate_deploy():
+def implement_deployment_script(submission, request_context):
     """Test endpoint for generate_deploy_ts"""
+    context = prepare_context(submission)
     try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-        
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
-        # Prepare context
-        context = prepare_context({
-            "submission_id": submission_id,
-            "run_id": data["run_id"],
-            "github_repository_url": "https://github.com/svylabs/stablebase"
-        })
-
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         
         # Generate deploy.ts
-        result_path = deployer.generate_deploy_ts()
+        result_path = deployer.implement_deployment_script()
         
         # Read the generated file
         with open(result_path, 'r') as f:
