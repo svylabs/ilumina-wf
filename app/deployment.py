@@ -80,7 +80,7 @@ class DeploymentAnalyzer:
     def generate_deploy_ts(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
-
+        
         if not os.path.exists(deployment_path):
             raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
 
@@ -91,16 +91,50 @@ class DeploymentAnalyzer:
         with open(deploy_ts_path, "r") as f:
             template = f.read()
 
+        # Track all unique contracts we need artifacts for
+        all_contracts = set()
+        for step in instructions["DeploymentInstruction"]["sequence"]:
+            if step["type"] in ["contract", "transaction"]:
+                all_contracts.add(step["contract"])
+
+        # Generate imports and artifact loading
+        imports_block = []
+        artifact_loading = []
+        
+        for contract in sorted(all_contracts):
+            artifact_path = self.context.contract_artifact_path(contract)
+            if not os.path.exists(artifact_path):
+                raise FileNotFoundError(f"Contract artifact not found for {contract} at {artifact_path}")
+            
+            # Calculate relative path from deploy.ts to artifact
+            rel_path = os.path.relpath(
+                artifact_path,
+                os.path.dirname(deploy_ts_path)
+            ).replace("\\", "/")  # Windows compatibility
+            
+            imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+            artifact_loading.append(f"""    if (!{contract}_artifact) {{
+        throw new Error(`Missing artifact for {contract}`);
+    }}
+""")
+
         # Generate DEPLOY_BLOCK content
         deploy_block = []
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] == "contract":
+                contract_name = step["contract"]
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
+                
                 deploy_block.append(f"""
-        const {step['contract']} = await ethers.getContractFactory("{step['contract']}");
-        contracts.{step['contract']} = await {step['contract']}.deploy({params});
-        await contracts.{step['contract']}.waitForDeployment();
-        console.log(`{step['contract']} deployed to: ${{await contracts.{step['contract']}.getAddress()}}`);
+        // Deploy {contract_name}
+        const {contract_name}_factory = new ethers.ContractFactory(
+            {contract_name}_artifact.abi,
+            {contract_name}_artifact.bytecode,
+            deployer
+        );
+        contracts.{contract_name} = await {contract_name}_factory.deploy({params});
+        await contracts.{contract_name}.waitForDeployment();
+        console.log(`{contract_name} deployed to: ${{await contracts.{contract_name}.getAddress()}}`);
     """)
 
         # Generate TRANSACTION_BLOCK content
@@ -109,27 +143,35 @@ class DeploymentAnalyzer:
             if step["type"] == "transaction":
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
                 transaction_block.append(f"""
+        // Configure {step['contract']}.{step['method']}
         await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`Configured {step['contract']}.{step['method']}`);
+        console.log(`{step['contract']}.{step['method']} configured`);
     """)
 
         # Generate MAPPING_BLOCK content
         mapping_block = """
-        console.log("\\nFinal contract addresses:");
+        // Final contract addresses
+        console.log("\\n=== Deployment Summary ===");
         for (const [name, contract] of Object.entries(contracts)) {
-            console.log(`${{name}}: ${{await contract.getAddress()}}`);
+            console.log(`${name}: ${await contract.getAddress()}`);
         }
     """
 
-        # Replace the marker blocks
+        # Build the complete file content
         updated_code = template.replace(
-            "// DEPLOY_BLOCK - Auto-generated contract deployments\n    // This section will be replaced with contract deployment code",
+            "// IMPORT_BLOCK - Auto-generated contract imports",
+            "".join(imports_block).strip()
+        ).replace(
+            "// ARTIFACT_LOAD_BLOCK - Auto-generated artifact validation",
+            "".join(artifact_loading).strip()
+        ).replace(
+            "// DEPLOY_BLOCK - Auto-generated contract deployments",
             "".join(deploy_block).strip()
         ).replace(
-            "// TRANSACTION_BLOCK - Auto-generated contract configurations\n    // This section will be replaced with contract setup transactions",
+            "// TRANSACTION_BLOCK - Auto-generated contract configurations",
             "".join(transaction_block).strip()
         ).replace(
-            "// MAPPING_BLOCK - Auto-generated address mappings\n    // This section will be replaced with contract address mappings",
+            "// MAPPING_BLOCK - Auto-generated address mappings",
             mapping_block.strip()
         )
 
