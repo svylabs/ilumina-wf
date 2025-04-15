@@ -144,6 +144,9 @@ def begin_analysis():
         update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": str(e)})
         return jsonify({"error": "Failed to access repository URL"}), 400
 
+    # Update submission table with step and status
+    update_analysis_status(data["submission_id"], "begin_analysis", "in_progress")
+
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
 
     store_analysis_metadata(data)
@@ -171,15 +174,31 @@ def analyze():
         # Get the current context using prepare_context
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
-        # Ensure submission has a 'step' attribute
-        if "step" not in submission or submission["step"] is None or submission["step"] == "":
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Check the status and step
+        step = submission.get("step")
+        status = submission.get("status")
+
+        next_step = step
+        if step == "begin_analysis":
+            next_step = "analyze_project"
+        elif step == "analyze_project":
+            if status is not None and status == "success":
+                next_step = "analyze_actors"
+        elif step == "analyze_actors":
+            if status is not None and status == "success":
+                next_step = "None"
+        
+        if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"})
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
-        elif submission["step"] == "analyze_project":
+        elif next_step == "analyze_actors":
             create_task({"submission_id": submission_id, "step": "analyze_actors"})
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
-        elif submission["step"] == "analyze_actors":
-            #create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+        elif next_step == "analyze_deployment":
+            create_task({"submission_id": submission_id, "step": "analyze_deployment"})
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
@@ -193,13 +212,15 @@ def analyze():
 def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
+
         # Store user prompt if available
         if user_prompt:
             user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_project", user_prompt)
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
 
         # Get the current context using prepare_context
-        print (submission)
         context = prepare_context(submission)
 
         # Perform the project analysis
@@ -225,6 +246,8 @@ def analyze_project(submission, request_context, user_prompt):
         return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_project", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_actors', methods=['POST'])
@@ -233,6 +256,9 @@ def analyze_project(submission, request_context, user_prompt):
 def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_actors", "in_progress")
+
         # Store user prompt if available
         if user_prompt:
             user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_actors", user_prompt)
@@ -251,7 +277,7 @@ def analyze_actors(submission, request_context, user_prompt):
         upload_to_gcs(path, context.actor_summary_path())
 
         if request_context == "bg": 
-        # Update the task queue
+            # Update the task queue
             update_analysis_status(submission["submission_id"], "analyze_actors", "success", metadata={"actor_version": version})
             create_task({"submission_id": submission["submission_id"]})
         else:
@@ -263,6 +289,8 @@ def analyze_actors(submission, request_context, user_prompt):
         return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
@@ -271,6 +299,9 @@ def analyze_actors(submission, request_context, user_prompt):
 def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_deployment", "in_progress")
+
         # Store user prompt if available
         if user_prompt:
             user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_deployment", user_prompt)
@@ -283,9 +314,12 @@ def analyze_deployment(submission, request_context, user_prompt):
         analyzer = Analyzer(context)
         analyzer.create_deployment_instructions()
 
+        update_analysis_status(submission["submission_id"], "analyze_deployment", "success")
         return jsonify({"message": "Deployment analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
     
 @app.route('/api/test_generate_deploy', methods=['POST'])
