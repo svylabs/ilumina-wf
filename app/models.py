@@ -1,8 +1,10 @@
 import re
 import json
 from typing import List, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
+from enum import Enum
+from typing import Literal
 
 def extract_solidity_functions_and_contract_name(content):
     """Extract the contract name and public/external functions from a Solidity contract file."""
@@ -115,15 +117,16 @@ class Project(BaseModel):
                 #print(json.dumps(content))
                 return Project.load(content)
         return None
+
     
 class Param(BaseModel):
     name: str
     value: Optional[str] = None
-    type: str # val | ref
+    type: Literal["val", "ref"] # val | ref
 
 class SequenceStep(BaseModel):
-    type: str  # "deploy" or "call"
-    contract: str
+    type: Literal["deploy", "call"]  # "deploy" or "call"
+    contract: str = Field(..., description="Name of the contract to deploy or invoke")
     function: Optional[str] = None
     params: List[Param]
 
