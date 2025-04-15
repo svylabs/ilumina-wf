@@ -1,7 +1,7 @@
-
 from google.cloud import datastore
 from .clients import datastore_client
 import datetime
+import hashlib
 
 def store_analysis_metadata(data):
     """Store submission metadata in Datastore"""
@@ -33,3 +33,63 @@ def update_analysis_status(submission_id, step, status, metadata=None):
         entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
         entity.update(updates)
         datastore_client.put(entity)
+
+class UserPromptManager:
+    def __init__(self, datastore_client):
+        self.datastore_client = datastore_client
+
+    def _hash_prompt(self, user_prompt):
+        """Generate a hash for the user prompt."""
+        return hashlib.sha256(user_prompt.encode('utf-8')).hexdigest()
+
+    def store_latest_prompt(self, submission_id, step, user_prompt):
+        """Store the latest user prompt for a specific step."""
+        prompt_hash = self._hash_prompt(user_prompt)
+        key = self.datastore_client.key("LatestUserPrompt", f"{submission_id}_{step}")
+        entity = datastore.Entity(key=key)
+        entity.update({
+            "submission_id": submission_id,
+            "step": step,
+            "user_prompt": user_prompt,
+            "prompt_hash": prompt_hash,
+            "timestamp": datetime.datetime.now()
+        })
+        self.datastore_client.put(entity)
+
+    def store_prompt_history(self, submission_id, step, user_prompt):
+        """Store the history of user prompts for a specific step."""
+        prompt_hash = self._hash_prompt(user_prompt)
+
+        # Check if the prompt hash already exists in history
+        query = self.datastore_client.query(kind="UserPromptHistory")
+        query.add_filter("submission_id", "=", submission_id)
+        query.add_filter("step", "=", step)
+        query.add_filter("prompt_hash", "=", prompt_hash)
+        existing_prompts = list(query.fetch())
+
+        if existing_prompts:
+            return  # Do not store duplicate prompts
+
+        key = self.datastore_client.key("UserPromptHistory")
+        entity = datastore.Entity(key=key)
+        entity.update({
+            "submission_id": submission_id,
+            "step": step,
+            "user_prompt": user_prompt,
+            "prompt_hash": prompt_hash,
+            "timestamp": datetime.datetime.now()
+        })
+        self.datastore_client.put(entity)
+
+    def query_latest_prompt(self, submission_id, step):
+        """Query the latest user prompt for a specific step."""
+        key = self.datastore_client.key("LatestUserPrompt", f"{submission_id}_{step}")
+        return self.datastore_client.get(key)
+
+    def query_prompt_history(self, submission_id, step):
+        """Query the history of user prompts for a specific step, sorted by time."""
+        query = self.datastore_client.query(kind="UserPromptHistory")
+        query.add_filter("submission_id", "=", submission_id)
+        query.add_filter("step", "=", step)
+        query.order = ["-timestamp"]
+        return list(query.fetch())

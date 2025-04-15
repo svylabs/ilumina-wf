@@ -27,6 +27,7 @@ from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
+from app.submission import UserPromptManager
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -40,6 +41,7 @@ for key, value in os.environ.items():
 # Initialize services
 gcs = GCSStorage()
 github_api = GitHubAPI()
+user_prompt_manager = UserPromptManager(datastore_client)
 
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
@@ -191,13 +193,18 @@ def analyze():
 def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_project", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
+
         # Get the current context using prepare_context
         print (submission)
         context = prepare_context(submission)
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        project_summary = analyzer.summarize(user_prompt=user_prompt)
+        project_summary = analyzer.summarize()
         
         version, path = context.new_gcs_summary_path()
 
@@ -213,7 +220,6 @@ def analyze_project(submission, request_context, user_prompt):
             if "step" in submission:
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"summary_version": version})
-            #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": project_summary.to_dict()}), 200
 
         return jsonify({"message": "Project analysis completed"}), 200
@@ -227,12 +233,17 @@ def analyze_project(submission, request_context, user_prompt):
 def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
     try:
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_actors", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_actors", user_prompt)
+
         # Get the current context using prepare_context
         context = prepare_context(submission)
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        actors = analyzer.identify_actors(user_prompt=user_prompt)
+        actors = analyzer.identify_actors()
 
         version, path = context.new_gcs_actor_summary_path()
 
@@ -248,8 +259,6 @@ def analyze_actors(submission, request_context, user_prompt):
             if "step" in submission:
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
-            #update_analysis_status(submission.submission_id, "analyze_project")
-            # If in foreground, return the result
             return jsonify({"actors": actors.to_dict()}), 200
         return jsonify({"message": "Project analysis completed"}), 200
 
@@ -262,6 +271,11 @@ def analyze_actors(submission, request_context, user_prompt):
 def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
     try:
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_deployment", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_deployment", user_prompt)
+
         # Get the current context using prepare_context
         context = prepare_context(submission)
 
