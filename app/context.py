@@ -87,6 +87,14 @@ class RunContext:
     def actor_summary_path(self):
         return self.simulation_path() + "/actor_summary.json"
     
+    def compiled_contracts_path(self):
+        """Returns path to compiled contracts JSON file"""
+        return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
+    
+    def contract_artifact_path(self, contract_name):
+        """Returns path to individual contract artifact"""
+        return os.path.join(self.cws(), f"artifacts/contracts/{contract_name}.sol/{contract_name}.json")
+    
     def new_gcs_summary_path(self):
         version = str(uuid.uuid4())
         return version, f"summaries/{self.submission_id}/project_summary/{version}.json"
