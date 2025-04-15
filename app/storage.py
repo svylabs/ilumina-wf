@@ -179,3 +179,21 @@ def get_actors_summary(submission_id):
 
     summary_data = blob.download_as_text()
     return jsonify({"actors_summary": summary_data}), 200
+
+@storage_blueprint.route('/api/deployment_instructions/<submission_id>', methods=['GET'])
+@authenticate
+def get_deployment_instructions(submission_id):
+    """Fetch deployment instructions from Google Cloud Storage."""
+    submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+
+    bucket = storage_client.bucket(BUCKET_NAME)
+    context = prepare_context_lazy(submission)
+    blob = bucket.blob(context.gcs_deployment_instructions_path_from_version(submission["deployment_instruction_version"]))
+
+    if not blob.exists():
+        return jsonify({"error": "Deployment instructions not found"}), 404
+
+    instructions_data = blob.download_as_text()
+    return jsonify({"deployment_instructions": instructions_data}), 200
