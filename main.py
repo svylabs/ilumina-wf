@@ -82,8 +82,11 @@ def inject_analysis_params(f):
 
     return decorated_function
 
-def create_task(data):
+def create_task(data, forward_params=None):
     api_suffix = "/analyze"
+    if forward_params:
+        for key, value in forward_params.items():
+            data[key] = value
     if "step" in data:
         api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
@@ -149,19 +152,17 @@ def begin_analysis():
     try:
         response = requests.get(repo_url)
         if response.status_code != 200:
-            update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": "Repository URL is not accessible"})
             return jsonify({"error": "Repository URL is not accessible"}), 400
     except Exception as e:
-        update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": str(e)})
         return jsonify({"error": "Failed to access repository URL"}), 400
 
-    # Update submission table with step and status
-    update_analysis_status(data["submission_id"], "begin_analysis", "in_progress")
-
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
+    data["step"] = "begin_analysis"
+    data["status"] = "success"
 
     store_analysis_metadata(data)
     task_name = create_task(data)
+    # Update the submission with the task name
 
     return jsonify({
         "message": "Analysis started",
@@ -178,6 +179,13 @@ def analyze():
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
+        step_from_request = data.get("step")
+
+        forward_params = {}
+        if "request_context" in data:
+            forward_params["request_context"] = data["request_context"]
+        if "user_prompt" in data:
+            forward_params["user_prompt"] = data["user_prompt"]
 
         if not submission_id:
             return jsonify({"error": "Missing submission_id"}), 400
@@ -189,27 +197,31 @@ def analyze():
             return jsonify({"error": "Submission not found"}), 404
 
         # Check the status and step
-        step = submission.get("step")
-        status = submission.get("status")
+        step = submission["step"]
+        status = submission["status"]
 
         next_step = step
-        if step == "begin_analysis":
-            next_step = "analyze_project"
-        elif step == "analyze_project":
-            if status is not None and status == "success":
-                next_step = "analyze_actors"
-        elif step == "analyze_actors":
-            if status is not None and status == "success":
-                next_step = "None"
+        if step_from_request != None:
+            next_step = step_from_request
+        else:
+            if step == "begin_analysis":
+                next_step = "analyze_project"
+            elif step == "analyze_project":
+                if status is not None and status == "success":
+                    next_step = "analyze_actors"
+            elif step == "analyze_actors":
+                if status is not None and status == "success":
+                    next_step = "None"
         
         if next_step == "analyze_project":
-            create_task({"submission_id": submission_id, "step": "analyze_project"})
+            create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
         elif next_step == "analyze_actors":
-            create_task({"submission_id": submission_id, "step": "analyze_actors"})
+            create_task({"submission_id": submission_id, "step": "analyze_actors"}, forward_params=forward_params)
+            # Update the submission with the task name
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
         elif next_step == "analyze_deployment":
-            create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+            create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
