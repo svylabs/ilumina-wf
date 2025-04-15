@@ -55,7 +55,7 @@ from flask import request, jsonify
 from google.cloud import datastore
 
 # Annotation to inject submission from Datastore
-def inject_submission(f):
+def inject_analysis_params(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         data = request.get_json()
@@ -70,11 +70,13 @@ def inject_submission(f):
         if request_context == None:
             request_context = "bg"
 
+        user_prompt = data.get("user_prompt")
+
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
 
-        # Pass the submission to the wrapped function
-        return f(submission, request_context, *args, **kwargs)
+        # Pass the submission, request_context, and user_prompt to the wrapped function
+        return f(submission, request_context, user_prompt, *args, **kwargs)
 
     return decorated_function
 
@@ -185,8 +187,8 @@ def analyze():
     
 @app.route('/api/analyze_project', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_project(submission, request_context):
+@inject_analysis_params
+def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
         # Get the current context using prepare_context
@@ -195,7 +197,7 @@ def analyze_project(submission, request_context):
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        project_summary = analyzer.summarize()
+        project_summary = analyzer.summarize(user_prompt=user_prompt)
         
         version, path = context.new_gcs_summary_path()
 
@@ -221,8 +223,8 @@ def analyze_project(submission, request_context):
 
 @app.route('/api/analyze_actors', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_actors(submission, request_context):
+@inject_analysis_params
+def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
     try:
         # Get the current context using prepare_context
@@ -230,7 +232,7 @@ def analyze_actors(submission, request_context):
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        actors = analyzer.identify_actors()
+        actors = analyzer.identify_actors(user_prompt=user_prompt)
 
         version, path = context.new_gcs_actor_summary_path()
 
@@ -256,8 +258,8 @@ def analyze_actors(submission, request_context):
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_deployment(submission, request_context):
+@inject_analysis_params
+def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
     try:
         # Get the current context using prepare_context
