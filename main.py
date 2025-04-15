@@ -212,6 +212,12 @@ def analyze():
             elif step == "analyze_actors":
                 if status is not None and status == "success":
                     next_step = "None"
+            elif step == "analyze_deployment":
+                if status is not None and status == "success":
+                    next_step = "implement_deployment_script"
+            elif step == "implement_deployment_script":
+                if status is not None and status == "success":
+                    next_step = "None"
         
         if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
@@ -223,6 +229,9 @@ def analyze():
         elif next_step == "analyze_deployment":
             create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
+        elif next_step == "implement_deployment_script":
+            create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
@@ -358,7 +367,7 @@ def analyze_deployment(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
     
-@app.route('/api/implement-deployment-script', methods=['POST'])
+@app.route('/api/implement_deployment_script', methods=['POST'])
 @authenticate
 def implement_deployment_script(submission, request_context):
     """Test endpoint for generate_deploy_ts"""
