@@ -41,7 +41,13 @@ def update_analysis_status(submission_id, step, status, metadata=None):
         if entity.get("completed_steps") is None:
             entity["completed_steps"] = []
         if (status == "success"):
-            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
+            found = False
+            for completed_step in entity["completed_steps"]:
+                if completed_step["step"] == step:
+                    completed_step["updated_at"] = datetime.datetime.now()
+                    found = True
+            if not found:
+                entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
         entity.update(updates)
         datastore_client.put(entity)
         
