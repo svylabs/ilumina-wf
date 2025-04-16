@@ -11,7 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.context import prepare_context
+from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
@@ -28,6 +28,7 @@ import uuid
 import traceback
 from google.protobuf import timestamp_pb2
 from app.submission import UserPromptManager
+import subprocess
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -369,31 +370,113 @@ def analyze_deployment(submission, request_context, user_prompt):
     
 @app.route('/api/implement_deployment_script', methods=['POST'])
 @authenticate
-def implement_deployment_script(submission, request_context):
-    """Test endpoint for generate_deploy_ts"""
+@inject_analysis_params
+def implement_deployment_script(submission, request_context, user_prompt):
+    """Execute and verify the deployment script"""
     context = prepare_context(submission)
     try:
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         
         # Generate deploy.ts
-        result_path = deployer.implement_deployment_script()
+        deploy_ts_path = deployer.implement_deployment_script()
         
-        # Read the generated file
-        with open(result_path, 'r') as f:
-            generated_code = f.read()
+        # Run the deployment verification
+        simulation_path = context.simulation_path()
+        verification_command = (
+            f"cd {simulation_path} && "
+            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
+        )
+        
+        process = subprocess.Popen(
+            verification_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        stdout, stderr = process.communicate()
+        
+        # Parse results
+        if process.returncode != 0:
+            error_msg = _extract_error_details(stderr, stdout)
+            update_analysis_status(
+                submission["submission_id"],
+                "implement_deployment_script",
+                "error",
+                metadata={
+                    "message": "Deployment verification failed",
+                    "error": error_msg,
+                    "log": stdout + stderr
+                }
+            )
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "log": stdout + stderr
+            }), 400
+        
+        # Extract contract addresses from output
+        contract_addresses = _parse_contract_addresses(stdout)
+        
+        result = {
+            "success": True,
+            "contract_addresses": contract_addresses,
+            "log": stdout,
+            "deployment_path": deploy_ts_path
+        }
 
-        return jsonify({
-            "message": "deploy.ts generated successfully",
-            "path": result_path,
-            "code": generated_code
-        }), 200
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "success",
+            metadata=result
+        )
+
+        return jsonify(result), 200
 
     except Exception as e:
+        error_trace = traceback.format_exc()
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "error",
+            metadata={
+                "message": str(e),
+                "trace": error_trace
+            }
+        )
         return jsonify({
+            "success": False,
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": error_trace
         }), 500
+
+def _extract_error_details(stderr, stdout):
+    """Extract meaningful error details from deployment output"""
+    error_lines = []
+    for line in (stderr + stdout).split('\n'):
+        if 'error' in line.lower() or 'fail' in line.lower():
+            error_lines.append(line.strip())
+    return '\n'.join(error_lines[-5:]) if error_lines else "Unknown deployment error"
+
+def _parse_contract_addresses(output):
+    """Parse contract addresses from deployment output"""
+    addresses = {}
+    for line in output.split('\n'):
+        if 'deployed to:' in line:
+            parts = line.split('deployed to:')
+            if len(parts) == 2:
+                name = parts[0].strip()
+                address = parts[1].strip()
+                addresses[name] = address
+        elif ':' in line and '===' not in line:  # Address summary lines
+            parts = line.split(':')
+            if len(parts) >= 2:
+                name = parts[0].strip()
+                address = ':'.join(parts[1:]).strip()
+                addresses[name] = address
+    return addresses
 
 @app.route('/')
 def home():

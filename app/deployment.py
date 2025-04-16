@@ -82,14 +82,17 @@ class DeploymentAnalyzer:
         print(self.context.simulation_path())
         # deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
         deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
+        # check_deploy_path = os.path.join(self.context.simulation_path(), "simulation/check_deployment.ts")
         
         if not os.path.exists(deployment_path):
             raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
+        if not os.path.exists(deploy_ts_path):
+            raise FileNotFoundError(f"Missing deploy.ts template at {deploy_ts_path}")
 
         with open(deployment_path, "r") as f:
             instructions = json.load(f)
 
-        # Read existing deploy.ts
+        # Read existing deploy.ts template
         with open(deploy_ts_path, "r") as f:
             template = f.read()
 
