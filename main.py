@@ -88,7 +88,7 @@ def create_task(data, forward_params=None):
     if forward_params:
         for key, value in forward_params.items():
             data[key] = value
-    if "step" in data:
+    if "step" in data and data["step"] != "begin_analysis":
         api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
     scheduled_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
