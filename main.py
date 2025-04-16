@@ -198,14 +198,15 @@ def analyze():
             return jsonify({"error": "Submission not found"}), 404
 
         # Check the status and step
-        step = submission["step"]
-        status = submission["status"]
+        step = submission.get("step")
+        status = submission.get("status")
+        print(f"{submission}")
 
         next_step = step
         if step_from_request != None:
             next_step = step_from_request
         else:
-            if step == "begin_analysis":
+            if step == None or step == "begin_analysis":
                 next_step = "analyze_project"
             elif step == "analyze_project":
                 if status is not None and status == "success":
@@ -231,12 +232,13 @@ def analyze():
             create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         elif next_step == "implement_deployment_script":
-            create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
+            #create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
     except Exception as e:
+        app.logger.error("Error in analyze endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
     
 @app.route('/api/analyze_project', methods=['POST'])

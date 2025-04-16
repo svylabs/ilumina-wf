@@ -10,6 +10,8 @@ def store_analysis_metadata(data):
         "github_repository_url": data["github_repository_url"],
         "submission_id": data["submission_id"],
         "run_id": data["run_id"],
+        "step": "begin_analysis",
+        "status": "completed",
         "created_at": datetime.datetime.now(),
         "updated_at": datetime.datetime.now()
     })
