@@ -480,6 +480,20 @@ def _parse_contract_addresses(output):
                 addresses[name] = address
     return addresses
 
+@app.route('/api/submission_logs/<submission_id>', methods=['GET'])
+@authenticate
+def get_submission_logs(submission_id):
+    """Fetch all logs for a given submission ID, ordered by updated time."""
+    query = datastore_client.query(kind="SubmissionLog")
+    query.add_filter("submission_id", "=", submission_id)
+    query.order = ["-updated_at"]
+
+    logs = list(query.fetch())
+    if not logs:
+        return jsonify({"error": "No logs found for the given submission ID"}), 404
+
+    return jsonify({"logs": logs}), 200
+
 @app.route('/')
 def home():
     return "Smart Contract Analysis Service is running", 200
