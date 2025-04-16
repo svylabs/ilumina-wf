@@ -21,7 +21,7 @@ def store_analysis_metadata(data):
     create_submission_log(entity.copy())
 
 def create_submission_log(data):
-    submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", uuid.uuid4()))
+    submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", str(uuid.uuid4())))
     submission_log.update(data)
     datastore_client.put(submission_log)
 
