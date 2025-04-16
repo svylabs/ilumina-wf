@@ -2,6 +2,7 @@ from google.cloud import datastore
 from .clients import datastore_client
 import datetime
 import hashlib
+import uuid
 
 def store_analysis_metadata(data):
     """Store submission metadata in Datastore"""
@@ -16,6 +17,13 @@ def store_analysis_metadata(data):
         "updated_at": datetime.datetime.now()
     })
     datastore_client.put(entity)
+
+    create_submission_log(entity.copy())
+
+def create_submission_log(data):
+    submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", uuid.uuid4()))
+    submission_log.update(data)
+    datastore_client.put(submission_log)
 
 def update_analysis_status(submission_id, step, status, metadata=None):
     """Update analysis status in Datastore"""
@@ -32,9 +40,14 @@ def update_analysis_status(submission_id, step, status, metadata=None):
                 updates[key] = value
         if entity.get("completed_steps") is None:
             entity["completed_steps"] = []
-        entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
+        if (status == "success"):
+            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
         entity.update(updates)
         datastore_client.put(entity)
+        
+        create_submission_log(entity.copy())
+        
+
 
 class UserPromptManager:
     def __init__(self, datastore_client):
