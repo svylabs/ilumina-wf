@@ -369,7 +369,7 @@ def analyze_deployment(submission, request_context, user_prompt):
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
-    
+
 @app.route('/api/implement_deployment_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
@@ -379,12 +379,44 @@ def implement_deployment_script(submission, request_context, user_prompt):
     try:
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
+        simulation_path = context.simulation_path()
         
-        # Generate deploy.ts
+        # Verify simulation directory exists
+        if not os.path.exists(simulation_path):
+            raise FileNotFoundError(f"Simulation directory not found at {simulation_path}")
+
+        # 1. Install dependencies
+        install_command = f"cd {simulation_path} && npm install"
+        install_process = subprocess.Popen(
+            install_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
+        
+        if install_process.returncode != 0:
+            raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
+
+        # 2. Compile the contracts
+        compile_command = f"cd {simulation_path} && npx hardhat compile"
+        compile_process = subprocess.Popen(
+            compile_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        compile_stdout, compile_stderr = compile_process.communicate(timeout=300)
+        
+        if compile_process.returncode != 0:
+            raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
+
+        # 3. Generate deploy.ts
         deploy_ts_path = deployer.implement_deployment_script()
         
-        # Run the deployment verification
-        simulation_path = context.simulation_path()
+        # 4. Run the deployment verification
         verification_command = (
             f"cd {simulation_path} && "
             "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
@@ -397,7 +429,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             stderr=subprocess.PIPE,
             universal_newlines=True
         )
-        stdout, stderr = process.communicate()
+        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
         
         # Parse results
         if process.returncode != 0:
@@ -409,13 +441,17 @@ def implement_deployment_script(submission, request_context, user_prompt):
                 metadata={
                     "message": "Deployment verification failed",
                     "error": error_msg,
-                    "log": stdout + stderr
+                    "log": stdout + stderr,
+                    "compile_log": compile_stdout + compile_stderr,
+                    "install_log": install_stdout + install_stderr
                 }
             )
             return jsonify({
                 "success": False,
                 "error": error_msg,
-                "log": stdout + stderr
+                "log": stdout + stderr,
+                "compile_log": compile_stdout + compile_stderr,
+                "install_log": install_stdout + install_stderr
             }), 400
         
         # Extract contract addresses from output
@@ -425,6 +461,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "success": True,
             "contract_addresses": contract_addresses,
             "log": stdout,
+            "compile_log": compile_stdout + compile_stderr,
+            "install_log": install_stdout + install_stderr,
             "deployment_path": deploy_ts_path
         }
 
@@ -437,23 +475,43 @@ def implement_deployment_script(submission, request_context, user_prompt):
 
         return jsonify(result), 200
 
+    except subprocess.TimeoutExpired:
+        error_msg = "Operation timed out"
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "error",
+            metadata={"message": error_msg}
+        )
+        return jsonify({
+            "success": False,
+            "error": error_msg,
+            "type": "timeout"
+        }), 400
+        
     except Exception as e:
         error_trace = traceback.format_exc()
+        logs = {
+            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted",
+            "install_log": install_stdout + install_stderr if 'install_stdout' in locals() else "Not attempted"
+        }
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
             "error",
             metadata={
                 "message": str(e),
-                "trace": error_trace
+                "trace": error_trace,
+                **logs
             }
         )
         return jsonify({
             "success": False,
             "error": str(e),
-            "traceback": error_trace
+            "traceback": error_trace,
+            **logs
         }), 500
-
+    
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
     error_lines = []
