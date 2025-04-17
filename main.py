@@ -379,14 +379,15 @@ def implement_deployment_script(submission, request_context, user_prompt):
     try:
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
-        simulation_path = context.simulation_path()
+        contract_path = context.cws()
+        print(f"Contract path: {contract_path}")
         
-        # Verify simulation directory exists
-        if not os.path.exists(simulation_path):
-            raise FileNotFoundError(f"Simulation directory not found at {simulation_path}")
+        # Verify contract directory exists
+        if not os.path.exists(contract_path):
+            raise FileNotFoundError(f"Contract directory not found at {contract_path}")
 
         # 1. Install dependencies
-        install_command = f"cd {simulation_path} && npm install"
+        install_command = f"cd {contract_path} && npm install"
         install_process = subprocess.Popen(
             install_command,
             shell=True,
@@ -400,7 +401,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
 
         # 2. Compile the contracts
-        compile_command = f"cd {simulation_path} && npx hardhat compile"
+        compile_command = f"cd {contract_path} && npx hardhat compile"
         compile_process = subprocess.Popen(
             compile_command,
             shell=True,
@@ -418,7 +419,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
         
         # 4. Run the deployment verification
         verification_command = (
-            f"cd {simulation_path} && "
+            f"cd {contract_path} && "
             "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
         )
         
