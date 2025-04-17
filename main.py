@@ -380,6 +380,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         contract_path = context.cws()
+        simulation_path = context.simulation_path()
+        print(f"Simulation path: {simulation_path}")
         print(f"Contract path: {contract_path}")
         
         # Verify contract directory exists
@@ -388,6 +390,12 @@ def implement_deployment_script(submission, request_context, user_prompt):
 
         # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
         install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
+        # install_command = (
+        #     f"cd {contract_path} && "
+        #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
+        #     "@nomicfoundation/hardhat-ethers ethers && "
+        #     "npm install --legacy-peer-deps"
+        # )
         install_process = subprocess.Popen(
             install_command,
             shell=True,
@@ -401,7 +409,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
 
         # 2. Compile the contracts
-        compile_command = f"cd {contract_path} && npx hardhat compile"
+        # compile_command = f"cd {contract_path} && npx hardhat compile"
+        compile_command = f"cd {contract_path} && npx hardhat compile --config hardhat.config.simulation.js"
         compile_process = subprocess.Popen(
             compile_command,
             shell=True,
