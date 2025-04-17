@@ -22,7 +22,7 @@ def find_object_bounds(content: str, start_pattern: str) -> tuple[int, int]:
         i += 1
     return -1, -1
 
-def parse_and_modify_hardhat_config(config_path: str, new_networks_config: str):
+def parse_and_modify_hardhat_config(config_path: str, new_networks_config: str) -> tuple[Path, str]:
     config_file = Path(config_path)
     if not config_file.exists():
         raise FileNotFoundError(f"{config_path} does not exist.")
@@ -75,26 +75,31 @@ def parse_and_modify_hardhat_config(config_path: str, new_networks_config: str):
 
         else:
             raise ValueError("Could not find a suitable config object or export to modify.")
+        
+    config_name = f"hardhat.config.simulation{config_file.suffix}"
 
     # Write to new file
-    output_path = config_file.with_name(f"hardhat.config.simulation{config_file.suffix}")
+    output_path = config_file.with_name(config_name)
     output_path.write_text(content_modified)
+    return output_path, config_name
     #return content_modified
+
+hardhat_network = """
+{
+    hardhat: {
+        accounts: {
+            count: 500, // Adjust this number for hundreds of accounts
+            accountsBalance: "1000000000000000000000" // 1000 ETH per account
+        }
+    }
+}
+"""
 
 
 if __name__ == "__main__":
     # Example usage
     config_path = "/Users/sg/Documents/workspace/svylabs/stablebase/hardhat.config.js"  # Path to your Hardhat config file
-    new_networks_config = """
-    {
-        hardhat: {
-            accounts: {
-                count: 500, // Adjust this number for hundreds of accounts
-                initialBalance: "1000000000000000000000" // 1000 ETH per account
-            }
-        }
-    }
-    """
+    new_networks_config = hardhat_network  # New networks configuration
     
     result = parse_and_modify_hardhat_config(config_path, new_networks_config)
     print(result)

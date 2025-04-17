@@ -28,6 +28,7 @@ import uuid
 import traceback
 from google.protobuf import timestamp_pb2
 from app.submission import UserPromptManager
+from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 
 # Ensure logs are written to stdout
@@ -387,6 +388,14 @@ def implement_deployment_script(submission, request_context, user_prompt):
         # Verify contract directory exists
         if not os.path.exists(contract_path):
             raise FileNotFoundError(f"Contract directory not found at {contract_path}")
+        
+        hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
+        hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
+        simulation_config = "hardhat.config.simulation.js"
+        if os.path.exists(hardhat_config_path):
+            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path, hardhat_network)
+        if os.path.exists(hardhat_config_path_ts):
+            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
 
         # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
         install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
@@ -410,7 +419,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
 
         # 2. Compile the contracts
         # compile_command = f"cd {contract_path} && npx hardhat compile"
-        compile_command = f"cd {contract_path} && npx hardhat compile --config hardhat.config.simulation.js"
+        compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
         compile_process = subprocess.Popen(
             compile_command,
             shell=True,
