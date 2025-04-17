@@ -386,8 +386,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
         if not os.path.exists(contract_path):
             raise FileNotFoundError(f"Contract directory not found at {contract_path}")
 
-        # 1. Install dependencies
-        install_command = f"cd {contract_path} && npm install"
+        # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
+        install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
         install_process = subprocess.Popen(
             install_command,
             shell=True,
