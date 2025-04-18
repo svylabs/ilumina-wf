@@ -1,4 +1,5 @@
 import os
+import glob
 import uuid
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
@@ -91,9 +92,33 @@ class RunContext:
         """Returns path to compiled contracts JSON file"""
         return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
     
+    # def contract_artifact_path(self, contract_name):
+    #     """Returns path to individual contract artifact"""
+    #     return os.path.join(self.cws(), f"artifacts/contracts/{contract_name}.sol/{contract_name}.json")
+
     def contract_artifact_path(self, contract_name):
-        """Returns path to individual contract artifact"""
-        return os.path.join(self.cws(), f"artifacts/contracts/{contract_name}.sol/{contract_name}.json")
+        """Returns path to individual contract artifact by searching recursively"""
+        artifacts_root = os.path.join(self.cws(), "artifacts")
+        
+        # Possible file patterns to search for
+        patterns = [
+            f"**/{contract_name}.sol/{contract_name}.json",  # Standard Hardhat structure
+            f"**/{contract_name}.json",  # Fallback - direct artifact
+            f"**/dependencies/**/{contract_name}.sol/{contract_name}.json",  # Dependencies
+            f"**/lib/**/{contract_name}.sol/{contract_name}.json",  # Libraries
+        ]
+        
+        for pattern in patterns:
+            for match in glob.glob(os.path.join(artifacts_root, pattern), recursive=True):
+                if os.path.exists(match):
+                    return match
+        
+        # If not found, try flattened path as last resort
+        flattened_path = os.path.join(self.cws(), "artifacts", f"{contract_name}.json")
+        if os.path.exists(flattened_path):
+            return flattened_path
+        
+        raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def new_gcs_summary_path(self):
         version = str(uuid.uuid4())

@@ -80,9 +80,7 @@ class DeploymentAnalyzer:
     def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         print(self.context.simulation_path())
-        # deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
         deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
-        # check_deploy_path = os.path.join(self.context.simulation_path(), "simulation/check_deployment.ts")
         
         if not os.path.exists(deployment_path):
             raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
@@ -105,23 +103,23 @@ class DeploymentAnalyzer:
         # Generate imports and artifact loading
         imports_block = []
         artifact_loading = []
-        
+
         for contract in sorted(all_contracts):
-            artifact_path = self.context.contract_artifact_path(contract)
-            if not os.path.exists(artifact_path):
-                raise FileNotFoundError(f"Contract artifact not found for {contract} at {artifact_path}")
-            
-            # Calculate relative path from deploy.ts to artifact
-            rel_path = os.path.relpath(
-                artifact_path,
-                os.path.dirname(deploy_ts_path)
-            ).replace("\\", "/")  # Windows compatibility
-            
-            imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
-            artifact_loading.append(f"""    if (!{contract}_artifact) {{
-        throw new Error(`Missing artifact for {contract}`);
-    }}
-""")
+            try:
+                artifact_path = self.context.contract_artifact_path(contract)
+                # Calculate relative path from deploy.ts to artifact
+                rel_path = os.path.relpath(
+                    artifact_path,
+                    os.path.dirname(deploy_ts_path)
+                ).replace("\\", "/")  # Windows compatibility
+                
+                imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+                artifact_loading.append(f"""    if (!{contract}_artifact) {{
+                    throw new Error(`Missing artifact for {contract}`);
+                }}
+                """)
+            except FileNotFoundError as e:
+                print(e)
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
