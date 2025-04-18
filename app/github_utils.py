@@ -10,6 +10,7 @@ def create_github_repo(token, username, repo_name):
     response = requests.get(check_repo_url, headers=headers)
     if response.status_code == 200:
         print(f"Repository exists: {response.json()}")
+        return True
     else:
         create_repo_url = "https://api.github.com/user/repos"
         payload = {"name": repo_name, "private": True}
@@ -18,7 +19,8 @@ def create_github_repo(token, username, repo_name):
             print(f"Repository created: {create_response.json()}")
         else:
             print(f"Failed to create repository: {create_response.status_code}, {create_response.json()}")
-
+        return False 
+    
 def set_github_repo_origin_and_push(repo_path, github_repo_url):
     """Set the origin of the repo and push to GitHub."""
     os.system(f"cd {repo_path} && git remote set-url origin {github_repo_url}")

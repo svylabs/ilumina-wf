@@ -53,12 +53,31 @@ class ProjectSummarizer:
         for contract in self.contracts:
             contract_detail = extract_solidity_functions_and_contract_name(contract["content"])
             print("Analyzing " + json.dumps(contract_detail))
-            response = ask_openai(json.dumps(contract_detail) + " \n Can you summarize what this contract is about?", Contract, task="understand")
+            prompt = f"""
+            Analyze this smart contract.
+
+            {json.dumps(contract_detail) + "\n\n"},
+
+             \n Can you summarize the contract: 
+             1. Purpose of the contract based on functions and contract name
+             2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
+            """
+            response = ask_openai(prompt, Contract, task="understand")
             contract_summary = response[1]
             project_summary.add_contract(contract_summary)
         return project_summary
 
     def merge_project_summaries(self, project_from_readme, project_from_contracts):
+        prompt = f"""
+        Analyze the two project summaries and merge them into one. The first summary is created from readme file, so any contracts in this list will be incorrect.
+
+        {json.dumps(project_from_readme.to_dict())}
+
+        The second summary is created from the contracts, so it should be the main source of understanding.
+
+        {json.dumps(project_from_contracts.to_dict())}
+
+        """
         response = ask_openai(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty", Project, "understand")
         return response[1]
 
@@ -73,14 +92,14 @@ class ProjectSummarizer:
         print("Analyzing the contracts")
         project_from_readme = None
         base_prompt = f"""
-        Analyze this smart contract project.
+        Analyze this smart contract project, dev_tool: {self.dev_tool}
 
         Provide a comprehensive summary including:
         1. Project purpose
         2. Main components
         3. Key functionality
 
-        Do not add anything to t he contract list yet.
+        Do not add anything to the contract list yet.
 
         """
         prompt = base_prompt

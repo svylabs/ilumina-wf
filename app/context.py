@@ -57,7 +57,19 @@ def prepare_context(data):
         "SIMULATION_TEMPLATE_REPO",
         "git@github.com:svylabs-com/ilumina-scaffolded-template.git"
     )
-    clone_repo(simulation_template_repo, simulation_repo_path)
+    # Create a private GitHub repository for the simulation repo if it doesn't already exist
+    github_token = os.getenv("GITHUB_TOKEN")
+    github_username = os.getenv("GITHUB_USERNAME")
+    if not github_token or not github_username:
+        raise Exception("GitHub credentials are not set in the environment variables")
+
+    repo_name = simulation_repo_name
+    github_repo_url = f"git@github.com:{github_username}/{repo_name}.git"
+    already_exists = create_github_repo(github_token, github_username, repo_name)
+    if already_exists:
+        clone_repo(github_repo_url, simulation_repo_path)
+    else:
+        clone_repo(simulation_template_repo, simulation_repo_path)
 
     # Install dependencies for SIMULATION project
     try:
@@ -97,16 +109,6 @@ def prepare_context(data):
                 f"Initial error: {e.stderr}\n"
                 f"Fallback error: {fallback_error.stderr}"
             )
-
-    # Create a private GitHub repository for the simulation repo if it doesn't already exist
-    github_token = os.getenv("GITHUB_TOKEN")
-    github_username = os.getenv("GITHUB_USERNAME")
-    if not github_token or not github_username:
-        raise Exception("GitHub credentials are not set in the environment variables")
-
-    repo_name = simulation_repo_name
-    github_repo_url = f"git@github.com:{github_username}/{repo_name}.git"
-    create_github_repo(github_token, github_username, repo_name)
 
     # Set the origin of the simulation repo to the GitHub repo and push if not already set
     set_github_repo_origin_and_push(simulation_repo_path, github_repo_url)
