@@ -107,7 +107,6 @@ class DeploymentAnalyzer:
 
     def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
-        print(self.context.simulation_path())
         deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
         
         if not os.path.exists(deployment_path):
@@ -141,7 +140,8 @@ class DeploymentAnalyzer:
                     os.path.dirname(deploy_ts_path)
                 ).replace("\\", "/")  # Windows compatibility
                 
-                imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+                # imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+                imports_block.append(f"import {contract}_artifact from '{rel_path}';\n")
                 artifact_loading.append(f"""    if (!{contract}_artifact) {{
                     throw new Error(`Missing artifact for {contract}`);
                 }}
