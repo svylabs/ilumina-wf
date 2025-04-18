@@ -21,8 +21,34 @@ def prepare_context(data):
     project_dir = context.cwd()
     ensure_directory_exists(project_dir)
 
+    # Clone the main repository
     clone_repo(repo, context.cws())
-    # compile the project
+
+    # Install dependencies for MAIN project
+    try:
+        # First clean install from lockfile if exists
+        if os.path.exists(os.path.join(context.cws(), 'package-lock.json')):
+            subprocess.run(["npm", "ci", "--legacy-peer-deps"],
+                         cwd=context.cws(),
+                         check=True,
+                         capture_output=True,
+                         text=True)
+        else:
+            # Full install with explicit required packages
+            subprocess.run(
+                ["npm", "install", "--legacy-peer-deps",
+                 "hardhat@^2.12.0",
+                 "@nomicfoundation/hardhat-toolbox@^2.0.0",
+                 "ethers@^5.7.2",
+                 "typescript@^4.9.5",
+                 "ts-node@^10.9.1"],
+                cwd=context.cws(),
+                check=True,
+                capture_output=True,
+                text=True
+            )
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"Main project dependency installation failed:\n{e.stderr}")
 
     # Clone the simulation repo into the project directory if not already cloned
     simulation_repo_name = f"{context.name}-simulation-" + run_id
@@ -32,6 +58,45 @@ def prepare_context(data):
         "git@github.com:svylabs-com/ilumina-scaffolded-template.git"
     )
     clone_repo(simulation_template_repo, simulation_repo_path)
+
+    # Install dependencies for SIMULATION project
+    try:
+        # First try clean install
+        subprocess.run(["npm", "ci", "--legacy-peer-deps"],
+                     cwd=simulation_repo_path,
+                     check=True,
+                     capture_output=True,
+                     text=True)
+        
+        # Verify critical packages are installed
+        verify_packages = ["hardhat", "ethers", "@nomicfoundation/hardhat-toolbox"]
+        for pkg in verify_packages:
+            subprocess.run(["npm", "ls", pkg],
+                         cwd=simulation_repo_path,
+                         check=True,
+                         capture_output=True,
+                         text=True)
+    except subprocess.CalledProcessError as e:
+        # Fallback to full install if clean install fails
+        try:
+            subprocess.run(
+                ["npm", "install", "--legacy-peer-deps",
+                 "hardhat@^2.12.0",
+                 "@nomicfoundation/hardhat-toolbox@^2.0.0",
+                 "ethers@^5.7.2",
+                 "typescript@^4.9.5",
+                 "ts-node@^10.9.1"],
+                cwd=simulation_repo_path,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        except subprocess.CalledProcessError as fallback_error:
+            raise Exception(
+                f"Simulation dependency installation failed:\n"
+                f"Initial error: {e.stderr}\n"
+                f"Fallback error: {fallback_error.stderr}"
+            )
 
     # Create a private GitHub repository for the simulation repo if it doesn't already exist
     github_token = os.getenv("GITHUB_TOKEN")
