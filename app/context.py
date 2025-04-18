@@ -1,6 +1,7 @@
 import os
 import glob
 import uuid
+import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
 
@@ -144,11 +145,33 @@ class RunContext:
     def deployment_instructions_path(self):
         return self.simulation_path() + "/deployment_instructions.json"
     
+    # def commit(self, message):
+    #     command = "cd " + self.simulation_path() + f" && git add . && git commit -m '{message}' && git push"
+    #     ret_val = os.system(command)
+    #     if ret_val != 0:
+    #         raise Exception("Failed to commit changes to the simulation repo")
+    
     def commit(self, message):
-        command = "cd " + self.simulation_path() + f" && git add . && git commit -m '{message}' && git push"
-        ret_val = os.system(command)
-        if ret_val != 0:
-            raise Exception("Failed to commit changes to the simulation repo")
+        simulation_path = self.simulation_path()
+        try:
+            # Check for changes
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=simulation_path,
+                stdout=subprocess.PIPE,
+                text=True
+            )
+            if not result.stdout.strip():
+                print("No changes to commit in the simulation repo.")
+                return
+            # Add, commit, push
+            subprocess.run(["git", "add", "."], cwd=simulation_path, check=True)
+            subprocess.run(["git", "commit", "-m", message], cwd=simulation_path, check=True)
+            subprocess.run(["git", "push"], cwd=simulation_path, check=True)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Git command failed: {e}")
+        except Exception as e:
+            raise Exception(f"Failed to commit changes to the simulation repo: {e}")
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),
