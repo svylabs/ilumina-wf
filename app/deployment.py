@@ -9,12 +9,40 @@ class DeploymentAnalyzer:
         self.context = context
         self.compiled_contracts = self.load_compiled_contracts()
 
+    # def load_compiled_contracts(self):
+    #     compiled_path = self.context.compiled_contracts_path()
+    #     if os.path.exists(compiled_path):
+    #         with open(compiled_path, "r") as f:
+    #             return json.load(f)
+    #     print(f"Warning: Compiled contracts not found at {compiled_path}. Proceeding with an empty contract list.")
+    #     return {}
+
     def load_compiled_contracts(self):
-        compiled_path = self.context.compiled_contracts_path()
-        if os.path.exists(compiled_path):
-            with open(compiled_path, "r") as f:
-                return json.load(f)
-        print(f"Warning: Compiled contracts not found at {compiled_path}. Proceeding with an empty contract list.")
+        possible_paths = [
+            self.context.compiled_contracts_path(),  # Default path
+            os.path.join(self.context.cws(), "artifacts/build-info"),  # Hardhat alternate
+            os.path.join(self.context.cws(), "build/contracts"),  # Truffle
+            os.path.join(self.context.cws(), "out")  # Foundry
+        ]
+        # Check if the compiled contracts file exists in any of the possible paths
+        for path in possible_paths:
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    # Combine all JSON files in directory
+                    combined = {}
+                    for root, _, files in os.walk(path):
+                        for file in files:
+                            if file.endswith('.json'):
+                                with open(os.path.join(root, file), 'r') as f:
+                                    data = json.load(f)
+                                    if 'contractName' in data:
+                                        combined[data['contractName']] = data
+                    return combined
+                else:
+                    with open(path, "r") as f:
+                        return json.load(f)
+        # If no compiled contracts file is found, print a warning and return an empty dictionary
+        print(f"Warning: Compiled contracts not found at any standard location. Proceeding with empty contract list.")
         return {}
 
     def identify_deployable_contracts(self):

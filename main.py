@@ -434,12 +434,23 @@ def implement_deployment_script(submission, request_context, user_prompt):
 
         # 3. Generate deploy.ts
         deploy_ts_path = deployer.implement_deployment_script()
+        # try:
+        #     deploy_ts_path = deployer.implement_deployment_script()
+        #     # Only commit if there are actual changes
+        #     if os.system(f"cd {simulation_path} && git diff --quiet") != 0:
+        #         context.commit("Updated deploy.ts with generated deployment blocks")
+        # except Exception as e:
+        #     app.logger.warning(f"Deployment script generation/commit failed: {str(e)}")
         
         # 4. Run the deployment verification
         verification_command = (
             f"cd {contract_path} && "
             "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
         )
+        # verification_command = (
+        #     f"cd {simulation_path} && "
+        #     "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
+        # )
         
         process = subprocess.Popen(
             verification_command,
