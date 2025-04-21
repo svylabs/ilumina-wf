@@ -111,9 +111,17 @@ class DeploymentAnalyzer:
 
         # Track all unique contracts we need artifacts for
         all_contracts = set()
+        deployed_contracts = set()  # Track actually deployed contracts
+        transaction_configs = []  # Track transaction configurations
+        
+        # First pass to identify all contracts and configurations
         for step in instructions["DeploymentInstruction"]["sequence"]:
-            if step["type"] in ["contract", "transaction"]:
+            if step["type"] == "contract":
                 all_contracts.add(step["contract"])
+                deployed_contracts.add(step["contract"])
+            elif step["type"] == "transaction":
+                all_contracts.add(step["contract"])
+                transaction_configs.append(step)
 
         # Generate imports and artifact loading
         imports_block = []
@@ -128,53 +136,76 @@ class DeploymentAnalyzer:
                     os.path.dirname(deploy_ts_path)
                 ).replace("\\", "/")  # Windows compatibility
                 
-                # imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
                 imports_block.append(f"import {contract}_artifact from '{rel_path}';\n")
                 artifact_loading.append(f"""    if (!{contract}_artifact) {{
-                    throw new Error(`Missing artifact for {contract}`);
-                }}
-                """)
+                        throw new Error(`Missing artifact for {contract}`);
+                    }}
+                    """)
             except FileNotFoundError as e:
-                print(e)
+                print(f"Warning: {e}")
+                # Skip this contract but continue with others
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
+        deployed_contracts_list = []  # To maintain deployment order
+        
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] == "contract":
                 contract_name = step["contract"]
-                params = ", ".join([str(p["value"]) for p in step.get("params", [])])
+                deployed_contracts_list.append(contract_name)
                 
+                # Handle constructor parameters
+                params = ""
+                if "params" in step:
+                    params = ", ".join([
+                        str(p["value"]) if not isinstance(p["value"], bool)
+                        else str(p["value"]).lower()  # Convert bool to lowercase
+                        for p in step["params"]
+                    ])
+                else:
+                    params = ""  # Ensure no unintended arguments are passed
+
                 deploy_block.append(f"""
-        // Deploy {contract_name}
-        const {contract_name}_factory = new ethers.ContractFactory(
-            {contract_name}_artifact.abi,
-            {contract_name}_artifact.bytecode,
-            deployer
-        );
-        contracts.{contract_name} = await {contract_name}_factory.deploy({params});
-        await contracts.{contract_name}.waitForDeployment();
-        console.log(`{contract_name} deployed to: ${{await contracts.{contract_name}.getAddress()}}`);
-    """)
+            // Deploy {contract_name}
+            const {contract_name}_factory = new ethers.ContractFactory(
+                {contract_name}_artifact.abi,
+                {contract_name}_artifact.bytecode,
+                deployer
+            );
+            contracts.{contract_name} = await {contract_name}_factory.deploy({params});
+            await contracts.{contract_name}.waitForDeployment();
+            console.log(`{contract_name} deployed to: ${{await contracts.{contract_name}.getAddress()}}`);
+        """)
 
         # Generate TRANSACTION_BLOCK content
         transaction_block = []
-        for step in instructions["DeploymentInstruction"]["sequence"]:
-            if step["type"] == "transaction":
-                params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
+        for step in transaction_configs:
+            contract_name = step["contract"]
+            method_name = step["method"]
+            
+            # Only include if the contract was actually deployed
+            if contract_name in deployed_contracts:
+                params = ", ".join([
+                    f"contracts.{p['value']}.address" 
+                    if p['type'] == 'contract_reference'
+                    else str(p['value'])
+                    for p in step.get("params", [])
+                ])
+                
                 transaction_block.append(f"""
-        // Configure {step['contract']}.{step['method']}
-        await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`{step['contract']}.{step['method']} configured`);
-    """)
+            // Configure {contract_name}.{method_name}
+            await contracts.{contract_name}.{method_name}({params});
+            console.log(`{contract_name}.{method_name} configured`);
+        """)
 
         # Generate MAPPING_BLOCK content
         mapping_block = """
-        // Final contract addresses
-        console.log("\\n=== Deployment Summary ===");
-        for (const [name, contract] of Object.entries(contracts)) {
-            console.log(`${name}: ${await contract.getAddress()}`);
-        }
-    """
+            // Final contract addresses
+            console.log("\\n=== Deployment Summary ===");
+            for (const [name, contract] of Object.entries(contracts)) {
+                console.log(`${name}: ${await contract.getAddress()}`);
+            }
+        """
 
         # Build the complete file content
         updated_code = template.replace(
