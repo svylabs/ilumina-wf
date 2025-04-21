@@ -160,32 +160,18 @@ class RunContext:
         """Returns path to compiled contracts JSON file"""
         return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
     
-    # def contract_artifact_path(self, contract_name):
-    #     """Returns path to individual contract artifact"""
-    #     return os.path.join(self.cws(), f"artifacts/contracts/{contract_name}.sol/{contract_name}.json")
-
     def contract_artifact_path(self, contract_name):
-        """Returns path to individual contract artifact by searching recursively"""
+        """Search for any JSON file containing the contract name."""
         artifacts_root = os.path.join(self.cws(), "artifacts")
-        
-        # Possible file patterns to search for
-        patterns = [
-            f"**/{contract_name}.sol/{contract_name}.json",  # Standard Hardhat structure
-            f"**/{contract_name}.json",  # Fallback - direct artifact
-            f"**/dependencies/**/{contract_name}.sol/{contract_name}.json",  # Dependencies
-            f"**/lib/**/{contract_name}.sol/{contract_name}.json",  # Libraries
-        ]
-        
-        for pattern in patterns:
-            for match in glob.glob(os.path.join(artifacts_root, pattern), recursive=True):
-                if os.path.exists(match):
-                    return match
-        
-        # If not found, try flattened path as last resort
-        flattened_path = os.path.join(self.cws(), "artifacts", f"{contract_name}.json")
-        if os.path.exists(flattened_path):
-            return flattened_path
-        
+        if not os.path.exists(artifacts_root):
+            raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
+
+        # Search for JSON files containing the contract name
+        for root, _, files in os.walk(artifacts_root):
+            for file in files:
+                if file.endswith(".json") and contract_name in file:
+                    return os.path.join(root, file)
+
         raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def new_gcs_summary_path(self):
@@ -211,12 +197,6 @@ class RunContext:
     
     def deployment_instructions_path(self):
         return self.simulation_path() + "/deployment_instructions.json"
-    
-    # def commit(self, message):
-    #     command = "cd " + self.simulation_path() + f" && git add . && git commit -m '{message}' && git push"
-    #     ret_val = os.system(command)
-    #     if ret_val != 0:
-    #         raise Exception("Failed to commit changes to the simulation repo")
     
     def commit(self, message):
         simulation_path = self.simulation_path()
