@@ -169,8 +169,11 @@ class RunContext:
         # Search for JSON files containing the contract name
         for root, _, files in os.walk(artifacts_root):
             for file in files:
-                if file.endswith(".json") and contract_name in file:
-                    return os.path.join(root, file)
+                if file.endswith(".json"):
+                    file_path = os.path.join(root, file)
+                    # print(f"Found JSON file in context: {file_path}")  # Print the JSON file path
+                    if contract_name in file:
+                        return file_path
 
         raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
