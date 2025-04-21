@@ -56,11 +56,11 @@ class ProjectSummarizer:
             prompt = f"""
             Analyze this smart contract.
 
-            {json.dumps(contract_detail) + "\n\n"},
+            {json.dumps(contract_detail)}
 
-             \n Can you summarize the contract: 
-             1. Purpose of the contract based on functions and contract name
-             2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
+            Can you summarize the contract: 
+            1. Purpose of the contract based on functions and contract name
+            2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
             """
             response = ask_openai(prompt, Contract, task="understand")
             contract_summary = response[1]
@@ -157,4 +157,4 @@ def __init__(context):
     Initialize the summarizer with the given context.
     """
     return ProjectSummarizer(context)
-    
+
