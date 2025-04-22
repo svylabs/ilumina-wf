@@ -92,11 +92,13 @@ class Function(BaseModel):
 
 class Contract(BaseModel):
     name: str
-    type: Literal["external", "library", "interface"] # external, library, interface
+    type: Literal["external", "library", "interface"]  # external, library, interface
     summary: str
     functions: list[Function]
-    is_deployable: bool
-    constructor: str
+    # is_deployable: bool
+    # constructor: str
+    is_deployable: bool = False  # Default to False
+    constructor: Optional[str] = None  # Default to None
 
     def __str__(self):
         return json.dumps(self.dict())
