@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 from pydantic import BaseModel
 from .context import RunContext
-from .openai import ask_openai
+from .action_openai import ask_openai
 from .models import Project
 
 class ActionTemplate(BaseModel):
@@ -39,7 +39,7 @@ class ActionGenerator:
                 )
     
     def generate_action_file(self, action_name: str, contract_name: str, 
-                             function_name: str, summary: str):
+                           function_name: str, summary: str):
         """Generate a TypeScript action file for a specific action"""
         # Clean action name for filename
         filename = action_name.lower().replace(" ", "_") + ".ts"
@@ -75,19 +75,63 @@ class ActionGenerator:
         
         try:
             # Get the generated code from LLM
-            code = ask_openai(prompt, type="text", task="code_generation")
+            code = ask_openai(prompt, response_type="text")
             
             # Validate the response
-            if not code.strip():
-                raise ValueError("Received empty code from ask_openai")
+            if not code or not isinstance(code, str) or not code.strip():
+                raise ValueError("Received empty or invalid code from ask_openai")
+
+            # Ensure the code starts with 'import'
+            if not code.strip().startswith("import"):
+                code = f"import {{ Action, Actor }} from '@svylabs/ilumina';\nimport type {{ RunContext }} from '@svylabs/ilumina';\n\n{code}"
 
             # Save the generated file
             with open(filepath, "w") as f:
                 f.write(code)
             
-            print(f"Generated action file: {filepath}")
+            print(f"Successfully generated action file: {filepath}")
         except Exception as e:
-            print(f"Error generating action file for {action_name}: {e}")
+            print(f"Error generating action file for {action_name}: {str(e)}")
+            # Create a basic template as fallback
+            fallback_code = self._create_fallback_template(action_name, contract_name, function_name)
+            with open(filepath, "w") as f:
+                f.write(fallback_code)
+            print(f"Created fallback template for {action_name}")
+        
+    def _create_fallback_template(self, action_name: str, contract_name: str, function_name: str) -> str:
+        """Create a basic fallback template when LLM fails"""
+        class_name = action_name.replace(" ", "") + "Action"
+        return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
+import type {{ RunContext }} from "@svylabs/ilumina";
+
+export class {class_name} extends Action {{
+    private contracts: any;
+    
+    constructor(contracts: any) {{
+        super("{action_name}");
+        this.contracts = contracts;
+    }}
+
+    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
+        actor.log("Executing {action_name}...");
+        try {{
+            const result = await this.contracts.{contract_name}.connect(actor.account.value)
+                .{function_name}();
+            return {{ txHash: result.hash }};
+        }} catch (error) {{
+            actor.log(`Error in {action_name}: ${{error}}`);
+            throw error;
+        }}
+    }}
+
+    async validate(context: RunContext, actor: Actor, 
+                 previousSnapshot: any, newSnapshot: any, 
+                 actionParams: any): Promise<boolean> {{
+        actor.log("Validating {action_name}...");
+        return true;
+    }}
+}}
+"""
         
     def get_action_imports(self) -> List[str]:
         """Generate import statements for all action files"""
