@@ -1,35 +1,59 @@
 import re
 import json
 from typing import List, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
+from enum import Enum
+from typing import Literal
+
+import re
 
 def extract_solidity_functions_and_contract_name(content):
-    """Extract the contract name and public/external functions from a Solidity contract file."""
-    #with open(file_path, 'r') as f:
-    #    content = f.read()
+    """Extract the contract name, type, public/external functions, and constructor (modern syntax) from a Solidity contract file."""
 
-    # Extract contract name
     # Extract contract type and name
     contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)'
     contract_match = re.search(contract_pattern, content)
-    
+
     if contract_match:
         contract_type, contract_name = contract_match.groups()
-        contract_type = contract_type.replace("abstract contract", "abstract")  # Normalize for consistency
+        contract_type = contract_type.replace("abstract contract", "abstract")
     else:
         contract_name = "Unknown"
         contract_type = "Unknown"
 
-    # Updated regex to capture public/external function definitions across multiple lines
-    function_pattern = r'function\s+(\w+)\s*\(([^)]*)\)\s*(?:public|external)\s*(?:view|pure|payable)?\s*(?:returns\s*\(([^)]*)\))?'
+    # Helper: Extract full block starting at first opening brace
+    def extract_block(start_index):
+        brace_count = 0
+        i = start_index
+        while i < len(content):
+            if content[i] == '{':
+                brace_count += 1
+            elif content[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return content[start_index:i + 1]
+            i += 1
+        return ""
+
+    # Extract constructor using modern syntax only
+    constructor_str = None
+    constructor_pattern = r'\bconstructor\s*\(([^)]*)\)[^{]*{'
+    constructor_match = re.search(constructor_pattern, content)
+    if constructor_match:
+        start = constructor_match.start()
+        brace_start = content.find('{', start)
+        constructor_str = content[start:brace_start] + extract_block(brace_start)
+
+    # Extract public/external functions
+    function_pattern = r'function\s+(\w+)\s*\(([^)]*)\)\s*(public|external)?\s*(view|pure|payable)?\s*(returns\s*\(([^)]*)\))?'
     matches = re.findall(function_pattern, content, re.DOTALL)
 
     functions = []
     for match in matches:
-        function_name, params, returns = match
+        function_name, params, visibility, modifier, _, returns = match
         param_list = [param.strip() for param in params.split(',')] if params else []
-        visibility = "public" if "public" in content or "external" in content else "unknown"
+        visibility = visibility if visibility else "unknown"
         returns = returns.strip() if returns else None
 
         functions.append({
@@ -39,7 +63,14 @@ def extract_solidity_functions_and_contract_name(content):
             "returns": returns
         })
 
-    return {"contract_name": contract_name, "type": contract_type, "functions": functions}
+    return {
+        "contract_name": contract_name,
+        "type": contract_type,
+        "constructor": constructor_str,
+        "functions": functions
+    }
+
+
 
 class Function(BaseModel):
     name: str
@@ -60,18 +91,19 @@ class Function(BaseModel):
         }
 
 class Contract(BaseModel):
-    path: str
     name: str
-    type: str # external, library, interface
+    type: Literal["external", "library", "interface"] # external, library, interface
     summary: str
     functions: list[Function]
+    is_deployable: bool
+    constructor: str
 
     def __str__(self):
         return json.dumps(self.dict())
     
     def to_dict(self):
         return {
-            "path": self.path,
+            #"path": self.path,
             "name": self.name,
             "type": self.type,
             "summary": self.summary,
@@ -82,7 +114,7 @@ class Project(BaseModel):
     name: str
     summary: str
     type: str
-    dev_tool: str
+    dev_tool: Literal["hardhat", "foundry"]
     contracts: list[Contract]
 
     def __str__(self):
@@ -116,11 +148,17 @@ class Project(BaseModel):
                 return Project.load(content)
         return None
 
+    
+class Param(BaseModel):
+    name: str
+    value: Optional[str] = None
+    type: Literal["val", "ref"] # val | ref
+
 class SequenceStep(BaseModel):
-    type: str  # "deploy" or "call"
-    contract: str
+    type: Literal["deploy", "call"]  # "deploy" or "call"
+    contract: str = Field(..., description="Name of the contract to deploy or invoke")
     function: Optional[str] = None
-    params: List[Dict[str, str]]
+    params: List[Param]
 
 class DeploymentInstruction(BaseModel):
     sequence: List[SequenceStep]

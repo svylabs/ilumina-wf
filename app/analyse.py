@@ -74,9 +74,9 @@ class Analyzer:
         elif self.current_step == "done":
             print("Analysis complete")
 
-    def generate_deployment_instructions(self):
+    def generate_deployment_instructions(self, user_prompt=None):
         deployment_analyzer = DeploymentAnalyzer(self.context)
-        contracts = deployment_analyzer.analyze()
+        contracts = deployment_analyzer.analyze(user_prompt=user_prompt)
 
         # Prepare deployment sequence
         sequence = DeploymentInstruction.prepare_sequence(contracts)

@@ -11,4 +11,4 @@ def clone_repo(repo_url, destination_path):
         os.system(f"git clone {repo_url} {destination_path}")
     else:
         print(f"Repository already exists at {destination_path}")
-        os.system(f"cd {destination_path} && git pull")
+        os.system(f"cd {destination_path} && git stash && git pull")

@@ -11,11 +11,12 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.context import prepare_context
+from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
 from app.models import Project
+from app.deployment import DeploymentAnalyzer
 from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
@@ -26,6 +27,9 @@ from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
+from app.submission import UserPromptManager
+from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
+import subprocess
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -39,6 +43,7 @@ for key, value in os.environ.items():
 # Initialize services
 gcs = GCSStorage()
 github_api = GitHubAPI()
+user_prompt_manager = UserPromptManager(datastore_client)
 
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
@@ -54,7 +59,7 @@ from flask import request, jsonify
 from google.cloud import datastore
 
 # Annotation to inject submission from Datastore
-def inject_submission(f):
+def inject_analysis_params(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         data = request.get_json()
@@ -69,17 +74,22 @@ def inject_submission(f):
         if request_context == None:
             request_context = "bg"
 
+        user_prompt = data.get("user_prompt")
+
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
 
-        # Pass the submission to the wrapped function
-        return f(submission, request_context, *args, **kwargs)
+        # Pass the submission, request_context, and user_prompt to the wrapped function
+        return f(submission, request_context, user_prompt, *args, **kwargs)
 
     return decorated_function
 
-def create_task(data):
+def create_task(data, forward_params=None):
     api_suffix = "/analyze"
-    if "step" in data:
+    if forward_params:
+        for key, value in forward_params.items():
+            data[key] = value
+    if "step" in data and data["step"] != "begin_analysis":
         api_suffix = "/" + data["step"]
     """Create a Cloud Task for async processing"""
     scheduled_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=10)
@@ -104,9 +114,19 @@ def get_submission(submission_id):
     submission = datastore_client.get(key)
     if not submission:
         return jsonify({"error": "Submission not found"}), 404
+
     message = ""
     if submission.get("status") == "error":
         message = submission.get("message", "Unknown error")
+
+    # Fetch latest prompts for each step
+    steps = ["analyze_project", "analyze_actors", "analyze_deployment"]
+    latest_prompts = {}
+    for step in steps:
+        latest_prompt = user_prompt_manager.query_latest_prompt(submission_id, step)
+        if latest_prompt:
+            latest_prompts[step] = latest_prompt.get("user_prompt")
+
     return jsonify({
         "submission_id": submission["submission_id"],
         "github_repository_url": submission["github_repository_url"],
@@ -116,7 +136,8 @@ def get_submission(submission_id):
         "step": submission.get("step"),
         "status": submission.get("status"),
         "completed_steps": submission.get("completed_steps", []),
-        "message": message
+        "message": message,
+        "latest_prompts": latest_prompts
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -133,16 +154,17 @@ def begin_analysis():
     try:
         response = requests.get(repo_url)
         if response.status_code != 200:
-            update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": "Repository URL is not accessible"})
             return jsonify({"error": "Repository URL is not accessible"}), 400
     except Exception as e:
-        update_analysis_status(data["submission_id"], "begin_analysis", "error", metadata={"message": str(e)})
         return jsonify({"error": "Failed to access repository URL"}), 400
 
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
+    data["step"] = "begin_analysis"
+    data["status"] = "success"
 
     store_analysis_metadata(data)
     task_name = create_task(data)
+    # Update the submission with the task name
 
     return jsonify({
         "message": "Analysis started",
@@ -159,6 +181,13 @@ def analyze():
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
+        step_from_request = data.get("step")
+
+        forward_params = {}
+        if "request_context" in data:
+            forward_params["request_context"] = data["request_context"]
+        if "user_prompt" in data:
+            forward_params["user_prompt"] = data["user_prompt"]
 
         if not submission_id:
             return jsonify({"error": "Missing submission_id"}), 400
@@ -166,30 +195,68 @@ def analyze():
         # Get the current context using prepare_context
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
 
-        # Ensure submission has a 'step' attribute
-        if "step" not in submission or submission["step"] is None or submission["step"] == "":
-            create_task({"submission_id": submission_id, "step": "analyze_project"})
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Check the status and step
+        step = submission.get("step")
+        status = submission.get("status")
+        print(f"{submission}")
+
+        next_step = step
+        if step_from_request != None:
+            next_step = step_from_request
+        else:
+            if step == None or step == "begin_analysis":
+                next_step = "analyze_project"
+            elif step == "analyze_project":
+                if status is not None and status == "success":
+                    next_step = "analyze_actors"
+            elif step == "analyze_actors":
+                if status is not None and status == "success":
+                    next_step = "None"
+            elif step == "analyze_deployment":
+                if status is not None and status == "success":
+                    next_step = "implement_deployment_script"
+            elif step == "implement_deployment_script":
+                if status is not None and status == "success":
+                    next_step = "None"
+        
+        if next_step == "analyze_project":
+            create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_project"}), 200
-        elif submission["step"] == "analyze_project":
-            create_task({"submission_id": submission_id, "step": "analyze_actors"})
+        elif next_step == "analyze_actors":
+            create_task({"submission_id": submission_id, "step": "analyze_actors"}, forward_params=forward_params)
+            # Update the submission with the task name
             return jsonify({"message": "Enqueued step: analyze_actors"}), 200
-        elif submission["step"] == "analyze_actors":
-            #create_task({"submission_id": submission_id, "step": "analyze_deployment"})
+        elif next_step == "analyze_deployment":
+            create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
+        elif next_step == "implement_deployment_script":
+            #create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
     except Exception as e:
+        app.logger.error("Error in analyze endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
     
 @app.route('/api/analyze_project', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_project(submission, request_context):
+@inject_analysis_params
+def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
+
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_project", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
+
         # Get the current context using prepare_context
-        print (submission)
         context = prepare_context(submission)
 
         # Perform the project analysis
@@ -210,20 +277,29 @@ def analyze_project(submission, request_context):
             if "step" in submission:
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"summary_version": version})
-            #update_analysis_status(submission.submission_id, "analyze_project", "success")
             return jsonify({"summary": project_summary.to_dict()}), 200
 
         return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_project", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_actors', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_actors(submission, request_context):
+@inject_analysis_params
+def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_actors", "in_progress")
+
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_actors", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_actors", user_prompt)
+
         # Get the current context using prepare_context
         context = prepare_context(submission)
 
@@ -237,7 +313,7 @@ def analyze_actors(submission, request_context):
         upload_to_gcs(path, context.actor_summary_path())
 
         if request_context == "bg": 
-        # Update the task queue
+            # Update the task queue
             update_analysis_status(submission["submission_id"], "analyze_actors", "success", metadata={"actor_version": version})
             create_task({"submission_id": submission["submission_id"]})
         else:
@@ -245,31 +321,255 @@ def analyze_actors(submission, request_context):
             if "step" in submission:
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
-            #update_analysis_status(submission.submission_id, "analyze_project")
-            # If in foreground, return the result
             return jsonify({"actors": actors.to_dict()}), 200
         return jsonify({"message": "Project analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
-@inject_submission
-def analyze_deployment(submission, request_context):
+@inject_analysis_params
+def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
     try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_deployment", "in_progress")
+
+        # Store user prompt if available
+        if user_prompt:
+            user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_deployment", user_prompt)
+            user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_deployment", user_prompt)
+
         # Get the current context using prepare_context
         context = prepare_context(submission)
 
         # Perform the deployment analysis
         analyzer = Analyzer(context)
-        analyzer.create_deployment_instructions()
+        deployment_instructions = analyzer.generate_deployment_instructions(user_prompt=user_prompt)
+        version, path = context.new_gcs_deployment_instructions_path()
+
+        # Upload deployment instructions to Google Cloud Storage
+        upload_to_gcs(path, context.deployment_instructions_path())
+        if request_context == "bg":
+            # Update the task queue
+            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_version": version})
+            create_task({"submission_id": submission["submission_id"]})
+        else:
+            step = "None"
+            if "step" in submission:
+                step = submission["step"]
+            update_analysis_status(submission["submission_id"], step, "success", metadata={"deployment_instruction_version": version})
+            return jsonify({"deployment_instructions": deployment_instructions.to_dict()}), 200
 
         return jsonify({"message": "Deployment analysis completed"}), 200
 
     except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/implement_deployment_script', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def implement_deployment_script(submission, request_context, user_prompt):
+    """Execute and verify the deployment script"""
+    context = prepare_context(submission)
+    try:
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+        contract_path = context.cws()
+        simulation_path = context.simulation_path()
+        print(f"Simulation path: {simulation_path}")
+        print(f"Contract path: {contract_path}")
+        
+        # Verify contract directory exists
+        if not os.path.exists(contract_path):
+            raise FileNotFoundError(f"Contract directory not found at {contract_path}")
+        
+        hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
+        hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
+        simulation_config = "hardhat.config.simulation.js"
+        if os.path.exists(hardhat_config_path):
+            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path, hardhat_network)
+        if os.path.exists(hardhat_config_path_ts):
+            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
+
+        # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
+        install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
+        # install_command = (
+        #     f"cd {contract_path} && "
+        #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
+        #     "@nomicfoundation/hardhat-ethers ethers && "
+        #     "npm install --legacy-peer-deps"
+        # )
+        install_process = subprocess.Popen(
+            install_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
+        
+        if install_process.returncode != 0:
+            raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
+
+        # 2. Compile the contracts
+        # compile_command = f"cd {contract_path} && npx hardhat compile"
+        compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
+        compile_process = subprocess.Popen(
+            compile_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        compile_stdout, compile_stderr = compile_process.communicate(timeout=300)
+        
+        if compile_process.returncode != 0:
+            raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
+
+        # 3. Generate deploy.ts
+        deploy_ts_path = deployer.implement_deployment_script()
+        
+        # 4. Run the deployment verification
+        verification_command = (
+            f"cd {contract_path} && "
+            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
+        )
+        
+        process = subprocess.Popen(
+            verification_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
+        
+        # Parse results
+        if process.returncode != 0:
+            error_msg = _extract_error_details(stderr, stdout)
+            update_analysis_status(
+                submission["submission_id"],
+                "implement_deployment_script",
+                "error",
+                metadata={
+                    "message": "Deployment verification failed",
+                    "error": error_msg,
+                    "log": stdout + stderr,
+                    "compile_log": compile_stdout + compile_stderr,
+                    "install_log": install_stdout + install_stderr
+                }
+            )
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "log": stdout + stderr,
+                "compile_log": compile_stdout + compile_stderr,
+                "install_log": install_stdout + install_stderr
+            }), 400
+        
+        # Extract contract addresses from output
+        contract_addresses = _parse_contract_addresses(stdout)
+        
+        result = {
+            "success": True,
+            "contract_addresses": contract_addresses,
+            "log": stdout,
+            "compile_log": compile_stdout + compile_stderr,
+            "install_log": install_stdout + install_stderr,
+            "deployment_path": deploy_ts_path
+        }
+
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "success",
+            metadata=result
+        )
+
+        return jsonify(result), 200
+
+    except subprocess.TimeoutExpired:
+        error_msg = "Operation timed out"
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "error",
+            metadata={"message": error_msg}
+        )
+        return jsonify({
+            "success": False,
+            "error": error_msg,
+            "type": "timeout"
+        }), 400
+        
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logs = {
+            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted",
+            "install_log": install_stdout + install_stderr if 'install_stdout' in locals() else "Not attempted"
+        }
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "error",
+            metadata={
+                "message": str(e),
+                "trace": error_trace,
+                **logs
+            }
+        )
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": error_trace,
+            **logs
+        }), 500
+    
+def _extract_error_details(stderr, stdout):
+    """Extract meaningful error details from deployment output"""
+    error_lines = []
+    for line in (stderr + stdout).split('\n'):
+        if 'error' in line.lower() or 'fail' in line.lower():
+            error_lines.append(line.strip())
+    return '\n'.join(error_lines[-5:]) if error_lines else "Unknown deployment error"
+
+def _parse_contract_addresses(output):
+    """Parse contract addresses from deployment output"""
+    addresses = {}
+    for line in output.split('\n'):
+        if 'deployed to:' in line:
+            parts = line.split('deployed to:')
+            if len(parts) == 2:
+                name = parts[0].strip()
+                address = parts[1].strip()
+                addresses[name] = address
+        elif ':' in line and '===' not in line:  # Address summary lines
+            parts = line.split(':')
+            if len(parts) >= 2:
+                name = parts[0].strip()
+                address = ':'.join(parts[1:]).strip()
+                addresses[name] = address
+    return addresses
+
+@app.route('/api/submission_logs/<submission_id>', methods=['GET'])
+@authenticate
+def get_submission_logs(submission_id):
+    """Fetch all logs for a given submission ID, ordered by updated time."""
+    query = datastore_client.query(kind="SubmissionLog")
+    query.add_filter("submission_id", "=", submission_id)
+    query.order = ["-updated_at"]
+
+    logs = list(query.fetch())
+    if not logs:
+        return jsonify({"error": "No logs found for the given submission ID"}), 404
+
+    return jsonify({"logs": logs}), 200
 
 @app.route('/')
 def home():

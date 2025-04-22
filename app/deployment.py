@@ -10,12 +10,29 @@ class DeploymentAnalyzer:
         self.compiled_contracts = self.load_compiled_contracts()
 
     def load_compiled_contracts(self):
-        compiled_path = self.context.compiled_contracts_path()
-        if os.path.exists(compiled_path):
-            with open(compiled_path, "r") as f:
-                return json.load(f)
-        print(f"Warning: Compiled contracts not found at {compiled_path}. Proceeding with an empty contract list.")
-        return {}
+        """Search for all JSON files in the artifacts directory and extract contract data."""
+        artifacts_root = os.path.join(self.context.cws(), "artifacts")
+        if not os.path.exists(artifacts_root):
+            print(f"Warning: Artifacts directory not found: {artifacts_root}")
+            return {}
+
+        compiled_contracts = {}
+        for root, _, files in os.walk(artifacts_root):
+            for file in files:
+                if file.endswith(".json"):
+                    file_path = os.path.join(root, file)
+                    # print(f"Found JSON file in deployment: {file_path}")  # Print the JSON file path
+                    try:
+                        with open(file_path, "r") as f:
+                            data = json.load(f)
+                            if "contractName" in data:  # Check for contract metadata
+                                compiled_contracts[data["contractName"]] = data
+                    except json.JSONDecodeError:
+                        print(f"Warning: Failed to parse JSON file: {file_path}")
+
+        if not compiled_contracts:
+            print(f"Warning: No valid contract artifacts found in {artifacts_root}")
+        return compiled_contracts
 
     def identify_deployable_contracts(self):
         deployable_contracts = []
@@ -33,7 +50,7 @@ class DeploymentAnalyzer:
         with open(deployment_path, 'w') as f:
             json.dump([instruction.to_dict() for instruction in instructions], f, indent=2)
 
-    def analyze(self):
+    def analyze(self, user_prompt=None):
         deployable_contracts = self.identify_deployable_contracts()
         if not deployable_contracts:
             print("Warning: No deployable contracts found. Proceeding without deployment instructions.")
@@ -77,30 +94,67 @@ class DeploymentAnalyzer:
             print(f"Error: Failed to generate deployment instructions: {e}")
             return []
 
-    def generate_deploy_ts(self):
+    def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
-        deploy_ts_path = os.path.join(self.context.simulation_path(), "contracts/deploy.ts")
-
+        deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
+        
         if not os.path.exists(deployment_path):
             raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
+        if not os.path.exists(deploy_ts_path):
+            raise FileNotFoundError(f"Missing deploy.ts template at {deploy_ts_path}")
 
         with open(deployment_path, "r") as f:
             instructions = json.load(f)
 
-        # Read existing deploy.ts
+        # Read existing deploy.ts template
         with open(deploy_ts_path, "r") as f:
             template = f.read()
+
+        # Track all unique contracts we need artifacts for
+        all_contracts = set()
+        for step in instructions["DeploymentInstruction"]["sequence"]:
+            if step["type"] in ["contract", "transaction"]:
+                all_contracts.add(step["contract"])
+
+        # Generate imports and artifact loading
+        imports_block = []
+        artifact_loading = []
+
+        for contract in sorted(all_contracts):
+            try:
+                artifact_path = self.context.contract_artifact_path(contract)
+                # Calculate relative path from deploy.ts to artifact
+                rel_path = os.path.relpath(
+                    artifact_path,
+                    os.path.dirname(deploy_ts_path)
+                ).replace("\\", "/")  # Windows compatibility
+                
+                # imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+                imports_block.append(f"import {contract}_artifact from '{rel_path}';\n")
+                artifact_loading.append(f"""    if (!{contract}_artifact) {{
+                    throw new Error(`Missing artifact for {contract}`);
+                }}
+                """)
+            except FileNotFoundError as e:
+                print(e)
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
         for step in instructions["DeploymentInstruction"]["sequence"]:
             if step["type"] == "contract":
+                contract_name = step["contract"]
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
+                
                 deploy_block.append(f"""
-        const {step['contract']} = await ethers.getContractFactory("{step['contract']}");
-        contracts.{step['contract']} = await {step['contract']}.deploy({params});
-        await contracts.{step['contract']}.waitForDeployment();
-        console.log(`{step['contract']} deployed to: ${{await contracts.{step['contract']}.getAddress()}}`);
+        // Deploy {contract_name}
+        const {contract_name}_factory = new ethers.ContractFactory(
+            {contract_name}_artifact.abi,
+            {contract_name}_artifact.bytecode,
+            deployer
+        );
+        contracts.{contract_name} = await {contract_name}_factory.deploy({params});
+        await contracts.{contract_name}.waitForDeployment();
+        console.log(`{contract_name} deployed to: ${{await contracts.{contract_name}.getAddress()}}`);
     """)
 
         # Generate TRANSACTION_BLOCK content
@@ -109,27 +163,35 @@ class DeploymentAnalyzer:
             if step["type"] == "transaction":
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
                 transaction_block.append(f"""
+        // Configure {step['contract']}.{step['method']}
         await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`Configured {step['contract']}.{step['method']}`);
+        console.log(`{step['contract']}.{step['method']} configured`);
     """)
 
         # Generate MAPPING_BLOCK content
         mapping_block = """
-        console.log("\\nFinal contract addresses:");
+        // Final contract addresses
+        console.log("\\n=== Deployment Summary ===");
         for (const [name, contract] of Object.entries(contracts)) {
-            console.log(`${{name}}: ${{await contract.getAddress()}}`);
+            console.log(`${name}: ${await contract.getAddress()}`);
         }
     """
 
-        # Replace the marker blocks
+        # Build the complete file content
         updated_code = template.replace(
-            "// DEPLOY_BLOCK - Auto-generated contract deployments\n    // This section will be replaced with contract deployment code",
+            "// IMPORT_BLOCK - Auto-generated contract imports",
+            "".join(imports_block).strip()
+        ).replace(
+            "// ARTIFACT_LOAD_BLOCK - Auto-generated artifact validation",
+            "".join(artifact_loading).strip()
+        ).replace(
+            "// DEPLOY_BLOCK - Auto-generated contract deployments",
             "".join(deploy_block).strip()
         ).replace(
-            "// TRANSACTION_BLOCK - Auto-generated contract configurations\n    // This section will be replaced with contract setup transactions",
+            "// TRANSACTION_BLOCK - Auto-generated contract configurations",
             "".join(transaction_block).strip()
         ).replace(
-            "// MAPPING_BLOCK - Auto-generated address mappings\n    // This section will be replaced with contract address mappings",
+            "// MAPPING_BLOCK - Auto-generated address mappings",
             mapping_block.strip()
         )
 

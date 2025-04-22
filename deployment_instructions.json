@@ -1,0 +1,117 @@
+{
+    "DeploymentInstruction": {
+      "sequence": [
+        {
+          "type": "contract",
+          "contract": "DFIDToken",
+          "params": []
+        },
+        {
+          "type": "contract",
+          "contract": "DFIREToken",
+          "params": []
+        },
+        {
+          "type": "contract",
+          "contract": "StabilityPool",
+          "params": [
+            { "name": "isActive", "value": true, "type": "val" }
+          ]
+        },
+        {
+          "type": "contract",
+          "contract": "MockPriceOracle",
+          "params": []
+        },
+        {
+          "type": "contract",
+          "contract": "StableBaseCDP",
+          "params": []
+        },
+        {
+          "type": "contract",
+          "contract": "DFIREStaking",
+          "params": [
+            { "name": "isActive", "value": true, "type": "val" }
+          ]
+        },
+        {
+          "type": "contract",
+          "contract": "OrderedDoublyLinkedList",
+          "name": "redemptionQueue",
+          "params": []
+        },
+        {
+          "type": "contract",
+          "contract": "OrderedDoublyLinkedList",
+          "name": "liquidationQueue",
+          "params": []
+        },
+        {
+          "type": "transaction",
+          "contract": "DFIDToken",
+          "method": "setAddresses",
+          "params": [
+            { "name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "DFIREToken",
+          "method": "setAddresses",
+          "params": [
+            { "name": "stabilityPool", "value": "StabilityPool", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "StabilityPool",
+          "method": "setAddresses",
+          "params": [
+            { "name": "sbdToken", "value": "DFIDToken", "type": "ref" },
+            { "name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref" },
+            { "name": "dfireToken", "value": "DFIREToken", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "DFIREStaking",
+          "method": "setAddresses",
+          "params": [
+            { "name": "dfireToken", "value": "DFIREToken", "type": "ref" },
+            { "name": "sbdToken", "value": "DFIDToken", "type": "ref" },
+            { "name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "redemptionQueue",
+          "method": "setAddresses",
+          "params": [
+            { "name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "liquidationQueue",
+          "method": "setAddresses",
+          "params": [
+            { "name": "stableBaseCDP", "value": "StableBaseCDP", "type": "ref" }
+          ]
+        },
+        {
+          "type": "transaction",
+          "contract": "StableBaseCDP",
+          "method": "setAddresses",
+          "params": [
+            { "name": "sbdToken", "value": "DFIDToken", "type": "ref" },
+            { "name": "priceOracle", "value": "MockPriceOracle", "type": "ref" },
+            { "name": "stabilityPool", "value": "StabilityPool", "type": "ref" },
+            { "name": "dfireStaking", "value": "DFIREStaking", "type": "ref" },
+            { "name": "liquidationQueue", "value": "liquidationQueue", "type": "ref" },
+            { "name": "redemptionQueue", "value": "redemptionQueue", "type": "ref" }
+          ]
+        }
+      ]
+    }
+  }
