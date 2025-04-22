@@ -308,9 +308,9 @@ def analyze_actors(submission, request_context, user_prompt):
         analyzer = Analyzer(context)
         actors = analyzer.identify_actors()
 
-        # Generate action files
+        # Generate actor files
         action_generator = ActionGenerator(context)
-        action_generator.generate_all_actions()
+        action_generator.generate_all_actors()
 
         version, path = context.new_gcs_actor_summary_path()
 
