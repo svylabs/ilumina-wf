@@ -10,8 +10,8 @@ class DeploymentAnalyzer:
         self.compiled_contracts = self.load_compiled_contracts()
 
     def load_compiled_contracts(self):
-        """Search for all JSON files in the artifacts directory and extract contract data."""
-        artifacts_root = os.path.join(self.context.cws(), "artifacts")
+        """Search for all JSON files in the artifacts/contracts directory and extract contract data."""
+        artifacts_root = os.path.join(self.context.cws(), "artifacts/contracts")
         if not os.path.exists(artifacts_root):
             print(f"Warning: Artifacts directory not found: {artifacts_root}")
             return {}

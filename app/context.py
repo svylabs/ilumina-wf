@@ -161,8 +161,8 @@ class RunContext:
         return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
     
     def contract_artifact_path(self, contract_name):
-        """Search for any JSON file containing the contract name."""
-        artifacts_root = os.path.join(self.cws(), "artifacts")
+        """Search for any JSON file containing the contract name in artifacts/contracts."""
+        artifacts_root = os.path.join(self.cws(), "artifacts/contracts")
         if not os.path.exists(artifacts_root):
             raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
 
