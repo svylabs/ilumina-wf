@@ -11,6 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
+from app.actions import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
@@ -306,6 +307,10 @@ def analyze_actors(submission, request_context, user_prompt):
         # Perform the actor analysis
         analyzer = Analyzer(context)
         actors = analyzer.identify_actors()
+
+        # Generate action files
+        action_generator = ActionGenerator(context)
+        action_generator.generate_all_actions()
 
         version, path = context.new_gcs_actor_summary_path()
 
