@@ -1,97 +1,10 @@
 #!/usr/bin/env python3
-from .context import RunContext, example_contexts
-from .models import Project
+from .context import example_contexts
+from .models import Project, Actors
 from .openai import ask_openai
 import json
 import os
-from pydantic import BaseModel
 import sys
-
-class Action(BaseModel):
-    name: str
-    summary: str
-    contract_name: str
-    function_name: str
-    probability: float
-    #actors: list[Actor]
-
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "summary": self.summary,
-            "contract_name": self.contract_name,
-            "function_name": self.function_name,
-            "probability": self.probability
-        }
-    
-
-class Actor(BaseModel):
-    name: str
-    summary: str
-    actions: list[Action]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "summary": self.summary,
-            "actions": [action.to_dict() for action in self.actions]
-        }
-
-class UserJourney(BaseModel):
-    name: str
-    summary: str
-    actions: list[Action]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-    
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "summary": self.summary,
-            "actions": [action.to_dict() for action in self.actions]
-        }
-    
-class UserJourneys(BaseModel):
-    user_journeys: list[UserJourney]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "user_journeys": [user_journey.to_dict() for user_journey in self.user_journeys]
-        }
-    
-class Actions(BaseModel):
-    actions: list[Action]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "actions": [action.to_dict() for action in self.actions]
-        }
-    
-class Actors(BaseModel):
-    actors: list[Actor]
-
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-
-    def to_dict(self):
-        return {
-            "actors": [actor.to_dict() for actor in self.actors]
-        }
 
 class ActorAnalyzer:
     
@@ -148,7 +61,7 @@ class ActorAnalyzer:
             with open(self.context.actor_summary_path(), "r") as f:
                 content = json.loads(f.read())
                 #print(json.dumps(content))
-                return Actor.load(content)
+                return Actors.load(content)
         return None
     
     def analysis_exists(self):

@@ -76,22 +76,9 @@ class Analyzer:
 
     def generate_deployment_instructions(self, user_prompt=None):
         deployment_analyzer = DeploymentAnalyzer(self.context)
-        contracts = deployment_analyzer.analyze(user_prompt=user_prompt)
+        instructions = deployment_analyzer.analyze(user_prompt=user_prompt)
 
-        # Prepare deployment sequence
-        sequence = DeploymentInstruction.prepare_sequence(contracts)
-
-        # Prompt user for missing parameter values
-        for step in sequence:
-            for param in step.get("Params", []):
-                if param["value"] is None:
-                    param["value"] = input(f"Enter value for {param['name']} in {step['Type']} step: ")
-
-        # Create DeploymentInstruction object
-        deployment_instruction = DeploymentInstruction(sequence=sequence)
-        print(json.dumps(deployment_instruction.to_dict(), indent=2))
-        return deployment_instruction
-
+        return instructions
 
 if __name__ == "__main__":
     context_num = 0

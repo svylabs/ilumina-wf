@@ -48,41 +48,30 @@ class DeploymentAnalyzer:
         """Save deployment instructions to a JSON file in the simulation repo"""
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         with open(deployment_path, 'w') as f:
-            json.dump([instruction.to_dict() for instruction in instructions], f, indent=2)
+            json.dump(instructions.to_dict(), f, indent=2)
 
     def analyze(self, user_prompt=None):
-        deployable_contracts = self.identify_deployable_contracts()
-        if not deployable_contracts:
-            print("Warning: No deployable contracts found. Proceeding without deployment instructions.")
-
-        readme_path = os.path.join(self.context.project_path(), "README.md")
-        deployment_script_path = os.path.join(self.context.project_path(), "scripts/deploy.js")
-
-        readme_content = ""
-        if os.path.exists(readme_path):
-            with open(readme_path, "r") as f:
-                readme_content = f.read()
-
-        deployment_script_content = ""
-        if os.path.exists(deployment_script_path):
-            with open(deployment_script_path, "r") as f:
-                deployment_script_content = f.read()
-
+        #deployable_contracts = self.identify_deployable_contracts()
+        project_summary = self.context.project_summary()
+        
         prompt = f"""
-        The following are the deployable contracts and their ABIs:
-        {json.dumps(deployable_contracts)}
+        Here is the summary of the smart contract project:
+        {json.dumps(project_summary.to_dict())}  
+
+        Can you generate deployment instructions for the contracts above.
+
+        Keep in mind(guidelines):
+        1. Not all contracts are deployable.
+        2. Some contracts may require constructor arguments.
+        3. Some contracts may require additional configuration after deployment.
+        4. Try to infer the parameters of the constructor or the contract calls.
+
+        Additional instructions from user:
+        {user_prompt if user_prompt else "None"}
         """
 
-        if readme_content:
-            prompt += f"\nThe project also contains the following README content:\n{readme_content}"
-
-        if deployment_script_content:
-            prompt += f"\nAnd the following deployment script:\n{deployment_script_content}"
-
-        prompt += "\nGenerate deployment instructions for each contract, including constructor arguments if required."
-
         try:
-            _, deployment_instructions = ask_openai(prompt, list[DeploymentInstruction], task="reasoning")
+            _, deployment_instructions = ask_openai(prompt, DeploymentInstruction, task="reasoning")
 
             # Save and commit the deployment instructions
             self.save_deployment_instructions(deployment_instructions)

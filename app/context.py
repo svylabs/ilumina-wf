@@ -4,6 +4,7 @@ import uuid
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
+from .models import Project, Actors
 
 APP_VERSION = "v1"
 
@@ -222,6 +223,14 @@ class RunContext:
             raise Exception(f"Git command failed: {e}")
         except Exception as e:
             raise Exception(f"Failed to commit changes to the simulation repo: {e}")
+        
+
+    def project_summary(self):
+        return Project.load_summary(self.summary_path())
+        
+    def actor_summary(self):
+        return Actors.load_summary(self.actor_summary_path())
+
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),

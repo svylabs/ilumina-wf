@@ -151,24 +151,134 @@ class Project(BaseModel):
                 #print(json.dumps(content))
                 return Project.load(content)
         return None
+    
+class Action(BaseModel):
+    name: str
+    summary: str
+    contract_name: str
+    function_name: str
+    probability: float
+    #actors: list[Actor]
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "summary": self.summary,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "probability": self.probability
+        }
+    
+
+class Actor(BaseModel):
+    name: str
+    summary: str
+    actions: list[Action]
+
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "summary": self.summary,
+            "actions": [action.to_dict() for action in self.actions]
+        }
+
+class UserJourney(BaseModel):
+    name: str
+    summary: str
+    actions: list[Action]
+
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "summary": self.summary,
+            "actions": [action.to_dict() for action in self.actions]
+        }
+    
+class UserJourneys(BaseModel):
+    user_journeys: list[UserJourney]
+
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+
+    def to_dict(self):
+        return {
+            "user_journeys": [user_journey.to_dict() for user_journey in self.user_journeys]
+        }
+    
+class Actions(BaseModel):
+    actions: list[Action]
+
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+
+    def to_dict(self):
+        return {
+            "actions": [action.to_dict() for action in self.actions]
+        }
+    
+class Actors(BaseModel):
+    actors: list[Actor]
+
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+
+    def to_dict(self):
+        return {
+            "actors": [actor.to_dict() for actor in self.actors]
+        }
+    
+    @classmethod
+    def load_summary(self, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return Actors.load(content)
+        return None
 
     
 class Param(BaseModel):
     name: str
-    value: Optional[str] = None
+    value: str = Field(..., description="Leave empty if it's type val")
     type: Literal["val", "ref"] # val | ref
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "value": self.value,
+            "type": self.type
+        }
 
 class SequenceStep(BaseModel):
     type: Literal["deploy", "call"]  # "deploy" or "call"
-    contract: str = Field(..., description="Name of the contract to deploy or invoke")
-    function: Optional[str] = None
+    contract: str
+    function: str
     params: List[Param]
+
+    def to_dict(self):
+        return {
+            "type": self.type,
+            "contract": self.contract,
+            "function": self.function,
+            "params": [param.to_dict() for param in self.params]
+        }
 
 class DeploymentInstruction(BaseModel):
     sequence: List[SequenceStep]
 
     def to_dict(self):
-        return {"sequence": [step.dict() for step in self.sequence]}
+        return {"sequence": [step.to_dict() for step in self.sequence]}
 
     @staticmethod
     def build_dependency_tree(contracts: List[Contract]) -> Dict[str, List[str]]:
