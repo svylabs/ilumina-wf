@@ -95,8 +95,8 @@ class Contract(BaseModel):
     type: Literal["external", "library", "interface"]  # external, library, interface
     summary: str
     functions: list[Function]
-    is_deployable: bool
-    constructor: str
+    is_deployable: bool = False  # Default to False
+    constructor: str = None  # Default to None
     # is_deployable: bool = False  # Default to False
     # constructor: Optional[str] = None  # Default to None
 
@@ -109,7 +109,9 @@ class Contract(BaseModel):
             "name": self.name,
             "type": self.type,
             "summary": self.summary,
-            "functions": [function.to_dict() for function in self.functions]
+            "functions": [function.to_dict() for function in self.functions],
+            "is_deployable": self.is_deployable,
+            "constructor": self.constructor
         }
 
 class Project(BaseModel):

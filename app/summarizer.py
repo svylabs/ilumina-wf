@@ -77,6 +77,11 @@ class ProjectSummarizer:
 
         {json.dumps(project_from_contracts.to_dict())}
 
+        Other considerations:
+        1. Name of the project should be taken from the first summary.
+        2. Second summary is accurate in terms of contracts and their purpose.
+        3. Use a consistent format("None") for empty values for strings.
+
         """
         response = ask_openai(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty", Project, "understand")
         return response[1]
