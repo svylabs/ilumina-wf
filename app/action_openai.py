@@ -9,7 +9,8 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 def ask_openai(user_input, response_type=None, task="generate"):
     try:
         # Create model instance
-        model = genai.GenerativeModel("gemini-pro")
+        model = genai.GenerativeModel("gemini-1.5-pro")
+        # model = genai.GenerativeModel("gemini-1.5-flash") # For Gemini 1.5 Flash is for Speed
 
         # Start a chat session
         chat = model.start_chat(history=[])
