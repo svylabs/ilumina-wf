@@ -308,10 +308,6 @@ def analyze_actors(submission, request_context, user_prompt):
         analyzer = Analyzer(context)
         actors = analyzer.identify_actors()
 
-        # Generate actor files
-        action_generator = ActionGenerator(context)
-        action_generator.generate_all_actors()
-
         version, path = context.new_gcs_actor_summary_path()
 
         # Upload actors summary to Google Cloud Storage
@@ -327,11 +323,31 @@ def analyze_actors(submission, request_context, user_prompt):
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
             return jsonify({"actors": actors.to_dict()}), 200
-        return jsonify({"message": "Project analysis completed"}), 200
+        return jsonify({"message": "Actor analysis completed"}), 200
 
     except Exception as e:
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/create_actions', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def create_actions(submission, request_context, user_prompt):
+    """Generate action files for identified actors"""
+    try:
+        # Get the current context using prepare_context
+        context = prepare_context(submission)
+
+        # Initialize ActionGenerator
+        action_generator = ActionGenerator(context)
+
+        # Generate all actions
+        action_generator.generate_all_actions()
+
+        return jsonify({"message": "Action files generated successfully"}), 200
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
