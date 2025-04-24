@@ -1,16 +1,13 @@
 # action_openai.py
-from dotenv import load_dotenv
 import os
-import google.generativeai as genai
+from google import genai
 
-load_dotenv()
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def ask_openai(prompt: str) -> str:
     try:
         # Get the client and specify the model
-        client = genai.Client()
+        
         model = client.models.get('gemini-2.0-flash')
 
          # Generate content
