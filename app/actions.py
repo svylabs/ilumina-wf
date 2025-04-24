@@ -1,4 +1,3 @@
-# actions.py
 #!/usr/bin/env python3
 import json
 import os
@@ -26,102 +25,120 @@ class ActionGenerator:
         with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
             return json.load(f)
     
-    def generate_all_actors(self):
-        """Generate actor files with execute and validate methods"""
+    def generate_all_actions(self):
+        """Generate action files for all actors and actions"""
         actor_summary = self.load_actor_summary()
         
         for actor in actor_summary.get("actors", []):
-            self.generate_actor_file(actor_name=actor["name"])
+            for action in actor.get("actions", []):
+                self.generate_action_file(
+                    action_name=action["name"],
+                    contract_name=action["contract_name"],
+                    function_name=action["function_name"],
+                    summary=action["summary"]
+                )
     
-    def generate_actor_file(self, actor_name: str):
-        """Generate a TypeScript file for an actor with execute and validate methods"""
-        # Clean actor name for filename
-        filename = actor_name.lower().replace(" ", "_") + ".ts"
+    def generate_action_file(self, action_name: str, contract_name: str, 
+                           function_name: str, summary: str):
+        """Generate a TypeScript action file for a specific action"""
+        # Clean action name for filename
+        filename = action_name.lower().replace(" ", "_") + ".ts"
         filepath = os.path.join(self.actions_dir, filename)
         
+        # Ensure the actions directory exists
+        if not os.path.exists(self.actions_dir):
+            os.makedirs(self.actions_dir, exist_ok=True)
+
         # Skip if the file already exists
         if os.path.exists(filepath):
-            print(f"Actor file already exists: {filepath}")
+            print(f"Action file already exists: {filepath}")
             return
-        
-        # Generate the execute and validate methods using LLM
+            
+        # Generate the action template using LLM
         prompt = f"""
-        Generate JUST the execute() and validate() methods for an actor:
-        - Actor Name: {actor_name}
+        Generate a TypeScript action class for a blockchain simulation with these parameters:
+        - Action Name: {action_name}
+        - Contract Name: {contract_name}
+        - Function Name: {function_name}
+        - Description: {summary}
         
         Requirements:
-        1. Only implement the execute() and validate() methods
-        2. Use context.prng for any random number generation
-        3. Include appropriate logging using actor.log()
-        4. Handle potential errors
-        5. Use proper TypeScript types
-        6. The methods should be specific to {actor_name}
+        1. Extend the Action class from @svylabs/ilumina
+        2. Implement execute() and validate() methods
+        3. Use context.prng for any random number generation
+        4. Include proper type imports
+        5. Add appropriate logging
+        6. The class name should follow PascalCase convention (e.g., {action_name.replace(' ', '')}Action)
         
-        Return ONLY the method implementations with no additional explanation or markdown.
+        Return ONLY the complete TypeScript code with no additional explanation or markdown.
         """
         
         try:
-            methods_code = ask_openai(prompt, response_type="text")
+            # Get the generated code from LLM
+            code = ask_openai(prompt, response_type="text")
             
-            if not methods_code or not isinstance(methods_code, str) or not methods_code.strip():
+            # Validate the response
+            if not code or not isinstance(code, str) or not code.strip():
                 raise ValueError("Received empty or invalid code from ask_openai")
 
-            # Create the actor file content
-            content = f"""import {{ Action, Actor }} from "@svylabs/ilumina";
-import type {{ RunContext }} from "@svylabs/ilumina";
+            # Ensure the code starts with 'import'
+            if not code.strip().startswith("import"):
+                code = f"import {{ Action, Actor }} from '@svylabs/ilumina';\nimport type {{ RunContext }} from '@svylabs/ilumina';\n\n{code}"
 
-export class {actor_name.replace(" ", "")} extends Action {{
-    private contracts: any;
-
-    constructor(contracts: any) {{
-        super("{actor_name}");
-        this.contracts = contracts;
-    }}
-
-    {methods_code}
-}}
-"""
+            # Save the generated file
+            with open(filepath, "w") as f:
+                f.write(code)
+            
+            print(f"Successfully generated action file: {filepath}")
         except Exception as e:
-            print(f"Error generating methods for {actor_name}: {str(e)}")
-            # Fallback template
-            content = f"""import {{ Action, Actor }} from "@svylabs/ilumina";
+            print(f"Error generating action file for {action_name}: {str(e)}")
+            # Create a basic template as fallback
+            fallback_code = self._create_fallback_template(action_name, contract_name, function_name)
+            with open(filepath, "w") as f:
+                f.write(fallback_code)
+            print(f"Created fallback template for {action_name}")
+        
+    def _create_fallback_template(self, action_name: str, contract_name: str, function_name: str) -> str:
+        """Create a basic fallback template when LLM fails"""
+        class_name = action_name.replace(" ", "") + "Action"
+        return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
 import type {{ RunContext }} from "@svylabs/ilumina";
 
-export class {actor_name.replace(" ", "")} extends Action {{
+export class {class_name} extends Action {{
     private contracts: any;
-
+    
     constructor(contracts: any) {{
-        super("{actor_name}");
+        super("{action_name}");
         this.contracts = contracts;
     }}
 
     async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
-        actor.log("{actor_name} executing...");
-        // Add execution logic here
-        return {{}};
+        actor.log("Executing {action_name}...");
+        try {{
+            const result = await this.contracts.{contract_name}.connect(actor.account.value)
+                .{function_name}();
+            return {{ txHash: result.hash }};
+        }} catch (error) {{
+            actor.log(`Error in {action_name}: ${{error}}`);
+            throw error;
+        }}
     }}
 
     async validate(context: RunContext, actor: Actor, 
                  previousSnapshot: any, newSnapshot: any, 
                  actionParams: any): Promise<boolean> {{
-        actor.log("{actor_name} validating...");
-        // Add validation logic here
+        actor.log("Validating {action_name}...");
         return true;
     }}
 }}
 """
-
-        # Save the generated file
-        with open(filepath, "w") as f:
-            f.write(content)
-        
-        print(f"Successfully generated actor file: {filepath}")
         
     def get_action_imports(self) -> List[str]:
-        """Generate import statements for all actor files"""
+        """Generate import statements for all action files"""
         imports = []
         for file in os.listdir(self.actions_dir):
             if file.endswith(".ts") and not file.startswith("_"):
-                actor_name = Path(file).stem
-                imports.append(f"import * as {actor_name} from './actions/{actor_name}';")
+                action_name = Path(file).stem
+                class_name = "".join([word.capitalize() for word in action_name.split("_")]) + "Action"
+                imports.append(f"import {{ {class_name} }} from './actions/{action_name}';")
         return imports
