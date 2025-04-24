@@ -1,38 +1,31 @@
-import google.generativeai as genai
+# action_openai.py
 from dotenv import load_dotenv
 import os
+import google.generativeai as genai
 
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-def ask_openai(user_input, response_type=None, task="generate"):
+def ask_openai(prompt: str) -> str:
     try:
-        # Create model instance
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        # model = genai.GenerativeModel("gemini-1.5-flash") # For Gemini 1.5 Flash is for Speed
+        # Get the client and specify the model
+        client = genai.Client()
+        model = client.models.get('gemini-2.0-flash')
 
-        # Start a chat session
-        chat = model.start_chat(history=[])
-
-        # Send a message
-        response = chat.send_message(
-            user_input,
-            generation_config={
-                "temperature": 0.7,
-                "max_output_tokens": 2048
-            }
+         # Generate content
+        response = model.generate_content(
+            contents=prompt,
+            # generation_config={
+            #     "temperature": 0.7,
+            #     "response_mime_type": "text/plain"
+            # }
         )
-
-        # Extract response text
-        if response.text:
-            if response_type == "text":
-                return response.text
-            else:
-                return (response_type, response.text)
-        else:
-            raise ValueError("No response content received from Gemini API")
-
+        
+        # Return the plain text response
+        if not response.text:
+            raise ValueError("Empty response from Gemini API")
+        return response.text
+    
     except Exception as e:
-        print(f"Error in ask_openai: {str(e)}")
-        raise
+        return f"Error: {str(e)}"

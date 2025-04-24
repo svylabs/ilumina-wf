@@ -1,19 +1,11 @@
+# actions.py
 #!/usr/bin/env python3
 import json
 import os
 from pathlib import Path
 from typing import Dict, List
-from pydantic import BaseModel
 from .context import RunContext
 from .action_openai import ask_openai
-from .models import Project
-
-class ActionTemplate(BaseModel):
-    name: str
-    contract_name: str
-    function_name: str
-    execute_template: str
-    validate_template: str
 
 class ActionGenerator:
     def __init__(self, context: RunContext):
@@ -21,86 +13,120 @@ class ActionGenerator:
         self.actions_dir = os.path.join(context.simulation_path(), "simulation", "actions")
         os.makedirs(self.actions_dir, exist_ok=True)
         
-    def load_actor_summary(self) -> Dict:
-        with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
-            return json.load(f)
-    
     def generate_all_actions(self):
         """Generate action files for all actors and actions"""
-        actor_summary = self.load_actor_summary()
+        with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
+            actors = json.load(f)["actors"]
         
-        for actor in actor_summary.get("actors", []):
-            for action in actor.get("actions", []):
-                self.generate_action_file(
-                    action_name=action["name"],
-                    contract_name=action["contract_name"],
-                    function_name=action["function_name"],
-                    summary=action["summary"]
+        for actor in actors:
+            for action in actor["actions"]:
+                self._generate_action_file(
+                    action["name"],
+                    action["contract_name"],
+                    action["function_name"],
+                    action["summary"]
                 )
     
-    def generate_action_file(self, action_name: str, contract_name: str, 
-                           function_name: str, summary: str):
-        """Generate a TypeScript action file for a specific action"""
-        # Clean action name for filename
-        filename = action_name.lower().replace(" ", "_") + ".ts"
+    def _generate_action_file(self, action_name: str, contract_name: str, 
+                              function_name: str, summary: str):
+        filename = f"{action_name.lower().replace(' ', '_')}.ts"
         filepath = os.path.join(self.actions_dir, filename)
         
-        # Ensure the actions directory exists
-        if not os.path.exists(self.actions_dir):
-            os.makedirs(self.actions_dir, exist_ok=True)
-
-        # Skip if the file already exists
         if os.path.exists(filepath):
-            print(f"Action file already exists: {filepath}")
             return
             
-        # Generate the action template using LLM
+        class_name = action_name.replace(" ", "") + "Action"
+        
+        # Strict template for the prompt
         prompt = f"""
-        Generate a TypeScript action class for a blockchain simulation with these parameters:
-        - Action Name: {action_name}
-        - Contract Name: {contract_name}
-        - Function Name: {function_name}
-        - Description: {summary}
+        Generate a TypeScript class for action '{action_name}' with EXACTLY this structure:
         
+        import {{ Action, Actor }} from "@svylabs/ilumina";
+        import type {{ RunContext }} from "@svylabs/ilumina";
+
+        export class {class_name} extends Action {{
+            private contracts: any;
+            
+            constructor(contracts: any) {{
+                super("{action_name}");
+                this.contracts = contracts;
+            }}
+
+            async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
+                // Implementation for {action_name}
+                // Using contract: {contract_name}
+                // Calling function: {function_name}
+                // Description: {summary}
+            }}
+
+            async validate(context: RunContext, actor: Actor, 
+                         previousSnapshot: any, newSnapshot: any, 
+                         actionParams: any): Promise<boolean> {{
+                // Validation for {action_name}
+            }}
+        }}
+
         Requirements:
-        1. Extend the Action class from @svylabs/ilumina
-        2. Implement execute() and validate() methods
-        3. Use context.prng for any random number generation
-        4. Include proper type imports
-        5. Add appropriate logging
-        6. The class name should follow PascalCase convention (e.g., {action_name.replace(' ', '')}Action)
-        
-        Return ONLY the complete TypeScript code with no additional explanation or markdown.
+        1. MUST maintain this exact structure
+        2. Only include the two specified imports
+        3. constructor must call super("{action_name}")
+        4. execute() must use this.contracts.{contract_name}
+        5. validate() must return boolean
+        6. Use actor.log() for logging
+        7. Include proper error handling
+        8. NO additional interfaces or types
+        9. NO extra imports
+        10. NO markdown formatting
         """
         
         try:
-            # Get the generated code from LLM
-            code = ask_openai(prompt, response_type="text")
+            # code = ask_openai(prompt).strip()
+            code = ask_openai(prompt)
             
-            # Validate the response
-            if not code or not isinstance(code, str) or not code.strip():
-                raise ValueError("Received empty or invalid code from ask_openai")
-
-            # Ensure the code starts with 'import'
-            if not code.strip().startswith("import"):
-                code = f"import {{ Action, Actor }} from '@svylabs/ilumina';\nimport type {{ RunContext }} from '@svylabs/ilumina';\n\n{code}"
-
-            # Save the generated file
-            with open(filepath, "w") as f:
-                f.write(code)
+            # Clean up the generated code
+            code = self._clean_generated_code(code)
             
-            print(f"Successfully generated action file: {filepath}")
+            # Verify the structure
+            required_lines = [
+                f'export class {class_name} extends Action {{',
+                f'super("{action_name}");',
+                'async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {',
+                'async validate(context: RunContext, actor: Actor, previousSnapshot: any, newSnapshot: any, actionParams: any): Promise<boolean> {'
+            ]
+            
+            for line in required_lines:
+                if line not in code:
+                    raise ValueError(f"Generated code missing required line: {line}")
+                    
         except Exception as e:
-            print(f"Error generating action file for {action_name}: {str(e)}")
-            # Create a basic template as fallback
-            fallback_code = self._create_fallback_template(action_name, contract_name, function_name)
-            with open(filepath, "w") as f:
-                f.write(fallback_code)
-            print(f"Created fallback template for {action_name}")
+            print(f"Error generating {action_name}: {str(e)}")
+            code = self._get_fallback_template(class_name, action_name, contract_name, function_name)
         
-    def _create_fallback_template(self, action_name: str, contract_name: str, function_name: str) -> str:
-        """Create a basic fallback template when LLM fails"""
-        class_name = action_name.replace(" ", "") + "Action"
+        with open(filepath, "w") as f:
+            f.write(code)
+
+    def _clean_generated_code(self, code: str) -> str:
+        """Remove unwanted formatting and duplicates"""
+        # Remove markdown code blocks
+        code = code.replace("```typescript", "").replace("```", "").strip()
+        
+        # Remove duplicate imports
+        lines = code.split('\n')
+        unique_lines = []
+        seen_imports = set()
+        
+        for line in lines:
+            if line.strip().startswith("import"):
+                if line not in seen_imports:
+                    seen_imports.add(line)
+                    unique_lines.append(line)
+            else:
+                unique_lines.append(line)
+        
+        return '\n'.join(unique_lines)
+
+    def _get_fallback_template(self, class_name: str, action_name: str, 
+                               contract_name: str, function_name: str) -> str:
         return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
 import type {{ RunContext }} from "@svylabs/ilumina";
 
@@ -130,15 +156,4 @@ export class {class_name} extends Action {{
         actor.log("Validating {action_name}...");
         return true;
     }}
-}}
-"""
-        
-    def get_action_imports(self) -> List[str]:
-        """Generate import statements for all action files"""
-        imports = []
-        for file in os.listdir(self.actions_dir):
-            if file.endswith(".ts") and not file.startswith("_"):
-                action_name = Path(file).stem
-                class_name = "".join([word.capitalize() for word in action_name.split("_")]) + "Action"
-                imports.append(f"import {{ {class_name} }} from './actions/{action_name}';")
-        return imports
+}}"""
