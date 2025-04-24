@@ -58,17 +58,21 @@ class DeploymentAnalyzer:
         Here is the summary of the smart contract project:
         {json.dumps(project_summary.to_dict())}  
 
-        Can you generate deployment instructions for the contracts above.
+        Can you generate deployment instructions for the contracts above. The deployment instructions is a sequence of steps to setup the contracts / protocol.
 
         Keep in mind(guidelines):
         1. Not all contracts are deployable.
-        2. Some contracts may require constructor arguments.
-        3. Some contracts may require additional configuration after deployment.
+        2. Some contracts require constructor arguments.
+        3. Some contracts may require additional function call after deployment.
         4. Try to infer the parameters of the constructor or the contract calls.
+        5. In the function attribute in result, just use the function name, without braces or parameters.
+        6. If the type is deploy, give it a name in ref_name that can be used as a variable name, and point the "ref" to use these names.
 
         Additional instructions from user:
         {user_prompt if user_prompt else "None"}
         """
+
+        print(f"{user_prompt}")
 
         try:
             _, deployment_instructions = ask_openai(prompt, DeploymentInstruction, task="reasoning")
