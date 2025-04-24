@@ -1,38 +1,45 @@
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
-client = OpenAI(api_key=os.getenv("GEMINI_API_KEY"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def ask_openai(user_input, type, task="generate"):
-    # Add user message
-    conversation=[]
-    conversation.append({"role": "user", "content": user_input})
-
-    # Check token limit
-    """ if count_tokens(conversation) > MAX_TOKENS:
+    # Placeholder for future token checking or summarization logic
+    """
+    if count_tokens(conversation) > MAX_TOKENS:
         print("🧠 Summarizing conversation...")
         summary = summarize_conversation(user_input)
-        # Reset with summary only
         conversation.clear()
         conversation.extend(summary)
- """
-    
-    """ model = "gpt-4o"
+    """
+
+    # Model selection placeholder (for future multi-model support)
+    """
+    model_name = "gemini-pro"
     if task == "reason":
-        model = "o3-mini"
+        model_name = "some-other-model"
     elif task == "understand":
-        model = "o3-mini" """
-    model = "gemini-2.0-flash"
+        model_name = "some-other-model"
+    """
 
-    # Get response
-    response = client.beta.chat.completions.parse(model=model,
-        messages=conversation,
-        response_format=type,
-        timeout=30)
-        #print(response)
-    value = response.choices[0].message.parsed
-        #conversation.append({"role": "assistant", "content": contract})
+    # Create model instance
+    model = genai.GenerativeModel("gemini-pro")
+
+    # Start chat session
+    chat = model.start_chat(history=[])
+
+    # Send user message
+    response = chat.send_message(
+        user_input,
+        generation_config={
+            "temperature": 0.7,
+            "max_output_tokens": 2048
+        }
+    )
+
+    # Extract response text
+    value = response.text
     return (type, value)
-
-
