@@ -99,13 +99,13 @@ class ActionGenerator:
         """
         
         try:
-            # code = ask_openai(prompt).strip()
             code = ask_openai(prompt)
-            
-            # Clean up the generated code
             code = self._clean_generated_code(code)
             
-            # Verify the structure
+            # Log the raw generated code for debugging
+            print(f"Generated code for {action_name}:\n{code}")
+            
+            # Verify the structure using flexible checks
             required_lines = [
                 f'export class {class_name} extends Action {{',
                 f'super("{sanitized_class_name}");',
@@ -114,7 +114,7 @@ class ActionGenerator:
             ]
             
             for line in required_lines:
-                if line not in code:
+                if not any(line in code_line for code_line in code.splitlines()):
                     raise ValueError(f"Generated code missing required line: {line}")
                     
         except Exception as e:
@@ -128,7 +128,8 @@ class ActionGenerator:
         """Remove unwanted formatting and duplicates"""
         # Remove markdown code blocks
         code = code.replace("```typescript", "").replace("```", "").strip()
-        
+        # Normalize whitespace for better verification
+        code = '\n'.join(line.strip() for line in code.splitlines())
         # Remove duplicate imports
         lines = code.split('\n')
         unique_lines = []

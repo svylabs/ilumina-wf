@@ -7,10 +7,9 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 def ask_openai(prompt: str) -> str:
     try:
         # Get the client and specify the model
-        
         model = client.models.get('gemini-2.0-flash')
 
-         # Generate content
+        # Generate content
         response = model.generate_content(
             contents=prompt,
             # generation_config={
