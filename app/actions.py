@@ -2,6 +2,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 from pathlib import Path
 from typing import Dict, List
 from .context import RunContext
@@ -27,15 +28,33 @@ class ActionGenerator:
                     action["summary"]
                 )
     
+    # def _sanitize_class_name(self, action_name: str) -> str:
+    #     """Sanitize the action name to create a valid class name."""
+    #     sanitized_name = re.sub(r'[^\w\s]', '', re.sub(r'\(.*?\)', '', action_name))  # Remove special characters and parentheses
+    #     return re.sub(r'\s+', '', sanitized_name)  # Remove spaces
+    
+    def _sanitize_for_filename(self, name: str) -> str:
+        """Sanitize name for safe filename: lowercase, underscore-separated."""
+        cleaned = re.sub(r'[^\w\s]', '', name)  # Remove non-alphanum (keep spaces)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize whitespace
+        return cleaned.lower().replace(' ', '_')
+    
+    def _sanitize_for_classname(self, name: str) -> str:
+        """Sanitize name to generate PascalCase class name."""
+        cleaned = re.sub(r'[^\w\s]', '', name)  # Remove non-alphanum (keep spaces)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return ''.join(word.capitalize() for word in cleaned.split())
+
     def _generate_action_file(self, action_name: str, contract_name: str, 
                               function_name: str, summary: str):
-        filename = f"{action_name.lower().replace(' ', '_')}.ts"
+        filename = f"{self._sanitize_for_filename(action_name)}.ts"
         filepath = os.path.join(self.actions_dir, filename)
         
         if os.path.exists(filepath):
             return
             
-        class_name = action_name.replace(" ", "") + "Action"
+        sanitized_class_name = self._sanitize_for_classname(action_name)
+        class_name = sanitized_class_name + "Action"
         
         # Strict template for the prompt
         prompt = f"""
@@ -48,7 +67,7 @@ class ActionGenerator:
             private contracts: any;
             
             constructor(contracts: any) {{
-                super("{action_name}");
+                super("{sanitized_class_name}");
                 this.contracts = contracts;
             }}
 
@@ -69,7 +88,7 @@ class ActionGenerator:
         Requirements:
         1. MUST maintain this exact structure
         2. Only include the two specified imports
-        3. constructor must call super("{action_name}")
+        3. constructor must call super("{sanitized_class_name}")
         4. execute() must use this.contracts.{contract_name}
         5. validate() must return boolean
         6. Use actor.log() for logging
@@ -89,7 +108,7 @@ class ActionGenerator:
             # Verify the structure
             required_lines = [
                 f'export class {class_name} extends Action {{',
-                f'super("{action_name}");',
+                f'super("{sanitized_class_name}");',
                 'async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {',
                 'async validate(context: RunContext, actor: Actor, previousSnapshot: any, newSnapshot: any, actionParams: any): Promise<boolean> {'
             ]
@@ -127,6 +146,8 @@ class ActionGenerator:
 
     def _get_fallback_template(self, class_name: str, action_name: str, 
                                contract_name: str, function_name: str) -> str:
+        sanitized_class_name = self._sanitize_for_classname(action_name)
+        
         return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
 import type {{ RunContext }} from "@svylabs/ilumina";
 
@@ -134,7 +155,7 @@ export class {class_name} extends Action {{
     private contracts: any;
     
     constructor(contracts: any) {{
-        super("{action_name}");
+        super("{sanitized_class_name}");
         this.contracts = contracts;
     }}
 
