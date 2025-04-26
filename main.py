@@ -205,7 +205,7 @@ def analyze():
         print(f"{submission}")
 
         next_step = step
-        if step_from_request != None:
+        if step_from_request != None and step_from_request != "begin_analysis":
             next_step = step_from_request
         else:
             if step == None or step == "begin_analysis":
@@ -376,7 +376,7 @@ def analyze_deployment(submission, request_context, user_prompt):
         upload_to_gcs(path, context.deployment_instructions_path())
         if request_context == "bg":
             # Update the task queue
-            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_version": version})
+            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_instruction_version": version})
             create_task({"submission_id": submission["submission_id"]})
         else:
             step = "None"
