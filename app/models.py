@@ -263,6 +263,7 @@ class Param(BaseModel):
 class SequenceStep(BaseModel):
     type: Literal["deploy", "call"]  # "deploy" or "call"
     contract: str
+    constructor: str = None
     ref_name: str
     function: str
     params: List[Param]
@@ -271,6 +272,7 @@ class SequenceStep(BaseModel):
         return {
             "type": self.type,
             "contract": self.contract,
+            "constructor": self.constructor,
             "function": self.function,
             "ref_name": self.ref_name,
             "params": [param.to_dict() for param in self.params]
