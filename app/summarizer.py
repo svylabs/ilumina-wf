@@ -31,6 +31,8 @@ class ProjectSummarizer:
                     content = ""
                     with open(os.path.join(root, file), "r") as f:
                         content = f.read()
+                    if (content.trim() == ""):
+                        continue
                     contracts.append(
                         {
                             "path": os.path.join(root, file),
@@ -52,6 +54,9 @@ class ProjectSummarizer:
     def analyze_contracts(self, project_summary):
         for contract in self.contracts:
             contract_detail = extract_solidity_functions_and_contract_name(contract["content"])
+            if (contract_detail["contract_name"] == "Unknown"):
+                print(f"Warning: Unknown contract name {json.dumps(contract_detail)}")
+                continue
             print("Analyzing " + json.dumps(contract_detail))
             prompt = f"""
             Analyze this smart contract.
@@ -116,6 +121,7 @@ class ProjectSummarizer:
             # Add user prompt if provided
             response = ask_openai(prompt_with_readme, Project, task="understand")
             project_from_readme = response[1]
+            project_from_readme.clear_contracts()
             print("Project summary from README")
             print(json.dumps(project_from_readme.to_dict()))
         contracts_summary = []

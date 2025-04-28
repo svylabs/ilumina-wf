@@ -58,17 +58,17 @@ class DeploymentAnalyzer:
         Here is the summary of the smart contract project:
         {json.dumps(project_summary.to_dict())}  
 
-        Can you generate deployment instructions for the contracts above. The deployment instructions is a sequence of steps to setup the contracts / protocol.
+        We need to generate deployment instructions for the contracts listed in summary above. The deployment instructions is a sequence of steps to setup the contracts / protocol.
 
-        Guidelines:
-        1. Not all contracts are deployable.
-        2. Some contracts require constructor arguments and should match the constructor parameters of the contract available in the project summary.
-        3. Some contracts may require additional function call after deployment.
-        4. Try to infer the parameters from it's names of the constructor in project summary / contracts or the contract calls.
-        5. In the function attribute in result, just use the function name, without braces or parameters.
-        6. If the type is deploy, give it a name in ref_name that can be used as a variable name, and point the "ref" to use these names.
+        Let's think step by step:
+        1: Based on instructions from the user(provided below), Identify the relevant deployable contracts from the project summary.
+        2: Get the constructor for each contract identified in step 1 and identify the parameters needed for deployment.
+        3. In case there are function calls needed after deployment(based on user instructions), identify the relevant functions for the contracts identified in step 1.
+        4. Based on the functions identified in step3, identify the parameters for those functions.
+        5: Repeat step 3-4 for each contract identified in step 1.
+        6. Generate the deployment instructions.
 
-        Additional instructions from user:
+        Instructions from user:
         {user_prompt if user_prompt else "None"}
         """
 
