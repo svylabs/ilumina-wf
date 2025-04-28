@@ -7,15 +7,20 @@ from pathlib import Path
 from typing import Dict, List
 from .context import RunContext
 from .action_openai import ask_openai
+from .compiler import Compiler
 
 class ActionGenerator:
     def __init__(self, context: RunContext):
         self.context = context
         self.actions_dir = os.path.join(context.simulation_path(), "simulation", "actions")
         os.makedirs(self.actions_dir, exist_ok=True)
+        self.compiler = Compiler(context)
         
     def generate_all_actions(self):
         """Generate action files for all actors and actions"""
+        # First compile contracts to get ABIs
+        self.compiler.compile()
+
         with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
             actors = json.load(f)["actors"]
         
@@ -27,12 +32,24 @@ class ActionGenerator:
                     action["function_name"],
                     action["summary"]
                 )
-    
-    # def _sanitize_class_name(self, action_name: str) -> str:
-    #     """Sanitize the action name to create a valid class name."""
-    #     sanitized_name = re.sub(r'[^\w\s]', '', re.sub(r'\(.*?\)', '', action_name))  # Remove special characters and parentheses
-    #     return re.sub(r'\s+', '', sanitized_name)  # Remove spaces
-    
+
+    def _solidity_to_ts_type(self, solidity_type: str) -> str:
+        """Convert Solidity type to TypeScript type"""
+        type_map = {
+            "address": "string",
+            "bool": "boolean",
+            "string": "string",
+            "uint": "bigint",
+            "int": "bigint",
+            "bytes": "string"
+        }
+        
+        for solidity, ts in type_map.items():
+            if solidity_type.startswith(solidity):
+                return ts
+                
+        return "any"
+
     def _sanitize_for_filename(self, name: str) -> str:
         """Sanitize name for safe filename: lowercase, underscore-separated."""
         cleaned = re.sub(r'[^\w\s]', '', name)  # Remove non-alphanum (keep spaces)
@@ -46,7 +63,7 @@ class ActionGenerator:
         return ''.join(word.capitalize() for word in cleaned.split())
 
     def _generate_action_file(self, action_name: str, contract_name: str, 
-                              function_name: str, summary: str):
+                            function_name: str, summary: str):
         filename = f"{self._sanitize_for_filename(action_name)}.ts"
         filepath = os.path.join(self.actions_dir, filename)
         
@@ -56,73 +73,110 @@ class ActionGenerator:
         sanitized_class_name = self._sanitize_for_classname(action_name)
         class_name = sanitized_class_name + "Action"
         
-        # Strict template for the prompt
+        # Get ABI for the contract
+        contract_abi = self.compiler.get_contract_abi(contract_name)
+        if not contract_abi:
+            raise Exception(f"ABI not found for contract: {contract_name}")
+        
+        # Find the function in ABI
+        function_abi = next(
+            (item for item in contract_abi["abi"] 
+             if item["type"] == "function" and item["name"] == function_name),
+            None
+        )
+        
+        if not function_abi:
+            raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
+        
+        # Generate parameter types for TypeScript
+        input_types = ", ".join(
+            f"{input['name']}: {self._solidity_to_ts_type(input['type'])}"
+            for input in function_abi.get("inputs", [])
+        )
+        
+        # Generate parameter names for the function call
+        param_names = ", ".join(
+            input['name'] for input in function_abi.get("inputs", [])
+        )
+        
+        # Generate prompt with ABI-aware implementation
         prompt = f"""
         Generate a TypeScript class for action '{action_name}' with EXACTLY this structure:
         
         import {{ Action, Actor }} from "@svylabs/ilumina";
         import type {{ RunContext }} from "@svylabs/ilumina";
+        import type {{ Contract }} from "ethers";
 
         export class {class_name} extends Action {{
-            private contracts: any;
+            private contract: Contract;
             
-            constructor(contracts: any) {{
+            constructor(contract: Contract) {{
                 super("{sanitized_class_name}");
-                this.contracts = contracts;
+                this.contract = contract;
             }}
 
             async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
-                // Implementation for {action_name}
-                // Using contract: {contract_name}
-                // Calling function: {function_name}
-                // Description: {summary}
+                actor.log(`Executing {action_name}...`);
+                try {{
+                    // Call contract function with parameters
+                    const tx = await this.contract.connect(actor.account.value)
+                        .{function_name}({param_names});
+                    
+                    await tx.wait(); // Wait for transaction confirmation
+                    actor.log(`{action_name} executed successfully. TX hash: ${{tx.hash}}`);
+                    return {{ txHash: tx.hash }};
+                }} catch (error) {{
+                    actor.log(`Error executing {action_name}: ${{error}}`);
+                    throw error;
+                }}
             }}
 
             async validate(context: RunContext, actor: Actor, 
                          previousSnapshot: any, newSnapshot: any, 
                          actionParams: any): Promise<boolean> {{
-                // Validation for {action_name}
+                actor.log(`Validating {action_name}...`);
+                // Add validation logic here
+                return true;
             }}
         }}
 
         Requirements:
         1. MUST maintain this exact structure
-        2. Only include the two specified imports
-        3. constructor must call super("{sanitized_class_name}")
-        4. execute() must use this.contracts.{contract_name}
-        5. validate() must return boolean
-        6. Use actor.log() for logging
-        7. Include proper error handling
-        8. NO additional interfaces or types
-        9. NO extra imports
-        10. NO markdown formatting
+        2. Use this.contract.connect(actor.account.value) for all contract calls
+        3. Include proper parameter handling based on ABI
+        4. Include proper error handling
+        5. Use actor.log() for all logging
+        6. validate() must return boolean
+        7. Wait for transaction confirmation with await tx.wait()
         """
         
         try:
             code = ask_openai(prompt)
             code = self._clean_generated_code(code)
             
-            # Log the raw generated code for debugging
-            print(f"Generated code for {action_name}:\n{code}")
-            
-            # Verify the structure using flexible checks
-            required_lines = [
-                f'export class {class_name} extends Action {{',
-                f'super("{sanitized_class_name}");',
-                'async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {',
-                'async validate(context: RunContext, actor: Actor, previousSnapshot: any, newSnapshot: any, actionParams: any): Promise<boolean> {'
+            # Additional validation to ensure proper contract call syntax
+            required_patterns = [
+                r"this\.contract\.connect\(actor\.account\.value\)",
+                r"await tx\.wait\(\)",
+                r"actor\.log\("
             ]
             
-            for line in required_lines:
-                if not any(line in code_line for code_line in code.splitlines()):
-                    raise ValueError(f"Generated code missing required line: {line}")
-                    
+            for pattern in required_patterns:
+                if not re.search(pattern, code):
+                    raise ValueError(f"Generated code missing required pattern: {pattern}")
+            
+            with open(filepath, "w") as f:
+                f.write(code)
+                
         except Exception as e:
             print(f"Error generating {action_name}: {str(e)}")
-            code = self._get_fallback_template(class_name, action_name, contract_name, function_name)
-        
-        with open(filepath, "w") as f:
-            f.write(code)
+            # Fallback to basic implementation
+            with open(filepath, "w") as f:
+                f.write(self._get_fallback_template(
+                    class_name, action_name, 
+                    contract_name, function_name,
+                    input_types, param_names
+                ))
 
     def _clean_generated_code(self, code: str) -> str:
         """Remove unwanted formatting and duplicates"""
@@ -146,26 +200,30 @@ class ActionGenerator:
         return '\n'.join(unique_lines)
 
     def _get_fallback_template(self, class_name: str, action_name: str, 
-                               contract_name: str, function_name: str) -> str:
+                             contract_name: str, function_name: str,
+                             input_types: str = "", param_names: str = "") -> str:
         sanitized_class_name = self._sanitize_for_classname(action_name)
         
         return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
 import type {{ RunContext }} from "@svylabs/ilumina";
+import type {{ Contract }} from "ethers";
 
 export class {class_name} extends Action {{
-    private contracts: any;
+    private contract: Contract;
     
-    constructor(contracts: any) {{
+    constructor(contract: Contract) {{
         super("{sanitized_class_name}");
-        this.contracts = contracts;
+        this.contract = contract;
     }}
 
     async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
         actor.log("Executing {action_name}...");
         try {{
-            const result = await this.contracts.{contract_name}.connect(actor.account.value)
-                .{function_name}();
-            return {{ txHash: result.hash }};
+            const tx = await this.contract.connect(actor.account.value)
+                .{function_name}({param_names});
+            await tx.wait();
+            actor.log(`{action_name} executed successfully. TX hash: ${{tx.hash}}`);
+            return {{ txHash: tx.hash }};
         }} catch (error) {{
             actor.log(`Error in {action_name}: ${{error}}`);
             throw error;
