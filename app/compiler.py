@@ -58,7 +58,7 @@ class Compiler:
         # Walk through artifacts directory
         for root, _, files in os.walk(os.path.join(self.artifacts_dir, "contracts")):
             for file in files:
-                if file.endswith(".json") and not file.endswith(".dbg.json"):
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     contract_path = os.path.join(root, file)
                     with open(contract_path, "r") as f:
                         artifact = json.load(f)
@@ -70,6 +70,9 @@ class Compiler:
                             "bytecode": artifact.get("bytecode", ""),
                             "deployedBytecode": artifact.get("deployedBytecode", "")
                         }
+        
+        # Print all extracted ABIs
+        # print("Hardhat Contracts ABI:", json.dumps(contracts_abi, indent=2))
         
         # Save compiled contracts to JSON file
         with open(self.compiled_contracts_path, "w") as f:
@@ -102,7 +105,7 @@ class Compiler:
         # Walk through artifacts directory
         for root, _, files in os.walk(os.path.join(self.artifacts_dir)):
             for file in files:
-                if file.endswith(".json") and not file.endswith(".metadata.json"):
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     contract_path = os.path.join(root, file)
                     with open(contract_path, "r") as f:
                         artifact = json.load(f)
@@ -114,6 +117,9 @@ class Compiler:
                             "bytecode": artifact.get("bytecode", ""),
                             "deployedBytecode": artifact.get("deployedBytecode", "")
                         }
+        
+        # Print all extracted ABIs
+        # print("Foundry Contracts ABI:", json.dumps(contracts_abi, indent=2))
         
         # Save compiled contracts to JSON file
         with open(self.compiled_contracts_path, "w") as f:

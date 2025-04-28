@@ -9,6 +9,7 @@ def ask_openai(prompt: str, task: str = "generate") -> str:
         # Dynamically select the model based on the task
         if task == "generate":
             model = client.models.get('gemini-2.0-flash')
+            # model = client.models['gemini-2.0-flash']  # dictionary-style access
         elif task == "reason":
             model = client.models.get('gemini-1.5-pro')
         elif task == "understand":
