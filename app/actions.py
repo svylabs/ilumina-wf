@@ -125,10 +125,12 @@ class ActionGenerator:
         sanitized_class_name = self._sanitize_for_classname(action_name)
         class_name = sanitized_class_name + "Action"
         
+        # Get ABI for the contract
         contract_abi = self.compiler.get_contract_abi(contract_name)
         if not contract_abi:
             raise Exception(f"ABI not found for contract: {contract_name}")
         
+        # Find the function in ABI
         function_abi = next(
             (item for item in contract_abi["abi"] 
              if item["type"] == "function" and item["name"] == function_name),
@@ -138,16 +140,29 @@ class ActionGenerator:
         if not function_abi:
             raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
         
+        # Generate parameter initialization code and validation rules
         param_inits = []
         param_names = []
+        validation_rules = []
+
         for input_param in function_abi.get("inputs", []):
             param_name = input_param['name']
             param_type = input_param['type']
             param_names.append(param_name)
             param_inits.append(self._generate_param_init_code(param_name, param_type, function_name))
+            validation_rules.append(self._generate_validation_rule(param_name, param_type))
         
         param_init_lines = "\n                ".join(param_inits)
         param_return_lines = ",\n                            ".join(f"{name}: {name}" for name in param_names)
+        validation_rules = [rule for rule in validation_rules if rule]  # Remove empty rules
+
+        # Generate validation logic
+        validation_logic = "\n            ".join([
+            "// Basic parameter validation",
+            *validation_rules,
+            # "// Add custom validation logic here as needed",
+            "return true;"
+        ])
         
         prompt = (
             "Generate a TypeScript class for action '{}' with EXACTLY this structure:\n\n"
@@ -166,6 +181,12 @@ class ActionGenerator:
             "        try {{\n"
             "            // Initialize parameters\n"
             "            {}\n\n"
+            "            // Validate parameters before execution\n"
+            "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
+            "                {}\n"
+            "            }}))) {{\n"
+            "                throw new Error('Parameter validation failed');\n"
+            "            }}\n\n"
             "            const tx = await this.contract.connect(actor.account.value)\n"
             "                .{}({});\n\n"
             "            await tx.wait();\n"
@@ -185,27 +206,29 @@ class ActionGenerator:
             "                 previousSnapshot: any, newSnapshot: any,\n"
             "                 actionParams: any): Promise<boolean> {{\n"
             "        actor.log(`Validating {}...`);\n"
-            "        return true;\n"
+            "        {}\n"
             "    }}\n"
             "}}\n\n"
             "Requirements:\n"
             "1. MUST maintain this exact structure\n"
             "2. Include all parameter initializations\n"
-            "3. Use proper TypeScript types\n"
-            "4. Include proper error handling\n"
-            "5. Return both txHash and parameters used"
+            "3. Add comprehensive validation logic\n"
+            "4. Validate parameters before execution\n"
+            "5. Include proper error handling"
         ).format(
             action_name,
             class_name,
             sanitized_class_name,
             action_name,
             param_init_lines,
+            param_return_lines,
             function_name,
             ", ".join(param_names),
             action_name,
             param_return_lines,
             action_name,
-            action_name
+            action_name,
+            validation_logic
         )
         
         try:
@@ -232,14 +255,71 @@ class ActionGenerator:
                 f.write(self._get_fallback_template(
                     class_name, action_name, 
                     contract_name, function_name,
-                    param_names, param_inits
+                    param_names, param_inits,
+                    validation_rules
                 ))
+
+    def _generate_validation_rule(self, param_name: str, param_type: str) -> str:
+        """Generate validation rules for parameters based on their type"""
+        if param_type.startswith("uint") or param_type.startswith("int"):
+            bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
+            max_val = 2 ** (int(bits) if bits else 256) - 1
+            return (
+                f"if (actionParams.{param_name}.gt(ethers.BigNumber.from({max_val}))) {{\n"
+                f"    actor.log(`{param_name} exceeds maximum value for {param_type}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        if param_type == "address":
+            return (
+                f"if (!ethers.utils.isAddress(actionParams.{param_name})) {{\n"
+                f"    actor.log(`Invalid address format for {param_name}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+
+        if "time" in param_name.lower():
+            return (
+                f"if (actionParams.{param_name} < Math.floor(Date.now() / 1000)) {{\n"
+                f"    actor.log(`{param_name} cannot be in the past`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        
+        if param_type == "string":
+            return (
+                f"if (actionParams.{param_name}.length === 0) {{\n"
+                f"    actor.log(`{param_name} cannot be empty`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        
+        if "strategy" in param_name.lower():
+            return (
+                f"if (!context.strategies.has(actionParams.{param_name})) {{\n"
+                f"    actor.log(`Invalid strategy for {param_name}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        
+        return ""
 
     def _get_fallback_template(self, class_name: str, action_name: str, 
                              contract_name: str, function_name: str,
-                             param_names: List[str], param_inits: List[str]) -> str:
+                             param_names: List[str], param_inits: List[str],
+                             validation_rules: List[str] = None) -> str:
+        """Fallback template generator with proper validation support"""
+        if validation_rules is None:
+            validation_rules = []
+
         sanitized_class_name = self._sanitize_for_classname(action_name)
         param_return_lines = ",\n                    ".join(f"{name}: {name}" for name in param_names)
+        validation_logic = "\n        ".join([
+            "// Basic parameter validation",
+            *[rule for rule in validation_rules if rule],
+            # "// Add custom validation logic here as needed",
+            "return true;"
+        ])
         
         return (
             "import {{ Action, Actor }} from \"@svylabs/ilumina\";\n"
@@ -257,6 +337,12 @@ class ActionGenerator:
             "        try {{\n"
             "            // Initialize parameters\n"
             "            {}\n\n"
+            "            // Validate parameters before execution\n"
+            "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
+            "                {}\n"
+            "            }}))) {{\n"
+            "                throw new Error('Parameter validation failed');\n"
+            "            }}\n\n"
             "            const tx = await this.contract.connect(actor.account.value)\n"
             "                .{}({});\n"
             "            await tx.wait();\n"
@@ -276,7 +362,7 @@ class ActionGenerator:
             "                 previousSnapshot: any, newSnapshot: any,\n"
             "                 actionParams: any): Promise<boolean> {{\n"
             "        actor.log(\"Validating {}...\");\n"
-            "        return true;\n"
+            "        {}\n"
             "    }}\n"
             "}}"
         ).format(
@@ -284,10 +370,12 @@ class ActionGenerator:
             sanitized_class_name,
             action_name,
             "\n            ".join(param_inits),
+            param_return_lines,
             function_name,
             ", ".join(param_names),
             action_name,
             param_return_lines,
             action_name,
-            action_name
+            action_name,
+            validation_logic
         )
