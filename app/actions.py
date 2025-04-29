@@ -64,7 +64,7 @@ class ActionGenerator:
 
     def _generate_time_offset(self) -> int:
         """Generate a reasonable time offset in seconds"""
-        return random.randint(3600, 86400)
+        return random.randint(3600, 259200)  # 1 hour to 3 days
 
     def _generate_param_init_code(self, param_name: str, param_type: str, function_name: str) -> str:
         """Generate initialization code for a parameter"""
@@ -79,9 +79,8 @@ class ActionGenerator:
             return f"const {param_name} = Math.floor(Date.now() / 1000) + {offset}; // Current timestamp with offset"
         
         if param_type.startswith("uint") or param_type.startswith("int"):
-            bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
-            max_val = 2 ** (int(bits) if bits else 256) - 1
-            return f"const {param_name} = BigNumber.from(Math.floor(Math.random() * {max_val})); // Random {param_type}"
+            MAX_UINT256 = 2**256 - 1
+            return f"const {param_name} = BigNumber.from(Math.floor(Math.random() * {MAX_UINT256})); // Random {param_type}"
         
         if param_type == "bool":
             return f"const {param_name} = Math.random() > 0.5; // Random boolean"
