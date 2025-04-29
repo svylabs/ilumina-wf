@@ -160,7 +160,6 @@ class ActionGenerator:
         validation_logic = "\n            ".join([
             "// Basic parameter validation",
             *validation_rules,
-            # "// Add custom validation logic here as needed",
             "return true;"
         ])
         
@@ -317,7 +316,6 @@ class ActionGenerator:
         validation_logic = "\n        ".join([
             "// Basic parameter validation",
             *[rule for rule in validation_rules if rule],
-            # "// Add custom validation logic here as needed",
             "return true;"
         ])
         
