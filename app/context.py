@@ -89,6 +89,18 @@ def prepare_context(data):
                          check=True,
                          capture_output=True,
                          text=True)
+        
+        # Explicitly install bignumber.js and its type declarations
+        subprocess.run(["npm", "install", "bignumber.js"],
+                     cwd=simulation_repo_path,
+                     check=True,
+                     capture_output=True,
+                     text=True)
+        subprocess.run(["npm", "install", "--save-dev", "@types/bignumber.js"],
+                     cwd=simulation_repo_path,
+                     check=True,
+                     capture_output=True,
+                     text=True)
     except subprocess.CalledProcessError as e:
         # Fallback to full install if clean install fails
         try:
@@ -98,12 +110,18 @@ def prepare_context(data):
                  "@nomicfoundation/hardhat-toolbox@^2.0.0",
                  "ethers@^5.7.2",
                  "typescript@^4.9.5",
-                 "ts-node@^10.9.1"],
+                 "ts-node@^10.9.1",
+                 "bignumber.js"],
                 cwd=simulation_repo_path,
                 check=True,
                 capture_output=True,
                 text=True
             )
+            subprocess.run(["npm", "install", "--save-dev", "@types/bignumber.js"],
+                         cwd=simulation_repo_path,
+                         check=True,
+                         capture_output=True,
+                         text=True)
         except subprocess.CalledProcessError as fallback_error:
             raise Exception(
                 f"Simulation dependency installation failed:\n"
