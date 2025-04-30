@@ -5,8 +5,13 @@ from pydantic import BaseModel, Field
 import os
 from enum import Enum
 from typing import Literal
-
+from abc import ABC, abstractmethod
 import re
+
+class IluminaOpenAIResponseModel(BaseModel):
+    @abstractmethod
+    def to_dict(self) -> dict:
+        pass
 
 def extract_solidity_functions_and_contract_name(content):
     """Extract the contract name, type, public/external functions, and constructor (modern syntax) from a Solidity contract file."""
@@ -72,7 +77,7 @@ def extract_solidity_functions_and_contract_name(content):
 
 
 
-class Function(BaseModel):
+class Function(IluminaOpenAIResponseModel):
     name: str
     summary: str
     inputs: list[str]
@@ -90,7 +95,7 @@ class Function(BaseModel):
             "outputs": self.outputs
         }
 
-class Contract(BaseModel):
+class Contract(IluminaOpenAIResponseModel):
     name: str
     type: Literal["external", "library", "interface"]  # external, library, interface
     summary: str
@@ -114,7 +119,7 @@ class Contract(BaseModel):
             "constructor": self.constructor
         }
 
-class Project(BaseModel):
+class Project(IluminaOpenAIResponseModel):
     name: str
     summary: str
     type: str
@@ -152,7 +157,7 @@ class Project(BaseModel):
                 return Project.load(content)
         return None
     
-class Action(BaseModel):
+class Action(IluminaOpenAIResponseModel):
     name: str
     summary: str
     contract_name: str
@@ -170,7 +175,7 @@ class Action(BaseModel):
         }
     
 
-class Actor(BaseModel):
+class Actor(IluminaOpenAIResponseModel):
     name: str
     summary: str
     actions: list[Action]
@@ -214,7 +219,7 @@ class UserJourneys(BaseModel):
             "user_journeys": [user_journey.to_dict() for user_journey in self.user_journeys]
         }
     
-class Actions(BaseModel):
+class Actions(IluminaOpenAIResponseModel):
     actions: list[Action]
 
     @classmethod
@@ -226,7 +231,7 @@ class Actions(BaseModel):
             "actions": [action.to_dict() for action in self.actions]
         }
     
-class Actors(BaseModel):
+class Actors(IluminaOpenAIResponseModel):
     actors: list[Actor]
 
     @classmethod
@@ -248,7 +253,7 @@ class Actors(BaseModel):
         return None
 
     
-class Param(BaseModel):
+class Param(IluminaOpenAIResponseModel):
     name: str
     value: str = Field(..., description="Leave empty if it's type val")
     type: Literal["val", "ref"] # val | ref
@@ -260,7 +265,7 @@ class Param(BaseModel):
             "type": self.type
         }
 
-class SequenceStep(BaseModel):
+class SequenceStep(IluminaOpenAIResponseModel):
     type: Literal["deploy", "call"]  # "deploy" or "call"
     contract: str
     constructor: str = None
@@ -278,7 +283,7 @@ class SequenceStep(BaseModel):
             "params": [param.to_dict() for param in self.params]
         }
 
-class DeploymentInstruction(BaseModel):
+class DeploymentInstruction(IluminaOpenAIResponseModel):
     sequence: List[SequenceStep]
 
     def to_dict(self):

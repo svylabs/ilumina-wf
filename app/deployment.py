@@ -3,6 +3,7 @@ from .models import DeploymentInstruction
 from .openai import ask_openai
 import os
 import json
+from .three_stage_llm_call import ThreeStageAnalyzer
 
 class DeploymentAnalyzer:
     def __init__(self, context: RunContext):
@@ -75,7 +76,9 @@ class DeploymentAnalyzer:
         print(f"{user_prompt}")
 
         try:
-            _, deployment_instructions = ask_openai(prompt, DeploymentInstruction, task="reasoning")
+            analyzer = ThreeStageAnalyzer(DeploymentInstruction)
+            deployment_instructions = analyzer.ask_openai(prompt)
+            #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
             # Save and commit the deployment instructions
             self.save_deployment_instructions(deployment_instructions)
