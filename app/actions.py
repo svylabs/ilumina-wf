@@ -93,7 +93,7 @@ class ActionGenerator:
         
         if param_type.startswith("bytes"):
             size = param_type[5:] or "32"
-            return f"const {param_name} = ethers.utils.hexlify(ethers.utils.randomBytes({size})); // Random bytes"
+            return f"const {param_name} = ethers.hexlify(ethers.randomBytes({size})); // Random bytes"
         
         return f"const {param_name} = context.getParam('{param_name}') || '{param_name}_default'; // Get from context or use default"
 
@@ -276,7 +276,7 @@ class ActionGenerator:
             )
         if param_type == "address":
             return (
-                f"if (!ethers.utils.isAddress(actionParams.{param_name})) {{\n"
+                f"if (!ethers.isAddress(actionParams.{param_name})) {{\n"
                 f"    actor.log(`Invalid address format for {param_name}`);\n"
                 f"    return false;\n"
                 f"}}"
