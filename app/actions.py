@@ -79,8 +79,11 @@ class ActionGenerator:
             return f"const {param_name} = Math.floor(Date.now() / 1000) + {offset}; // Current timestamp with offset"
         
         if param_type.startswith("uint") or param_type.startswith("int"):
-            MAX_UINT256 = 2**256 - 1
-            return f"const {param_name} = BigNumber.from(Math.floor(Math.random() * {MAX_UINT256})); // Random {param_type}"
+            bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
+            max_val = 2 ** (int(bits) if bits else 256) - 1
+            return f"const {param_name} = new BigNumber(Math.floor(Math.random() * {max_val})); // Random {param_type}"
+            # MAX_UINT256 = 2**256 - 1
+            # return f"const {param_name} = BigNumber.from(Math.floor(Math.random() * {MAX_UINT256})); // Random {param_type}"
         
         if param_type == "bool":
             return f"const {param_name} = Math.random() > 0.5; // Random boolean"
@@ -168,7 +171,8 @@ class ActionGenerator:
             "import {{ Action, Actor }} from \"@svylabs/ilumina\";\n"
             "import type {{ RunContext }} from \"@svylabs/ilumina\";\n"
             "import type {{ Contract }} from \"ethers\";\n"
-            "import {{ BigNumber, ethers }} from \"ethers\";\n\n"
+            "import {{ ethers }} from \"ethers\";\n"
+            "import BigNumber from \"bignumber.js\";\n\n"
             "export class {} extends Action {{\n"
             "    private contract: Contract;\n\n"
             "    constructor(contract: Contract) {{\n"
@@ -264,7 +268,8 @@ class ActionGenerator:
             bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
             max_val = 2 ** (int(bits) if bits else 256) - 1
             return (
-                f"if (actionParams.{param_name}.gt(ethers.BigNumber.from({max_val}))) {{\n"
+                # f"if (actionParams.{param_name}.gt(ethers.BigNumber.from({max_val}))) {{\n"
+                f"if (actionParams.{param_name}.isGreaterThan(new BigNumber({max_val}))) {{\n"
                 f"    actor.log(`{param_name} exceeds maximum value for {param_type}`);\n"
                 f"    return false;\n"
                 f"}}"
@@ -323,7 +328,8 @@ class ActionGenerator:
             "import {{ Action, Actor }} from \"@svylabs/ilumina\";\n"
             "import type {{ RunContext }} from \"@svylabs/ilumina\";\n"
             "import type {{ Contract }} from \"ethers\";\n"
-            "import {{ BigNumber, ethers }} from \"ethers\";\n\n"
+            "import {{ ethers }} from \"ethers\";\n"
+            "import BigNumber from \"bignumber.js\";\n\n"
             "export class {} extends Action {{\n"
             "    private contract: Contract;\n\n"
             "    constructor(contract: Contract) {{\n"
