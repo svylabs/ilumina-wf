@@ -16,6 +16,10 @@ class ActionGenerator:
         os.makedirs(self.actions_dir, exist_ok=True)
         self.compiler = Compiler(context)
         
+        # Ensure context has a prng attribute
+        if not hasattr(context, "prng"):
+            context.prng = random.Random()  # Add a default PRNG if missing
+
     def generate_all_actions(self):
         """Generate action files for all actors and actions"""
         # First compile contracts to get ABIs
@@ -63,11 +67,11 @@ class ActionGenerator:
         return ''.join(word.capitalize() for word in cleaned.split())
 
     def _generate_time_offset(self) -> int:
-        """Generate a reasonable time offset in seconds"""
-        return random.randint(3600, 259200)  # 1 hour to 3 days
+        """Generate a reasonable time offset in seconds using context.prng"""
+        return self.context.prng.randint(3600, 259200)  # 1 hour to 3 days
 
     def _generate_param_init_code(self, param_name: str, param_type: str, function_name: str) -> str:
-        """Generate initialization code for a parameter"""
+        """Generate initialization code for a parameter using context.prng"""
         if param_name.lower().endswith("address"):
             return f"const {param_name} = actor.account.value; // Using actor's address"
         
@@ -81,19 +85,20 @@ class ActionGenerator:
         if param_type.startswith("uint") or param_type.startswith("int"):
             bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
             max_val = 2 ** (int(bits) if bits else 256) - 1
-            return f"const {param_name} = new BigNumber(Math.floor(Math.random() * {max_val})); // Random {param_type}"
-            # MAX_UINT256 = 2**256 - 1
-            # return f"const {param_name} = BigNumber.from(Math.floor(Math.random() * {MAX_UINT256})); // Random {param_type}"
+            return f"const {param_name} = new BigNumber(context.prng.next().toFixed()).mod({max_val}); // Random {param_type}"
         
         if param_type == "bool":
-            return f"const {param_name} = Math.random() > 0.5; // Random boolean"
+            return f"const {param_name} = context.prng.next() > 0.5; // Random boolean"
         
         if param_type == "string":
-            return f"const {param_name} = `{function_name}_${{Math.random().toString(36).substring(2, 8)}}`; // Random string"
+            return f"const {param_name} = `{function_name}_${{context.prng.next().toString(36).substring(2, 8)}}`; // Random string"
         
         if param_type.startswith("bytes"):
-            size = param_type[5:] or "32"
-            return f"const {param_name} = ethers.hexlify(ethers.randomBytes({size})); // Random bytes"
+            size = int(param_type[5:]) if param_type[5:] else 32
+            return (
+                f"const {param_name} = ethers.hexlify(Uint8Array.from("
+                f"Array.from({{length: {size}}}, () => Math.floor(context.prng.next() * 256)))); // Random bytes"
+            )
         
         return f"const {param_name} = context.getParam('{param_name}') || '{param_name}_default'; // Get from context or use default"
 
@@ -182,7 +187,7 @@ class ActionGenerator:
             "    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{\n"
             "        actor.log(`Executing {}...`);\n"
             "        try {{\n"
-            "            // Initialize parameters\n"
+            "            // Initialize parameters using context.prng\n"
             "            {}\n\n"
             "            // Validate parameters before execution\n"
             "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
@@ -213,11 +218,12 @@ class ActionGenerator:
             "    }}\n"
             "}}\n\n"
             "Requirements:\n"
-            "1. MUST maintain this exact structure\n"
-            "2. Include all parameter initializations\n"
-            "3. Add comprehensive validation logic\n"
-            "4. Validate parameters before execution\n"
-            "5. Include proper error handling"
+            "1. Use context.prng for all random value generation\n"
+            "2. MUST maintain this exact structure\n"
+            "3. Include all parameter initializations\n"
+            "4. Add comprehensive validation logic\n"
+            "5. Validate parameters before execution\n"
+            "6. Include proper error handling"
         ).format(
             action_name,
             class_name,
@@ -339,7 +345,7 @@ class ActionGenerator:
             "    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{\n"
             "        actor.log(\"Executing {}...\");\n"
             "        try {{\n"
-            "            // Initialize parameters\n"
+            "            // Initialize parameters using context.prng\n"
             "            {}\n\n"
             "            // Validate parameters before execution\n"
             "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
