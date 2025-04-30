@@ -77,7 +77,7 @@ class DeploymentAnalyzer:
 
         try:
             analyzer = ThreeStageAnalyzer(DeploymentInstruction)
-            deployment_instructions = analyzer.ask_openai(prompt)
+            deployment_instructions = analyzer.ask_llm(prompt)
             #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
             # Save and commit the deployment instructions

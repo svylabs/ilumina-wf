@@ -21,7 +21,7 @@ class ThreeStageAnalyzer:
         self.model_class = model_class
         self.draft = None
 
-    def ask_openai(self, prompt: str) -> IluminaOpenAIResponseModel:
+    def ask_llm(self, prompt: str) -> IluminaOpenAIResponseModel:
         self.prompt = prompt
         response = ask_openai(prompt, self.model_class, task="analyze")
         self.draft = response[1]
