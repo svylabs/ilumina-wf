@@ -3,6 +3,7 @@ from typing import Type, Optional
 from .openai import ask_openai
 from abc import ABC, abstractmethod
 from .models import IluminaOpenAIResponseModel
+import json
 
 
 class Verification(IluminaOpenAIResponseModel):
@@ -23,7 +24,7 @@ class ThreeStageAnalyzer:
 
     def ask_llm(self, prompt: str) -> IluminaOpenAIResponseModel:
         self.prompt = prompt
-        response = ask_openai(prompt, self.model_class, task="analyze")
+        response = ask_openai("Step 1: Create draft\n\n" + prompt, self.model_class, task="analyze")
         self.draft = response[1]
         self.verification_result = self.verify_draft()
         print("Verification result:", self.verification_result.to_dict())
@@ -33,9 +34,14 @@ class ThreeStageAnalyzer:
         if self.draft is None:
             raise ValueError("Draft must be created first.")
         
-        prompt = f"Please verify the following draft:\n\n{self.draft.to_dict()}"
-        prompt += f"n\Here is the original request:\n\n{self.prompt}\n\n and suggest any changes needed. Assume the json structure is correct as it is."
-        response = ask_openai(prompt, Verification, task="verify")
+        conversations = [
+                {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task."},
+                {"role": "user", "content": "Step 1: Create draft\n\n" + self.prompt},
+                {"role": "assistant","content": json.dumps(self.draft.to_dict())}
+        ]
+        
+        prompt = f"Please verify the json draft and suggest any changes necessary"
+        response = ask_openai(prompt, Verification, task="verify", conversations=conversations)
         self.verification_result = response[1]
         return self.verification_result
     
@@ -43,11 +49,22 @@ class ThreeStageAnalyzer:
         if self.verification_result is None:
             raise ValueError("Draft must be verified first.")
         if self.verification_result.is_change_needed:
-            prompt = f"Please correct the following draft based on the changes needed:\n\n{self.draft.to_dict()}"
-            prompt += f"\n\nThe changes needed: {self.verification_result.to_dict()}"
-            response = ask_openai(prompt, self.model_class, task="correct")
+            conversations = [
+                {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task."},
+                {"role": "user", "content": "Step 1: Create draft\n\n" + self.prompt},
+                {"role": "assistant","content": json.dumps(self.draft.to_dict())},
+                {"role": "user", "content": "Step 2: Please verify the above json draft and suggest any changes necessary"},
+                {"role": "assistant", "content": json.dumps(self.verification_result.to_dict())}
+            ]
+            prompt = "Step 3: Correct and finalize. Please correct the earlier draft based on the changes suggested"
+            #prompt = f"Here is the original request from user: {self.prompt}\n\n"
+            #prompt += f"Here is the draft created by the assistant: \n\n{self.draft.to_dict()}"
+            #prompt += f"\n\nThe changes suggested by the assistant: {self.verification_result.to_dict()}"
+            response = ask_openai(prompt, self.model_class, task="correct", conversations=conversations)
             print("Corrected draft:", response[1].to_dict())
             return response[1]
+        else:
+            return self.draft
 
     def finalize(self) -> BaseModel:
         if self.verified_draft is None:

@@ -13,6 +13,75 @@ class IluminaOpenAIResponseModel(BaseModel):
     def to_dict(self) -> dict:
         pass
 
+import re
+
+def extract_all_solidity_definitions(content):
+    """
+    Extracts all contracts/interfaces/libraries in the Solidity file.
+    For each, captures the name, type, constructor (modern syntax), and public/external functions.
+    """
+    # Match all contract-like declarations
+    contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)\s*{'
+    matches = list(re.finditer(contract_pattern, content))
+
+    def extract_block(start_index):
+        brace_count = 0
+        i = start_index
+        while i < len(content):
+            if content[i] == '{':
+                brace_count += 1
+            elif content[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return content[start_index:i + 1]
+            i += 1
+        return ""
+
+    results = []
+
+    for match in matches:
+        contract_type_raw, contract_name = match.groups()
+        contract_type = contract_type_raw.replace("abstract contract", "abstract")
+        start = match.start()
+        brace_start = content.find('{', start)
+        block = extract_block(brace_start)
+
+        # Extract constructor (modern syntax)
+        constructor_str = None
+        constructor_pattern = r'\bconstructor\s*\(([^)]*)\)[^{]*{'
+        constructor_match = re.search(constructor_pattern, block)
+        if constructor_match:
+            cs_start = constructor_match.start()
+            brace_open = block.find('{', cs_start)
+            constructor_str = block[cs_start:brace_open] + extract_block(brace_open)
+
+        # Extract public/external functions
+        function_pattern = r'function\s+(\w+)\s*\(([^)]*)\)\s*(public|external)?\s*(view|pure|payable)?\s*(returns\s*\(([^)]*)\))?'
+        function_matches = re.findall(function_pattern, block, re.DOTALL)
+
+        functions = []
+        for func in function_matches:
+            name, params, visibility, modifier, _, returns = func
+            param_list = [p.strip() for p in params.split(',')] if params.strip() else []
+            visibility = visibility if visibility else "unknown"
+            returns = returns.strip() if returns else None
+            functions.append({
+                "function_name": name,
+                "parameters": param_list,
+                "visibility": visibility,
+                "returns": returns
+            })
+
+        results.append({
+            "contract_name": contract_name,
+            "type": contract_type,
+            "constructor": constructor_str,
+            "functions": functions
+        })
+
+    return results
+
+
 def extract_solidity_functions_and_contract_name(content):
     """Extract the contract name, type, public/external functions, and constructor (modern syntax) from a Solidity contract file."""
 

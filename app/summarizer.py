@@ -2,8 +2,9 @@ import os
 from openai import OpenAI
 import json
 from .models import Contract, Project
-from .models import extract_solidity_functions_and_contract_name
+from .models import extract_solidity_functions_and_contract_name, extract_all_solidity_definitions
 from .openai import ask_openai
+from .three_stage_llm_call import ThreeStageAnalyzer
 
 class ProjectSummarizer:
     def __init__(self, context):
@@ -31,7 +32,7 @@ class ProjectSummarizer:
                     content = ""
                     with open(os.path.join(root, file), "r") as f:
                         content = f.read()
-                    if (content.trim() == ""):
+                    if (content.strip() == ""):
                         continue
                     contracts.append(
                         {
@@ -53,23 +54,24 @@ class ProjectSummarizer:
 
     def analyze_contracts(self, project_summary):
         for contract in self.contracts:
-            contract_detail = extract_solidity_functions_and_contract_name(contract["content"])
-            if (contract_detail["contract_name"] == "Unknown"):
-                print(f"Warning: Unknown contract name {json.dumps(contract_detail)}")
-                continue
-            print("Analyzing " + json.dumps(contract_detail))
-            prompt = f"""
-            Analyze this smart contract.
+            contract_list = extract_all_solidity_definitions(contract["content"])
+            for contract_detail in contract_list:
+                if (contract_detail["contract_name"] == "Unknown"):
+                    print(f"Warning: Unknown contract name {json.dumps(contract_detail)}")
+                    continue
+                print("Analyzing " + json.dumps(contract_detail))
+                prompt = f"""
+                Analyze this smart contract.
 
-            {json.dumps(contract_detail)}
+                {json.dumps(contract_detail)}
 
-            Can you summarize the contract: 
-            1. Purpose of the contract based on functions and contract name
-            2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
-            """
-            response = ask_openai(prompt, Contract, task="understand")
-            contract_summary = response[1]
-            project_summary.add_contract(contract_summary)
+                Can you summarize the contract: 
+                1. Purpose of the contract based on functions and contract name
+                2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
+                """
+                analyzer = ThreeStageAnalyzer(Contract)
+                contract_summary = analyzer.ask_llm(prompt)
+                project_summary.add_contract(contract_summary)
         return project_summary
 
     def merge_project_summaries(self, project_from_readme, project_from_contracts):
@@ -88,8 +90,9 @@ class ProjectSummarizer:
         3. Use a consistent format("None") for empty values for strings.
 
         """
-        response = ask_openai(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty", Project, "understand")
-        return response[1]
+        analyzer = ThreeStageAnalyzer(Project)
+        summary = analyzer.ask_llm(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty")
+        return summary
 
     def summarize(self, user_prompt=None):
         '''
@@ -119,8 +122,8 @@ class ProjectSummarizer:
         if (self.readme != ""):
             prompt_with_readme = prompt + f"\n\n Project Readme:\n\n {self.readme}"
             # Add user prompt if provided
-            response = ask_openai(prompt_with_readme, Project, task="understand")
-            project_from_readme = response[1]
+            analyzer = ThreeStageAnalyzer(Project)
+            project_from_readme = analyzer.ask_llm(prompt_with_readme)
             project_from_readme.clear_contracts()
             print("Project summary from README")
             print(json.dumps(project_from_readme.to_dict()))
@@ -131,8 +134,8 @@ class ProjectSummarizer:
                 "name": contract["name"]
             })
         prompt_with_contracts = prompt + f"\n\n Project Contracts:\n\n {json.dumps(contracts_summary)}"
-        response = ask_openai(prompt_with_contracts, Project, task="understand")
-        project_from_contracts = response[1]
+        analyzer = ThreeStageAnalyzer(Project)
+        project_from_contracts = analyzer.ask_llm(prompt_with_contracts)
         project_summary = project_from_contracts
         print("Project summary from contract names")
         print(json.dumps(project_summary.to_dict()))
@@ -140,6 +143,7 @@ class ProjectSummarizer:
             project_summary = self.merge_project_summaries(project_from_readme, project_from_contracts)
         project_summary.clear_contracts()
         project_summary = self.analyze_contracts(project_summary)
+        print("Analyzed all contracts")
         print(json.dumps(project_summary.to_dict()))
         self.project_summary = project_summary
         self.save()
