@@ -17,14 +17,16 @@ import re
 
 def extract_all_solidity_definitions(content):
     """
-    Extracts all contracts/interfaces/libraries in the Solidity file.
-    For each, captures the name, type, constructor (modern syntax), and public/external functions.
+    Extracts all contracts/interfaces/libraries in a Solidity file.
+    For each, captures name, type, constructor (with initializer), and public/external functions.
     """
-    # Match all contract-like declarations
-    contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)\s*{'
+
+    # Matches contract-like declarations (including optional inheritance)
+    contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)(?:\s+is\s+[^{]+)?\s*{'
     matches = list(re.finditer(contract_pattern, content))
 
     def extract_block(start_index):
+        """Extract a brace-balanced block starting at {"""
         brace_count = 0
         i = start_index
         while i < len(content):
@@ -35,35 +37,55 @@ def extract_all_solidity_definitions(content):
                 if brace_count == 0:
                     return content[start_index:i + 1]
             i += 1
-        return ""
+        return content[start_index:]
+
+    def extract_constructor(block):
+        """Extract constructor with brace tracking (handles initializers like Ownable(...))"""
+        constructor_pattern = r'\bconstructor\s*\([^)]*\)\s*(?:[^\{]*){'
+        match = re.search(constructor_pattern, block)
+        if not match:
+            return None
+
+        start = match.start()
+        brace_open = block.find('{', match.end() - 1)
+
+        # Track braces to get constructor body
+        brace_count = 0
+        i = brace_open
+        while i < len(block):
+            if block[i] == '{':
+                brace_count += 1
+            elif block[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return block[start:i + 1]
+            i += 1
+        return block[start:]
 
     results = []
 
     for match in matches:
         contract_type_raw, contract_name = match.groups()
         contract_type = contract_type_raw.replace("abstract contract", "abstract")
-        start = match.start()
-        brace_start = content.find('{', start)
+        brace_start = content.find('{', match.end() - 1)
         block = extract_block(brace_start)
 
-        # Extract constructor (modern syntax)
-        constructor_str = None
-        constructor_pattern = r'\bconstructor\s*\(([^)]*)\)[^{]*{'
-        constructor_match = re.search(constructor_pattern, block)
-        if constructor_match:
-            cs_start = constructor_match.start()
-            brace_open = block.find('{', cs_start)
-            constructor_str = block[cs_start:brace_open] + extract_block(brace_open)
+        constructor_str = extract_constructor(block)
 
-        # Extract public/external functions
-        function_pattern = r'function\s+(\w+)\s*\(([^)]*)\)\s*(public|external)?\s*(view|pure|payable)?\s*(returns\s*\(([^)]*)\))?'
+        # Extract functions
+        function_pattern = (
+            r'function\s+(\w+)\s*\(([^)]*)\)\s*'
+            r'(public|external)?\s*'
+            r'(view|pure|payable)?\s*'
+            r'(returns\s*\(([^)]*)\))?'
+        )
         function_matches = re.findall(function_pattern, block, re.DOTALL)
 
         functions = []
         for func in function_matches:
             name, params, visibility, modifier, _, returns = func
             param_list = [p.strip() for p in params.split(',')] if params.strip() else []
-            visibility = visibility if visibility else "unknown"
+            visibility = visibility or "unknown"
             returns = returns.strip() if returns else None
             functions.append({
                 "function_name": name,
