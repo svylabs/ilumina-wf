@@ -67,10 +67,11 @@ class ProjectSummarizer:
 
                 Can you summarize the contract: 
                 1. Purpose of the contract based on functions and contract name
-                2. Whether this contract is deployable based on whether it's abstract / interface / library / concrete, and populate the is_deployable field
+                2. Whether this contract is deployable based on whether the type of the contract is abstract / interface / library / concrete, and populate the is_deployable field
                 """
                 analyzer = ThreeStageAnalyzer(Contract)
                 contract_summary = analyzer.ask_llm(prompt)
+                contract_summary.type = contract_detail["type"]
                 project_summary.add_contract(contract_summary)
         return project_summary
 

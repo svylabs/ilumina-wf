@@ -188,7 +188,7 @@ class Function(IluminaOpenAIResponseModel):
 
 class Contract(IluminaOpenAIResponseModel):
     name: str
-    type: Literal["external", "library", "interface"]  # external, library, interface
+    type: Literal["abstract", "library", "interface", "contract"]  # external, library, interface
     summary: str
     functions: list[Function]
     is_deployable: bool = False  # Default to False

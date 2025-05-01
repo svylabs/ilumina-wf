@@ -23,6 +23,8 @@ if __name__ == "__main__":
         return contracts
     contracts = find_contracts()
     for contract in contracts:
+        if (contract["name"] != "StableBase.sol"):
+            continue
         print(f"Found contract {contract['name']} at {contract['path']}")
         contract_list = extract_all_solidity_definitions(contract["content"])
         for contract_detail in contract_list:
