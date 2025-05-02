@@ -397,112 +397,27 @@ def analyze_deployment(submission, request_context, user_prompt):
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
     """Execute and verify the deployment script"""
-    context = prepare_context(submission)
+    context = prepare_context(submission, optimize=False)
     try:
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
-        contract_path = context.cws()
-        simulation_path = context.simulation_path()
-        print(f"Simulation path: {simulation_path}")
-        print(f"Contract path: {contract_path}")
         
-        # Verify contract directory exists
-        if not os.path.exists(contract_path):
-            raise FileNotFoundError(f"Contract directory not found at {contract_path}")
-        
-        hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
-        hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
-        simulation_config = "hardhat.config.simulation.js"
-        if os.path.exists(hardhat_config_path):
-            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path, hardhat_network)
-        if os.path.exists(hardhat_config_path_ts):
-            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
-
-        # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
-        install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
-        # install_command = (
-        #     f"cd {contract_path} && "
-        #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
-        #     "@nomicfoundation/hardhat-ethers ethers && "
-        #     "npm install --legacy-peer-deps"
-        # )
-        install_process = subprocess.Popen(
-            install_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
-        
-        if install_process.returncode != 0:
-            raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
-
-        # 2. Compile the contracts
-        # compile_command = f"cd {contract_path} && npx hardhat compile"
-        compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
-        compile_process = subprocess.Popen(
-            compile_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        compile_stdout, compile_stderr = compile_process.communicate(timeout=300)
-        
-        if compile_process.returncode != 0:
-            raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
-
         # 3. Generate deploy.ts
         deploy_ts_path = deployer.implement_deployment_script()
-        
-        # 4. Run the deployment verification
-        verification_command = (
-            f"cd {contract_path} && "
-            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
-        )
-        
-        process = subprocess.Popen(
-            verification_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
-        
-        # Parse results
-        if process.returncode != 0:
-            error_msg = _extract_error_details(stderr, stdout)
-            update_analysis_status(
-                submission["submission_id"],
-                "implement_deployment_script",
-                "error",
-                metadata={
-                    "message": "Deployment verification failed",
-                    "error": error_msg,
-                    "log": stdout + stderr,
-                    "compile_log": compile_stdout + compile_stderr,
-                    "install_log": install_stdout + install_stderr
-                }
-            )
-            return jsonify({
-                "success": False,
-                "error": error_msg,
-                "log": stdout + stderr,
-                "compile_log": compile_stdout + compile_stderr,
-                "install_log": install_stdout + install_stderr
-            }), 400
-        
-        # Extract contract addresses from output
-        contract_addresses = _parse_contract_addresses(stdout)
+        result = deployer.verify_deployment_script()
+        #process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
+        # 0 - returncode
+        returncode = result[0]
+        contract_addresses = result[1]
+        stdout = result[2]
+        stderr = result[3]
+        compile_stdout = result[4]
+        compile_stderr = result[5]
         
         result = {
             "success": True,
             "contract_addresses": contract_addresses,
             "log": stdout,
-            "compile_log": compile_stdout + compile_stderr,
-            "install_log": install_stdout + install_stderr,
             "deployment_path": deploy_ts_path
         }
 
@@ -560,23 +475,6 @@ def _extract_error_details(stderr, stdout):
             error_lines.append(line.strip())
     return '\n'.join(error_lines[-5:]) if error_lines else "Unknown deployment error"
 
-def _parse_contract_addresses(output):
-    """Parse contract addresses from deployment output"""
-    addresses = {}
-    for line in output.split('\n'):
-        if 'deployed to:' in line:
-            parts = line.split('deployed to:')
-            if len(parts) == 2:
-                name = parts[0].strip()
-                address = parts[1].strip()
-                addresses[name] = address
-        elif ':' in line and '===' not in line:  # Address summary lines
-            parts = line.split(':')
-            if len(parts) >= 2:
-                name = parts[0].strip()
-                address = ':'.join(parts[1:]).strip()
-                addresses[name] = address
-    return addresses
 
 @app.route('/api/submission_logs/<submission_id>', methods=['GET'])
 @authenticate

@@ -4,6 +4,7 @@ from .openai import ask_openai
 import os
 import json
 from .three_stage_llm_call import ThreeStageAnalyzer
+import subprocess
 
 class DeploymentAnalyzer:
     def __init__(self, context: RunContext):
@@ -197,3 +198,47 @@ class DeploymentAnalyzer:
 
         self.context.commit("Updated deploy.ts with generated deployment blocks")
         return deploy_ts_path
+    
+    def verify_deployment_script(self):
+        contract_path = self.context.cws()
+        # 4. Run the deployment verification
+        verification_command = (
+            f"cd {contract_path} && "
+            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
+        )
+        
+        process = subprocess.Popen(
+            verification_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
+        compile_stdout, compile_stderr = process.communicate(timeout=600)
+        contract_addresses = {}
+        if process.returncode == 0:
+            contract_addresses = self._parse_contract_addresses(stdout)
+        return process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
+
+
+    def _parse_contract_addresses(output):
+        """Parse contract addresses from deployment output"""
+        addresses = {}
+        for line in output.split('\n'):
+            if 'deployed to:' in line:
+                parts = line.split('deployed to:')
+                if len(parts) == 2:
+                    name = parts[0].strip()
+                    address = parts[1].strip()
+                    addresses[name] = address
+            elif ':' in line and '===' not in line:  # Address summary lines
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    name = parts[0].strip()
+                    address = ':'.join(parts[1:]).strip()
+                    addresses[name] = address
+        return addresses
+
+        
+        

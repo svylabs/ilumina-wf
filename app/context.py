@@ -5,10 +5,76 @@ import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
 from .models import Project, Actors
+from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 
 APP_VERSION = "v1"
 
-def prepare_context(data):
+def _extract_error_details(stderr, stdout):
+    """Extract meaningful error details from deployment output"""
+    error_lines = []
+    for line in (stderr + stdout).split('\n'):
+        if 'error' in line.lower() or 'fail' in line.lower():
+            error_lines.append(line.strip())
+    return '\n'.join(error_lines[-5:]) if error_lines else "Unknown deployment error"
+
+
+def compile_contracts(context):
+    contract_path = context.cws()
+    simulation_path = context.simulation_path()
+    print(f"Simulation path: {simulation_path}")
+    print(f"Contract path: {contract_path}")
+        
+    # Verify contract directory exists
+    if not os.path.exists(contract_path):
+        raise FileNotFoundError(f"Contract directory not found at {contract_path}")
+    
+
+    hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
+    hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
+    simulation_config = "hardhat.config.simulation.js"
+    if os.path.exists(hardhat_config_path):
+        _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path, hardhat_network)
+    if os.path.exists(hardhat_config_path_ts):
+        _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
+
+    # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
+    install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
+    # install_command = (
+    #     f"cd {contract_path} && "
+    #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
+    #     "@nomicfoundation/hardhat-ethers ethers && "
+    #     "npm install --legacy-peer-deps"
+    # )
+    install_process = subprocess.Popen(
+        install_command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+    install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
+    
+    if install_process.returncode != 0:
+        raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
+
+    # 2. Compile the contracts
+    # compile_command = f"cd {contract_path} && npx hardhat compile"
+    compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
+    compile_process = subprocess.Popen(
+        compile_command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True
+    )
+    compile_stdout, compile_stderr = compile_process.communicate(timeout=300)
+    
+    if compile_process.returncode != 0:
+        raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
+
+        
+
+def prepare_context(data, optimize=True):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
@@ -131,6 +197,10 @@ def prepare_context(data):
 
     # Set the origin of the simulation repo to the GitHub repo and push if not already set
     set_github_repo_origin_and_push(simulation_repo_path, github_repo_url)
+
+    # Compile the contracts to generate ABIs
+    if optimize == False:
+        compile_contracts(context)
 
     return context
 
