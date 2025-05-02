@@ -4,10 +4,11 @@ import os
 
 client = OpenAI(api_key=os.getenv("GEMINI_API_KEY"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
-def ask_openai(user_input, type, task="generate"):
+def ask_openai(user_input, type, task="generate", conversations=None):
     # Add user message
-    conversation=[]
-    conversation.append({"role": "user", "content": user_input})
+    if conversations is None:
+        conversations = []
+    conversations.append({"role": "user", "content": user_input})
 
     # Check token limit
     """ if count_tokens(conversation) > MAX_TOKENS:
@@ -27,7 +28,7 @@ def ask_openai(user_input, type, task="generate"):
 
     # Get response
     response = client.beta.chat.completions.parse(model=model,
-        messages=conversation,
+        messages=conversations,
         response_format=type,
         timeout=30)
         #print(response)

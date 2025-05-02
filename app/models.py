@@ -5,8 +5,104 @@ from pydantic import BaseModel, Field
 import os
 from enum import Enum
 from typing import Literal
+from abc import ABC, abstractmethod
+import re
+
+class IluminaOpenAIResponseModel(BaseModel):
+    @abstractmethod
+    def to_dict(self) -> dict:
+        pass
 
 import re
+
+def extract_all_solidity_definitions(content):
+    """
+    Extracts all contracts/interfaces/libraries in a Solidity file.
+    For each, captures name, type, constructor (with initializer), and public/external functions.
+    """
+
+    # Matches contract-like declarations (including optional inheritance)
+    contract_pattern = r'\b(abstract\s+contract|contract|interface|library)\s+(\w+)(?:\s+is\s+[^{]+)?\s*{'
+    matches = list(re.finditer(contract_pattern, content))
+
+    def extract_block(start_index):
+        """Extract a brace-balanced block starting at {"""
+        brace_count = 0
+        i = start_index
+        while i < len(content):
+            if content[i] == '{':
+                brace_count += 1
+            elif content[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return content[start_index:i + 1]
+            i += 1
+        return content[start_index:]
+
+    def extract_constructor(block):
+        """Extract constructor with brace tracking (handles initializers like Ownable(...))"""
+        constructor_pattern = r'\bconstructor\s*\([^)]*\)\s*(?:[^\{]*){'
+        match = re.search(constructor_pattern, block)
+        if not match:
+            return None
+
+        start = match.start()
+        brace_open = block.find('{', match.end() - 1)
+
+        # Track braces to get constructor body
+        brace_count = 0
+        i = brace_open
+        while i < len(block):
+            if block[i] == '{':
+                brace_count += 1
+            elif block[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return block[start:i + 1]
+            i += 1
+        return block[start:]
+
+    results = []
+
+    for match in matches:
+        contract_type_raw, contract_name = match.groups()
+        contract_type = contract_type_raw.replace("abstract contract", "abstract")
+        brace_start = content.find('{', match.end() - 1)
+        block = extract_block(brace_start)
+
+        constructor_str = extract_constructor(block)
+
+        # Extract functions
+        function_pattern = (
+            r'function\s+(\w+)\s*\(([^)]*)\)\s*'
+            r'(public|external)?\s*'
+            r'(view|pure|payable)?\s*'
+            r'(returns\s*\(([^)]*)\))?'
+        )
+        function_matches = re.findall(function_pattern, block, re.DOTALL)
+
+        functions = []
+        for func in function_matches:
+            name, params, visibility, modifier, _, returns = func
+            param_list = [p.strip() for p in params.split(',')] if params.strip() else []
+            visibility = visibility or "unknown"
+            returns = returns.strip() if returns else None
+            functions.append({
+                "function_name": name,
+                "parameters": param_list,
+                "visibility": visibility,
+                "returns": returns
+            })
+
+        results.append({
+            "contract_name": contract_name,
+            "type": contract_type,
+            "constructor": constructor_str,
+            "functions": functions
+        })
+
+    return results
+
 
 def extract_solidity_functions_and_contract_name(content):
     """Extract the contract name, type, public/external functions, and constructor (modern syntax) from a Solidity contract file."""
@@ -72,7 +168,7 @@ def extract_solidity_functions_and_contract_name(content):
 
 
 
-class Function(BaseModel):
+class Function(IluminaOpenAIResponseModel):
     name: str
     summary: str
     inputs: list[str]
@@ -90,9 +186,9 @@ class Function(BaseModel):
             "outputs": self.outputs
         }
 
-class Contract(BaseModel):
+class Contract(IluminaOpenAIResponseModel):
     name: str
-    type: Literal["external", "library", "interface"]  # external, library, interface
+    type: Literal["abstract", "library", "interface", "contract"]  # external, library, interface
     summary: str
     functions: list[Function]
     is_deployable: bool = False  # Default to False
@@ -114,7 +210,7 @@ class Contract(BaseModel):
             "constructor": self.constructor
         }
 
-class Project(BaseModel):
+class Project(IluminaOpenAIResponseModel):
     name: str
     summary: str
     type: str
@@ -152,7 +248,7 @@ class Project(BaseModel):
                 return Project.load(content)
         return None
     
-class Action(BaseModel):
+class Action(IluminaOpenAIResponseModel):
     name: str
     summary: str
     contract_name: str
@@ -170,7 +266,7 @@ class Action(BaseModel):
         }
     
 
-class Actor(BaseModel):
+class Actor(IluminaOpenAIResponseModel):
     name: str
     summary: str
     actions: list[Action]
@@ -214,7 +310,7 @@ class UserJourneys(BaseModel):
             "user_journeys": [user_journey.to_dict() for user_journey in self.user_journeys]
         }
     
-class Actions(BaseModel):
+class Actions(IluminaOpenAIResponseModel):
     actions: list[Action]
 
     @classmethod
@@ -226,7 +322,7 @@ class Actions(BaseModel):
             "actions": [action.to_dict() for action in self.actions]
         }
     
-class Actors(BaseModel):
+class Actors(IluminaOpenAIResponseModel):
     actors: list[Actor]
 
     @classmethod
@@ -248,7 +344,7 @@ class Actors(BaseModel):
         return None
 
     
-class Param(BaseModel):
+class Param(IluminaOpenAIResponseModel):
     name: str
     value: str = Field(..., description="Leave empty if it's type val")
     type: Literal["val", "ref"] # val | ref
@@ -260,7 +356,7 @@ class Param(BaseModel):
             "type": self.type
         }
 
-class SequenceStep(BaseModel):
+class SequenceStep(IluminaOpenAIResponseModel):
     type: Literal["deploy", "call"]  # "deploy" or "call"
     contract: str
     constructor: str = None
@@ -278,7 +374,7 @@ class SequenceStep(BaseModel):
             "params": [param.to_dict() for param in self.params]
         }
 
-class DeploymentInstruction(BaseModel):
+class DeploymentInstruction(IluminaOpenAIResponseModel):
     sequence: List[SequenceStep]
 
     def to_dict(self):

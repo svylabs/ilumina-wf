@@ -5,6 +5,7 @@ from .openai import ask_openai
 import json
 import os
 import sys
+from .three_stage_llm_call import ThreeStageAnalyzer
 
 class ActorAnalyzer:
     
@@ -28,8 +29,9 @@ class ActorAnalyzer:
         prompt = base_prompt
         if user_prompt:
             prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
-        
-        _, actors = ask_openai(prompt, Actors, task="reasoning")
+
+        analyzer = ThreeStageAnalyzer(Actors)
+        actors = analyzer.ask_llm(prompt)
         self.actors = actors
         return self.actors
         #print(json.dumps(self.actors.to_dict()))
