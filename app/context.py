@@ -4,6 +4,7 @@ import uuid
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
+from .models import Project, Actors
 
 APP_VERSION = "v1"
 
@@ -161,15 +162,16 @@ class RunContext:
         return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
     
     def contract_artifact_path(self, contract_name):
-        """Search for any JSON file containing the contract name."""
-        artifacts_root = os.path.join(self.cws(), "artifacts")
+        """Search for any JSON file containing the contract name in artifacts/contracts."""
+        artifacts_root = os.path.join(self.cws(), "artifacts/contracts")
         if not os.path.exists(artifacts_root):
             raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
 
         # Search for JSON files containing the contract name
         for root, _, files in os.walk(artifacts_root):
             for file in files:
-                if file.endswith(".json"):
+                # if file.endswith(".json"):
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     file_path = os.path.join(root, file)
                     # print(f"Found JSON file in context: {file_path}")  # Print the JSON file path
                     if contract_name in file:
@@ -222,6 +224,14 @@ class RunContext:
             raise Exception(f"Git command failed: {e}")
         except Exception as e:
             raise Exception(f"Failed to commit changes to the simulation repo: {e}")
+        
+
+    def project_summary(self):
+        return Project.load_summary(self.summary_path())
+        
+    def actor_summary(self):
+        return Actors.load_summary(self.actor_summary_path())
+
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),

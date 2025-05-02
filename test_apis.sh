@@ -7,12 +7,12 @@ BASE_URL="http://localhost:8080"
 AUTH_HEADER="Authorization: Bearer my_secure_password"
 
 # Test /begin_analysis
-curl -X POST "$BASE_URL/begin_analysis" \
+curl -X POST "$BASE_URL/api/begin_analysis" \
     -H "Content-Type: application/json" \
     -H "$AUTH_HEADER" \
     -d '{
-        "github_repository_url": "https://github.com/svylabs/predify",
-        "submission_id": "test-submission-id"
+        "github_repository_url": "https://github.com/svylabs/stablebase",
+        "submission_id": "s9"
     }'
 
 # Test /api/analyze
@@ -28,7 +28,8 @@ curl -X POST "$BASE_URL/api/analyze_project" \
     -H "Content-Type: application/json" \
     -H "$AUTH_HEADER" \
     -d '{
-        "submission_id": "test-submission-id"
+        "submission_id": "s9",
+        "request_context": "fg"
     }'
 
 # Test /api/analyze_actors
@@ -36,7 +37,8 @@ curl -X POST "$BASE_URL/api/analyze_actors" \
     -H "Content-Type: application/json" \
     -H "$AUTH_HEADER" \
     -d '{
-        "submission_id": "test-submission-id"
+        "submission_id": "s9",
+        "request_context": "fg"
     }'
 
 # Test /api/analyze_deployment

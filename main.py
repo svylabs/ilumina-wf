@@ -11,6 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
+from app.actions import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
@@ -204,7 +205,7 @@ def analyze():
         print(f"{submission}")
 
         next_step = step
-        if step_from_request != None:
+        if step_from_request != None and step_from_request != "begin_analysis":
             next_step = step_from_request
         else:
             if step == None or step == "begin_analysis":
@@ -322,11 +323,31 @@ def analyze_actors(submission, request_context, user_prompt):
                 step = submission["step"]
             update_analysis_status(submission["submission_id"], step, "success", metadata={"actor_version": version})
             return jsonify({"actors": actors.to_dict()}), 200
-        return jsonify({"message": "Project analysis completed"}), 200
+        return jsonify({"message": "Actor analysis completed"}), 200
 
     except Exception as e:
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/create_actions', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def create_actions(submission, request_context, user_prompt):
+    """Generate action files for identified actors"""
+    try:
+        # Get the current context using prepare_context
+        context = prepare_context(submission)
+
+        # Initialize ActionGenerator
+        action_generator = ActionGenerator(context)
+
+        # Generate all actions
+        action_generator.generate_all_actions()
+
+        return jsonify({"message": "Action files generated successfully"}), 200
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
@@ -355,7 +376,7 @@ def analyze_deployment(submission, request_context, user_prompt):
         upload_to_gcs(path, context.deployment_instructions_path())
         if request_context == "bg":
             # Update the task queue
-            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_version": version})
+            update_analysis_status(submission["submission_id"], "analyze_deployment", "success", metadata={"deployment_instruction_version": version})
             create_task({"submission_id": submission["submission_id"]})
         else:
             step = "None"

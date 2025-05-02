@@ -3,6 +3,7 @@ from .models import DeploymentInstruction
 from .openai import ask_openai
 import os
 import json
+from .three_stage_llm_call import ThreeStageAnalyzer
 
 class DeploymentAnalyzer:
     def __init__(self, context: RunContext):
@@ -10,8 +11,8 @@ class DeploymentAnalyzer:
         self.compiled_contracts = self.load_compiled_contracts()
 
     def load_compiled_contracts(self):
-        """Search for all JSON files in the artifacts directory and extract contract data."""
-        artifacts_root = os.path.join(self.context.cws(), "artifacts")
+        """Search for all JSON files in the artifacts/contracts directory and extract contract data."""
+        artifacts_root = os.path.join(self.context.cws(), "artifacts/contracts")
         if not os.path.exists(artifacts_root):
             print(f"Warning: Artifacts directory not found: {artifacts_root}")
             return {}
@@ -48,41 +49,36 @@ class DeploymentAnalyzer:
         """Save deployment instructions to a JSON file in the simulation repo"""
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
         with open(deployment_path, 'w') as f:
-            json.dump([instruction.to_dict() for instruction in instructions], f, indent=2)
+            json.dump(instructions.to_dict(), f, indent=2)
 
     def analyze(self, user_prompt=None):
-        deployable_contracts = self.identify_deployable_contracts()
-        if not deployable_contracts:
-            print("Warning: No deployable contracts found. Proceeding without deployment instructions.")
-
-        readme_path = os.path.join(self.context.project_path(), "README.md")
-        deployment_script_path = os.path.join(self.context.project_path(), "scripts/deploy.js")
-
-        readme_content = ""
-        if os.path.exists(readme_path):
-            with open(readme_path, "r") as f:
-                readme_content = f.read()
-
-        deployment_script_content = ""
-        if os.path.exists(deployment_script_path):
-            with open(deployment_script_path, "r") as f:
-                deployment_script_content = f.read()
-
+        #deployable_contracts = self.identify_deployable_contracts()
+        project_summary = self.context.project_summary()
+        
         prompt = f"""
-        The following are the deployable contracts and their ABIs:
-        {json.dumps(deployable_contracts)}
+        Here is the summary of the smart contract project:
+        {json.dumps(project_summary.to_dict())}  
+
+        We need to generate deployment instructions for the contracts listed in summary above. The deployment instructions is a sequence of steps to setup the contracts / protocol.
+
+        Let's think step by step:
+        1: Based on instructions from the user(provided below), Identify the relevant deployable contracts from the project summary.
+        2: Get the constructor for each contract identified in step 1 and identify the parameters needed for deployment.
+        3. In case there are function calls needed after deployment(based on user instructions), identify the relevant functions for the contracts identified in step 1.
+        4. Based on the functions identified in step3, identify the parameters for those functions.
+        5: Repeat step 3-4 for each contract identified in step 1.
+        6. Generate the deployment instructions.
+
+        Instructions from user:
+        {user_prompt if user_prompt else "None"}
         """
 
-        if readme_content:
-            prompt += f"\nThe project also contains the following README content:\n{readme_content}"
-
-        if deployment_script_content:
-            prompt += f"\nAnd the following deployment script:\n{deployment_script_content}"
-
-        prompt += "\nGenerate deployment instructions for each contract, including constructor arguments if required."
+        print(f"{user_prompt}")
 
         try:
-            _, deployment_instructions = ask_openai(prompt, list[DeploymentInstruction], task="reasoning")
+            analyzer = ThreeStageAnalyzer(DeploymentInstruction)
+            deployment_instructions = analyzer.ask_llm(prompt)
+            #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
             # Save and commit the deployment instructions
             self.save_deployment_instructions(deployment_instructions)
