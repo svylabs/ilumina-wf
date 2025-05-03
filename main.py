@@ -398,22 +398,22 @@ def analyze_deployment(submission, request_context, user_prompt):
 def implement_deployment_script(submission, request_context, user_prompt):
     """Execute and verify the deployment script"""
     context = prepare_context(submission, optimize=False)
-    try:
-        # Initialize DeploymentAnalyzer
-        deployer = DeploymentAnalyzer(context)
-        
-        # 3. Generate deploy.ts
-        deploy_ts_path = deployer.implement_deployment_script()
-        result = deployer.verify_deployment_script()
-        #process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
-        # 0 - returncode
+    # Initialize DeploymentAnalyzer
+    deployer = DeploymentAnalyzer(context)
+    
+    # 3. Generate deploy.ts
+    deploy_ts_path = deployer.implement_deployment_script()
+    result = deployer.verify_deployment_script()
+    #process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
+    # 0 - returncode
+    if result[0] == 0:
         returncode = result[0]
         contract_addresses = result[1]
         stdout = result[2]
         stderr = result[3]
         compile_stdout = result[4]
         compile_stderr = result[5]
-        
+    
         result = {
             "success": True,
             "contract_addresses": contract_addresses,
@@ -429,33 +429,33 @@ def implement_deployment_script(submission, request_context, user_prompt):
         )
 
         return jsonify(result), 200
-
-    except subprocess.TimeoutExpired:
-        error_msg = "Operation timed out"
-        update_analysis_status(
-            submission["submission_id"],
-            "implement_deployment_script",
-            "error",
-            metadata={"message": error_msg}
-        )
-        return jsonify({
-            "success": False,
-            "error": error_msg,
-            "type": "timeout"
-        }), 400
-        
-    except Exception as e:
-        error_trace = traceback.format_exc()
+    elif result[0] == -1:
+            error_msg = "Operation timed out"
+            update_analysis_status(
+                submission["submission_id"],
+                "implement_deployment_script",
+                "error",
+                metadata={"message": error_msg}
+            )
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "type": "timeout"
+            }), 400    
+    elif result[0] == -2:
+        compile_stdout = result[1]
+        compile_stderr = result[2]
+        error_msg = result[3]
+        error_trace = result[4]
         logs = {
-            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted",
-            "install_log": install_stdout + install_stderr if 'install_stdout' in locals() else "Not attempted"
+            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted"
         }
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
             "error",
             metadata={
-                "message": str(e),
+                "message": error_msg,
                 "trace": error_trace,
                 **logs
             }

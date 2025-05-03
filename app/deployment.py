@@ -5,6 +5,7 @@ import os
 import json
 from .three_stage_llm_call import ThreeStageAnalyzer
 import subprocess
+import traceback
 
 class DeploymentAnalyzer:
     def __init__(self, context: RunContext):
@@ -214,12 +215,24 @@ class DeploymentAnalyzer:
             stderr=subprocess.PIPE,
             universal_newlines=True
         )
-        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
-        compile_stdout, compile_stderr = process.communicate(timeout=600)
-        contract_addresses = {}
-        if process.returncode == 0:
-            contract_addresses = self._parse_contract_addresses(stdout)
-        return process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
+        compile_stdout = ""
+        compile_stderr = ""
+        try:
+            stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
+            compile_stdout, compile_stderr = process.communicate(timeout=600)
+            contract_addresses = {}
+            if process.returncode == 0:
+                contract_addresses = self._parse_contract_addresses(stdout)
+            return process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            print(f"Deployment verification timed out: {stderr}")
+            return -1, {}, stdout, stderr, "", ""
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            print(f"Error during deployment verification: {e}")
+            return -2, compile_stdout, compile_stderr, str(e), error_trace
 
 
     def _parse_contract_addresses(output):
