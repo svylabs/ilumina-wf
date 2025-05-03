@@ -43,14 +43,13 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
                     entity.exclude_from_indexes.add(key)
         if entity.get("completed_steps") is None:
             entity["completed_steps"] = []
-        if (status == "success"):
-            found = False
-            for completed_step in entity["completed_steps"]:
-                if completed_step["step"] == step:
-                    completed_step["updated_at"] = datetime.datetime.now()
-                    found = True
-            if not found:
-                entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
+        for completed_step in entity["completed_steps"]:
+            if completed_step["step"] == step:
+                completed_step["updated_at"] = datetime.datetime.now()
+                completed_step["status"] = status
+                found = True
+        if not found:
+            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now(), "status": status})
         if (step_metadata):
             entity[step] = json.dumps(step_metadata)
             entity.exclude_from_indexes.add(step)
