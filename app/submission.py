@@ -43,6 +43,7 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
                     entity.exclude_from_indexes.add(key)
         if entity.get("completed_steps") is None:
             entity["completed_steps"] = []
+        found = False
         for completed_step in entity["completed_steps"]:
             if completed_step["step"] == step:
                 completed_step["updated_at"] = datetime.datetime.now()
