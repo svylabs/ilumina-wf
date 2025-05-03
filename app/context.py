@@ -37,26 +37,9 @@ def compile_contracts(context):
     if os.path.exists(hardhat_config_path_ts):
         _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
 
-    # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
-    #install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
-    install_command = (
-         f"cd {contract_path} && npm install --save-dev @nomicfoundation/hardhat-network-helpers @nomicfoundation/hardhat-chai-matchers @nomiclabs/hardhat-ethers @nomiclabs/hardhat-etherscan @nomicfoundation/hardhat-ethers ethers --legacy-peer-deps"
-    )
-    install_process = subprocess.Popen(
-        install_command,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True
-    )
-    install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
-    
-    if install_process.returncode != 0:
-        raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
-
     # 2. Compile the contracts
     # compile_command = f"cd {contract_path} && npx hardhat compile"
-    compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
+    compile_command = f"./scripts/compile_contracts.sh {contract_path} {simulation_config}"
     compile_process = subprocess.Popen(
         compile_command,
         shell=True,
