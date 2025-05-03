@@ -146,54 +146,16 @@ def prepare_context(data, optimize=True):
                      check=True,
                      capture_output=True,
                      text=True)
-        
-        # Verify critical packages are installed
-        verify_packages = ["hardhat", "ethers", "@nomicfoundation/hardhat-toolbox"]
-        for pkg in verify_packages:
-            subprocess.run(["npm", "ls", pkg],
-                         cwd=simulation_repo_path,
-                         check=True,
-                         capture_output=True,
-                         text=True)
-        
-        # Explicitly install bignumber.js and its type declarations
-        subprocess.run(["npm", "install", "bignumber.js"],
-                     cwd=simulation_repo_path,
-                     check=True,
-                     capture_output=True,
-                     text=True)
-        subprocess.run(["npm", "install", "--save-dev", "@types/bignumber.js"],
-                     cwd=simulation_repo_path,
-                     check=True,
-                     capture_output=True,
-                     text=True)
+
     except subprocess.CalledProcessError as e:
         # Fallback to full install if clean install fails
-        try:
-            subprocess.run(
-                ["npm", "install", "--legacy-peer-deps",
-                 "hardhat@^2.12.0",
-                 "@nomicfoundation/hardhat-toolbox@^2.0.0",
-                 "ethers@^5.7.2",
-                 "typescript@^4.9.5",
-                 "ts-node@^10.9.1",
-                 "bignumber.js"],
-                cwd=simulation_repo_path,
-                check=True,
-                capture_output=True,
-                text=True
-            )
-            subprocess.run(["npm", "install", "--save-dev", "@types/bignumber.js"],
-                         cwd=simulation_repo_path,
-                         check=True,
-                         capture_output=True,
-                         text=True)
-        except subprocess.CalledProcessError as fallback_error:
-            raise Exception(
-                f"Simulation dependency installation failed:\n"
-                f"Initial error: {e.stderr}\n"
-                f"Fallback error: {fallback_error.stderr}"
-            )
+        subprocess.run(
+            ["npm", "install", "--legacy-peer-deps"],
+            cwd=simulation_repo_path,
+            check=True,
+            capture_output=True,
+            text=True
+        )
 
     # Set the origin of the simulation repo to the GitHub repo and push if not already set
     set_github_repo_origin_and_push(simulation_repo_path, github_repo_url)

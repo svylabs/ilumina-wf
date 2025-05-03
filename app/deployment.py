@@ -110,7 +110,7 @@ class DeploymentAnalyzer:
 
         # Track all unique contracts we need artifacts for
         all_contracts = set()
-        for step in instructions["DeploymentInstruction"]["sequence"]:
+        for step in instructions["sequence"]:
             if step["type"] in ["contract", "transaction"]:
                 all_contracts.add(step["contract"])
 
@@ -138,7 +138,7 @@ class DeploymentAnalyzer:
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
-        for step in instructions["DeploymentInstruction"]["sequence"]:
+        for step in instructions["sequence"]:
             if step["type"] == "contract":
                 contract_name = step["contract"]
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
@@ -157,7 +157,7 @@ class DeploymentAnalyzer:
 
         # Generate TRANSACTION_BLOCK content
         transaction_block = []
-        for step in instructions["DeploymentInstruction"]["sequence"]:
+        for step in instructions["sequence"]:
             if step["type"] == "transaction":
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
                 transaction_block.append(f"""
