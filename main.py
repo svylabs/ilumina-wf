@@ -127,7 +127,9 @@ def get_submission(submission_id):
         latest_prompt = user_prompt_manager.query_latest_prompt(submission_id, step)
         if latest_prompt:
             latest_prompts[step] = latest_prompt.get("user_prompt")
-
+    step_metadata = {}
+    for step in submission.get("completed_steps", []):
+        step_metadata[step["step"]] = submission.get(step["step"])
     return jsonify({
         "submission_id": submission["submission_id"],
         "github_repository_url": submission["github_repository_url"],
@@ -138,7 +140,8 @@ def get_submission(submission_id):
         "status": submission.get("status"),
         "completed_steps": submission.get("completed_steps", []),
         "message": message,
-        "latest_prompts": latest_prompts
+        "latest_prompts": latest_prompts,
+        "step_metadata": step_metadata
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -407,7 +410,6 @@ def implement_deployment_script(submission, request_context, user_prompt):
     #process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
     # 0 - returncode
     if result[0] == 0:
-        returncode = result[0]
         contract_addresses = result[1]
         stdout = result[2]
         stderr = result[3]
@@ -425,7 +427,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             submission["submission_id"],
             "implement_deployment_script",
             "success",
-            metadata=result
+            step_metadata=result
         )
 
         return jsonify(result), 200
@@ -454,7 +456,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             submission["submission_id"],
             "implement_deployment_script",
             "error",
-            metadata={
+            step_metadata={
                 "message": error_msg,
                 "trace": error_trace,
                 **logs

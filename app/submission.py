@@ -25,7 +25,7 @@ def create_submission_log(data):
     submission_log.update(data)
     datastore_client.put(submission_log)
 
-def update_analysis_status(submission_id, step, status, metadata=None):
+def update_analysis_status(submission_id, step, status, metadata=None, step_metadata=None):
     """Update analysis status in Datastore"""
     key = datastore_client.key("Submission", submission_id)
     entity = datastore_client.get(key)
@@ -48,6 +48,8 @@ def update_analysis_status(submission_id, step, status, metadata=None):
                     found = True
             if not found:
                 entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
+        if (step_metadata):
+            entity[step] = step_metadata
         entity.update(updates)
         datastore_client.put(entity)
         
