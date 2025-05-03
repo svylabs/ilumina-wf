@@ -237,7 +237,7 @@ def analyze():
             create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         elif next_step == "implement_deployment_script":
-            #create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
+            create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
@@ -403,6 +403,11 @@ def implement_deployment_script(submission, request_context, user_prompt):
     context = prepare_context(submission, optimize=False)
     # Initialize DeploymentAnalyzer
     deployer = DeploymentAnalyzer(context)
+    update_analysis_status(
+        submission["submission_id"],
+        "implement_deployment_script",
+        "in_progress"
+    )
     
     # 3. Generate deploy.ts
     deploy_ts_path = deployer.implement_deployment_script()
@@ -443,7 +448,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
                 "success": False,
                 "error": error_msg,
                 "type": "timeout"
-            }), 400    
+            }), 200    
     elif result[0] == -2:
         compile_stdout = result[1]
         compile_stderr = result[2]
@@ -467,9 +472,17 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "error": str(e),
             "traceback": error_trace,
             **logs
-        }), 500
+        }), 200
     else:
-        print(result)
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "error",
+            step_metadata={
+                "log": result
+            }
+        )
+        return jsonify({"success": False, "status": "error", "log": result}), 200
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
