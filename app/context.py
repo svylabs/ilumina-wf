@@ -158,7 +158,8 @@ def prepare_context(data, optimize=True):
                         "chai",
                         "hardhat-gas-reporter",
                         "solidity-coverage",
-                        "typechain"
+                        "typechain",
+                        "@nomicfoundation/hardhat-ethers"
                         ],
                         cwd=simulation_repo_path,
                         check=True,

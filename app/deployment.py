@@ -204,9 +204,9 @@ class DeploymentAnalyzer:
         contract_path = self.context.cws()
         # 4. Run the deployment verification
         verification_command = (
-            f"cd {contract_path} && "
-            "npx hardhat run --config hardhat.config.ts simulation/check_deployment.ts"
+            f"./scripts/check_deploy.sh {self.context.simulation_path()}"
         )
+        print(f"Running deployment verification command: {verification_command}")
         
         process = subprocess.Popen(
             verification_command,
@@ -235,7 +235,7 @@ class DeploymentAnalyzer:
             return -2, compile_stdout, compile_stderr, str(e), error_trace
 
 
-    def _parse_contract_addresses(output):
+    def _parse_contract_addresses(self, output):
         """Parse contract addresses from deployment output"""
         addresses = {}
         for line in output.split('\n'):

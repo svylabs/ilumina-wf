@@ -508,7 +508,7 @@ def handle_exception(e):
 # Register the storage blueprint
 app.register_blueprint(storage_blueprint)
 
-@app.route('/api/verify_deploy_script', methods=['POST'])
+@app.route('/api/verify_deployment_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def verify_deploy_script(submission, request_context, user_prompt):
