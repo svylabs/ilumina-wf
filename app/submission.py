@@ -3,6 +3,7 @@ from .clients import datastore_client
 import datetime
 import hashlib
 import uuid
+import json
 
 def store_analysis_metadata(data):
     """Store submission metadata in Datastore"""
@@ -18,10 +19,10 @@ def store_analysis_metadata(data):
     })
     datastore_client.put(entity)
 
-    create_submission_log(entity.copy())
+    create_submission_log(entity.copy(), entity.exclude_from_indexes)
 
-def create_submission_log(data):
-    submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", str(uuid.uuid4())))
+def create_submission_log(data, exclude_from_indexes):
+    submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", str(uuid.uuid4())), exclude_from_indexes=list(exclude_from_indexes))
     submission_log.update(data)
     datastore_client.put(submission_log)
 
@@ -38,6 +39,8 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
         if (metadata):
             for key, value in metadata.items():
                 updates[key] = value
+                if key not in entity.exclude_from_indexes:
+                    entity.exclude_from_indexes.add(key)
         if entity.get("completed_steps") is None:
             entity["completed_steps"] = []
         if (status == "success"):
@@ -49,11 +52,13 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
             if not found:
                 entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now()})
         if (step_metadata):
-            entity[step] = step_metadata
+            entity[step] = json.dumps(step_metadata)
+            entity.exclude_from_indexes.add(step)
         entity.update(updates)
+
         datastore_client.put(entity)
         
-        create_submission_log(entity.copy())
+        create_submission_log(entity.copy(), entity.exclude_from_indexes)
         
 
 

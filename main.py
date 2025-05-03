@@ -503,12 +503,12 @@ def verify_deploy_script(submission, request_context, user_prompt):
                 "verify_deployment_script",
                 "success",
                 step_metadata={
-                    "log": result  # contract addresses
+                    "log": list(result)  # contract addresses
                 }
             )
             return jsonify({
                 "success": True,
-                "log": result[2]  # stdout
+                "log": list(result)  # stdout
             }), 200
         else:  # Failure
             update_analysis_status(
@@ -516,14 +516,13 @@ def verify_deploy_script(submission, request_context, user_prompt):
                 "verify_deployment_script",
                 "error",
                 step_metadata={
-                    "log": result  # stderr or error message
+                    "log": list(result)  # stderr or error message
                 }
             )
             return jsonify({
                 "success": False,
-                "error": result[3],  # stderr or error message
-                "log": result[2]  # stdout
-            }), 400
+                "log": list(result)  # stdout
+            }), 200
 
     except Exception as e:
         app.logger.error("Error in verify_deploy_script endpoint", exc_info=e)
