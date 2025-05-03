@@ -466,6 +466,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "traceback": error_trace,
             **logs
         }), 500
+    else:
+        print(result)
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -505,6 +507,38 @@ def handle_exception(e):
 
 # Register the storage blueprint
 app.register_blueprint(storage_blueprint)
+
+@app.route('/api/verify_deploy_script', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def verify_deploy_script(submission, request_context, user_prompt):
+    """Verify the deployment script without executing it."""
+    try:
+        # Get the current context using prepare_context
+        context = prepare_context(submission)
+
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+
+        # Verify the deployment script
+        result = deployer.verify_deployment_script()
+
+        # Process the result based on returncode
+        if result[0] == 0:  # Success
+            return jsonify({
+                "success": True,
+                "log": result[2]  # stdout
+            }), 200
+        else:  # Failure
+            return jsonify({
+                "success": False,
+                "error": result[3],  # stderr or error message
+                "log": result[2]  # stdout
+            }), 400
+
+    except Exception as e:
+        app.logger.error("Error in verify_deploy_script endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

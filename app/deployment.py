@@ -111,7 +111,7 @@ class DeploymentAnalyzer:
         # Track all unique contracts we need artifacts for
         all_contracts = set()
         for step in instructions["sequence"]:
-            if step["type"] in ["contract", "transaction"]:
+            if step["type"] in ["deploy", "call"]:
                 all_contracts.add(step["contract"])
 
         # Generate imports and artifact loading
@@ -139,7 +139,7 @@ class DeploymentAnalyzer:
         # Generate DEPLOY_BLOCK content
         deploy_block = []
         for step in instructions["sequence"]:
-            if step["type"] == "contract":
+            if step["type"] == "deploy":
                 contract_name = step["contract"]
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
                 
@@ -158,12 +158,12 @@ class DeploymentAnalyzer:
         # Generate TRANSACTION_BLOCK content
         transaction_block = []
         for step in instructions["sequence"]:
-            if step["type"] == "transaction":
+            if step["type"] == "call":
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
                 transaction_block.append(f"""
-        // Configure {step['contract']}.{step['method']}
-        await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`{step['contract']}.{step['method']} configured`);
+        // Configure {step['contract']}.{step['function']}
+        await contracts.{step['contract']}.{step['function']}({params});
+        console.log(`{step['contract']}.{step['function']} configured`);
     """)
 
         # Generate MAPPING_BLOCK content
@@ -205,7 +205,7 @@ class DeploymentAnalyzer:
         # 4. Run the deployment verification
         verification_command = (
             f"cd {contract_path} && "
-            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
+            "npx hardhat run --config hardhat.config.ts simulation/check_deployment.ts"
         )
         
         process = subprocess.Popen(

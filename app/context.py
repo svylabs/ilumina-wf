@@ -146,6 +146,24 @@ def prepare_context(data, optimize=True):
                      check=True,
                      capture_output=True,
                      text=True)
+        # Install additional dev dependencies
+        subprocess.run(["npm", "install", "--save-dev", "--legacy-peer-deps",
+                        "@nomicfoundation/hardhat-network-helpers",
+                        "@nomicfoundation/hardhat-chai-matchers",
+                        "@nomiclabs/hardhat-ethers",
+                        "@nomiclabs/hardhat-etherscan",
+                        "@types/chai",
+                        "@types/mocha",
+                        "@typechain/ethers-v5",
+                        "chai",
+                        "hardhat-gas-reporter",
+                        "solidity-coverage",
+                        "typechain"
+                        ],
+                        cwd=simulation_repo_path,
+                        check=True,
+                        capture_output=True,
+                        text=True)        
 
     except subprocess.CalledProcessError as e:
         # Fallback to full install if clean install fails

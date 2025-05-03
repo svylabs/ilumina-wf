@@ -25,6 +25,23 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 # Install Hardhat globally
 RUN npm install -g hardhat
 
+# Set environment variables for nvm
+ENV NVM_DIR=/root/.nvm
+ENV NODE_VERSION=20
+
+# Install nvm and Node.js
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    . "$NVM_DIR/nvm.sh" && \
+    nvm install $NODE_VERSION && \
+    nvm use $NODE_VERSION && \
+    nvm alias default $NODE_VERSION
+
+# Make Node.js and npm available globally
+ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
+
+# Verify installation
+RUN node -v && npm -v
+
 # Install Foundry (includes forge, cast, anvil)
 RUN curl -L https://foundry.paradigm.xyz | bash \
     && /root/.foundry/bin/foundryup
