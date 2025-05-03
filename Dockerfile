@@ -18,12 +18,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm (LTS version)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm
 
 # Install Hardhat globally
-RUN npm install -g hardhat
+# RUN npm install -g hardhat
 
 # Set environment variables for nvm
 ENV NVM_DIR=/root/.nvm

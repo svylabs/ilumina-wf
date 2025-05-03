@@ -13,8 +13,6 @@ fi
 cd "$1"
 
 # Load NVM and switch to Node 20
-source ~/.nvm/nvm.sh
-nvm use 20
 npm install --legacy-peer-deps
 npm install --save-dev @nomicfoundation/hardhat-ignition-ethers @nomicfoundation/hardhat-ignition @nomicfoundation/ignition-core @nomicfoundation/hardhat-verify @typechain/ethers-v6 ethers --legacy-peer-deps
 
