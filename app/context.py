@@ -38,13 +38,13 @@ def compile_contracts(context):
         _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
 
     # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
-    install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
-    # install_command = (
-    #     f"cd {contract_path} && "
-    #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
-    #     "@nomicfoundation/hardhat-ethers ethers && "
-    #     "npm install --legacy-peer-deps"
-    # )
+    #install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
+    install_command = (
+         f"cd {contract_path} && "
+         "npm install --save-dev @nomicfoundation/hardhat-network-helpers @nomicfoundation/hardhat-chai-matchers @nomiclabs/hardhat-ethers @nomiclabs/hardhat-etherscan",
+         "@nomicfoundation/hardhat-ethers ethers && "
+         "npm install --legacy-peer-deps"
+    )
     install_process = subprocess.Popen(
         install_command,
         shell=True,

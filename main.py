@@ -224,6 +224,9 @@ def analyze():
                     next_step = "implement_deployment_script"
             elif step == "implement_deployment_script":
                 if status is not None and status == "success":
+                    next_step = "verify_deployment_script"
+            elif step == "verify_deployment_script":
+                if status is not None and status == "success":
                     next_step = "None"
         
         if next_step == "analyze_project":
@@ -239,6 +242,9 @@ def analyze():
         elif next_step == "implement_deployment_script":
             create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
+        elif next_step == "verify_deployment_script":
+            create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
@@ -399,90 +405,37 @@ def analyze_deployment(submission, request_context, user_prompt):
 @authenticate
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
-    """Execute and verify the deployment script"""
-    context = prepare_context(submission, optimize=False)
-    # Initialize DeploymentAnalyzer
-    deployer = DeploymentAnalyzer(context)
     update_analysis_status(
         submission["submission_id"],
         "implement_deployment_script",
         "in_progress"
     )
-    
-    # 3. Generate deploy.ts
-    deploy_ts_path = deployer.implement_deployment_script()
-    result = deployer.verify_deployment_script()
-    #process.returncode, contract_addresses, stdout, stderr, compile_stdout, compile_stderr
-    # 0 - returncode
-    if result[0] == 0:
-        contract_addresses = result[1]
-        stdout = result[2]
-        stderr = result[3]
-        compile_stdout = result[4]
-        compile_stderr = result[5]
-    
-        result = {
-            "success": True,
-            "contract_addresses": contract_addresses,
-            "log": stdout,
-            "deployment_path": deploy_ts_path
-        }
-
+    try:
+        """Execute and verify the deployment script"""
+        context = prepare_context(submission, optimize=False)
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+        
+        # 3. Generate deploy.ts
+        deployer.implement_deployment_script()
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
-            "success",
-            step_metadata=result
-        )
-
-        return jsonify(result), 200
-    elif result[0] == -1:
-            error_msg = "Operation timed out"
-            update_analysis_status(
-                submission["submission_id"],
-                "implement_deployment_script",
-                "error",
-                metadata={"message": error_msg}
-            )
-            return jsonify({
-                "success": False,
-                "error": error_msg,
-                "type": "timeout"
-            }), 200    
-    elif result[0] == -2:
-        compile_stdout = result[1]
-        compile_stderr = result[2]
-        error_msg = result[3]
-        error_trace = result[4]
-        logs = {
-            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted"
-        }
-        update_analysis_status(
-            submission["submission_id"],
-            "implement_deployment_script",
-            "error",
-            step_metadata={
-                "message": error_msg,
-                "trace": error_trace,
-                **logs
-            }
+            "success"
         )
         return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": error_trace,
-            **logs
+            "message": "Deployment script implemented successfully",
+            "log": "Deployment script implemented successfully"
         }), 200
-    else:
+    except Exception as e:
+        app.logger.error("Error in implement_deployment_script endpoint", exc_info=e)
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
             "error",
-            step_metadata={
-                "log": result
-            }
+            metadata={"message": str(e)}
         )
-        return jsonify({"success": False, "status": "error", "log": result}), 200
+        return jsonify({"error": str(e)}), 500
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -530,7 +483,12 @@ def verify_deploy_script(submission, request_context, user_prompt):
     """Verify the deployment script without executing it."""
     try:
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
+        update_analysis_status(
+            submission["submission_id"],
+            "verify_deployment_script",
+            "in_progress"
+        )
 
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
@@ -540,11 +498,27 @@ def verify_deploy_script(submission, request_context, user_prompt):
 
         # Process the result based on returncode
         if result[0] == 0:  # Success
+            update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "success",
+                step_metadata={
+                    "log": result  # contract addresses
+                }
+            )
             return jsonify({
                 "success": True,
                 "log": result[2]  # stdout
             }), 200
         else:  # Failure
+            update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "error",
+                step_metadata={
+                    "log": result  # stderr or error message
+                }
+            )
             return jsonify({
                 "success": False,
                 "error": result[3],  # stderr or error message
