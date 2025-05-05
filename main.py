@@ -536,7 +536,7 @@ def verify_deploy_script(submission, request_context, user_prompt):
             )
         return jsonify({
             "success": False,
-            "log":   # stdout
+            "log":   [-1, {}, "", str(e)]  # stderr or error message
         }), 200
 
 if __name__ == '__main__':
