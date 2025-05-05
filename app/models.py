@@ -469,3 +469,19 @@ class DeploymentInstruction(IluminaOpenAIResponseModel):
                     ],
                 )
                 sequence.append(call_step)
+
+class ActionInstruction(IluminaOpenAIResponseModel):
+    name: str
+    contract: str
+    function: str
+    parameters: List[Dict[str, str]]  # List of parameter name and type
+    content: str  # Generated TypeScript code
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "contract": self.contract,
+            "function": self.function,
+            "parameters": self.parameters,
+            "content": self.content
+        }

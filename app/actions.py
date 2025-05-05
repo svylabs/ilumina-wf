@@ -6,7 +6,8 @@ import random
 from pathlib import Path
 from typing import Dict, List, Optional
 from .context import RunContext
-from .action_openai import ask_openai
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .models import ActionInstruction
 from .compiler import Compiler
 
 class ActionGenerator:
@@ -171,77 +172,15 @@ class ActionGenerator:
             "return true;"
         ])
         
-        prompt = (
-            "Generate a TypeScript class for action '{}' with EXACTLY this structure:\n\n"
-            "import {{ Action, Actor }} from \"@svylabs/ilumina\";\n"
-            "import type {{ RunContext }} from \"@svylabs/ilumina\";\n"
-            "import type {{ Contract }} from \"ethers\";\n"
-            "import {{ ethers }} from \"ethers\";\n"
-            "import BigNumber from \"bignumber.js\";\n\n"
-            "export class {} extends Action {{\n"
-            "    private contract: Contract;\n\n"
-            "    constructor(contract: Contract) {{\n"
-            "        super(\"{}\");\n"
-            "        this.contract = contract;\n"
-            "    }}\n\n"
-            "    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{\n"
-            "        actor.log(`Executing {}...`);\n"
-            "        try {{\n"
-            "            // Initialize parameters using context.prng\n"
-            "            {}\n\n"
-            "            // Validate parameters before execution\n"
-            "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
-            "                {}\n"
-            "            }}))) {{\n"
-            "                throw new Error('Parameter validation failed');\n"
-            "            }}\n\n"
-            "            const tx = await this.contract.connect(actor.account.value)\n"
-            "                .{}({});\n\n"
-            "            await tx.wait();\n"
-            "            actor.log(`{} executed successfully. TX hash: ${{tx.hash}}`);\n"
-            "            return {{\n"
-            "                txHash: tx.hash,\n"
-            "                params: {{\n"
-            "                    {}\n"
-            "                }}\n"
-            "            }};\n"
-            "        }} catch (error) {{\n"
-            "            actor.log(`Error executing {}: ${{error}}`);\n"
-            "            throw error;\n"
-            "        }}\n"
-            "    }}\n\n"
-            "    async validate(context: RunContext, actor: Actor,\n"
-            "                 previousSnapshot: any, newSnapshot: any,\n"
-            "                 actionParams: any): Promise<boolean> {{\n"
-            "        actor.log(`Validating {}...`);\n"
-            "        {}\n"
-            "    }}\n"
-            "}}\n\n"
-            "Requirements:\n"
-            "1. Use context.prng for all random value generation\n"
-            "2. MUST maintain this exact structure\n"
-            "3. Include all parameter initializations\n"
-            "4. Add comprehensive validation logic\n"
-            "5. Validate parameters before execution\n"
-            "6. Include proper error handling"
-        ).format(
-            action_name,
-            class_name,
-            sanitized_class_name,
-            action_name,
-            param_init_lines,
-            param_return_lines,
-            function_name,
-            ", ".join(param_names),
-            action_name,
-            param_return_lines,
-            action_name,
-            action_name,
-            validation_logic
-        )
-        
+        prompt = f"""
+        Generate a TypeScript class for action '{action_name}' with EXACTLY this structure:
+        ...existing prompt content...
+        """
+
         try:
-            code = ask_openai(prompt)
+            analyzer = ThreeStageAnalyzer(ActionInstruction)
+            action_instructions = analyzer.ask_llm(prompt)
+            code = action_instructions.to_dict()["content"]
             code = self._clean_generated_code(code)
             
             required_patterns = [
@@ -274,7 +213,6 @@ class ActionGenerator:
             bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
             max_val = 2 ** (int(bits) if bits else 256) - 1
             return (
-                # f"if (actionParams.{param_name}.gt(ethers.BigNumber.from({max_val}))) {{\n"
                 f"if (actionParams.{param_name}.isGreaterThan(new BigNumber({max_val}))) {{\n"
                 f"    actor.log(`{param_name} exceeds maximum value for {param_type}`);\n"
                 f"    return false;\n"
