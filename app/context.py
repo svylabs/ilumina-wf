@@ -139,7 +139,10 @@ def prepare_context(data, optimize=True):
                         "hardhat-gas-reporter",
                         "solidity-coverage",
                         "typechain",
-                        "@nomicfoundation/hardhat-ethers"
+                        "@nomicfoundation/hardhat-ethers",
+                        "ethers@^5.7.2",
+                        "bignumber.js",
+                        "@types/bignumber.js"
                         ],
                         cwd=simulation_repo_path,
                         check=True,
