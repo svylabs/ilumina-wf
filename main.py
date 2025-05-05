@@ -405,12 +405,12 @@ def analyze_deployment(submission, request_context, user_prompt):
 @authenticate
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
-    update_analysis_status(
-        submission["submission_id"],
-        "implement_deployment_script",
-        "in_progress"
-    )
     try:
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "in_progress"
+        )
         """Execute and verify the deployment script"""
         context = prepare_context(submission, optimize=False)
         # Initialize DeploymentAnalyzer
@@ -435,7 +435,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "error",
             metadata={"message": str(e)}
         )
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 200
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -482,13 +482,13 @@ app.register_blueprint(storage_blueprint)
 def verify_deploy_script(submission, request_context, user_prompt):
     """Verify the deployment script without executing it."""
     try:
-        # Get the current context using prepare_context
-        context = prepare_context(submission, optimize=False)
         update_analysis_status(
             submission["submission_id"],
             "verify_deployment_script",
             "in_progress"
         )
+        # Get the current context using prepare_context
+        context = prepare_context(submission, optimize=False)
 
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
@@ -526,7 +526,18 @@ def verify_deploy_script(submission, request_context, user_prompt):
 
     except Exception as e:
         app.logger.error("Error in verify_deploy_script endpoint", exc_info=e)
-        return jsonify({"error": str(e)}), 500
+        update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "error",
+                step_metadata={
+                    "log": [-1, {}, "", str(e)]  # stderr or error message
+                }
+            )
+        return jsonify({
+            "success": False,
+            "log":   # stdout
+        }), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

@@ -23,4 +23,4 @@ npm install --save-dev hardhat @nomicfoundation/hardhat-toolbox @nomicfoundation
 #npm install -i --save-dev --force hardhat @nomicfoundation/hardhat-toolbox @nomicfoundation/hardhat-ignition-ethers @nomicfoundation/hardhat-ignition @nomicfoundation/ignition-core @nomicfoundation/hardhat-verify @typechain/ethers-v6 ethers
 
 # Run your Hardhat script (edit path as needed)
-./node_modules/.bin/hardhat compile --config "$2"
+npx hardhat compile --config "$2"
