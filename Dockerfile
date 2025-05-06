@@ -64,8 +64,12 @@ WORKDIR /app
 #    git clone git@github.com:svylabs/ilumina.git /tmp/workspaces/ilumina && \
 #    git -C /tmp/workspaces/ilumina config --global --add safe.directory /tmp/workspaces/ilumina
 
+# Copy the .env file into the container
+COPY .env /app/.env
+
 # Copy project files (if needed)
-COPY . /app
+# COPY . /app
+COPY . .
 
 # Create virtual environment
 RUN python -m venv $VIRTUAL_ENV
@@ -89,3 +93,4 @@ EXPOSE 8080
 
 # Start services using supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# CMD ["/bin/sh", "-c", ". /app/.env && gunicorn -b 0.0.0.0:8080 main:app --timeout 300"]

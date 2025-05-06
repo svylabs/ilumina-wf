@@ -5,3 +5,15 @@ gcloud app deploy
 gcloud app logs tail -s default
 
 gcloud app browse
+
+
+docker build -t gcr.io/ilumina-451416/ilumina-wf .
+docker push gcr.io/ilumina-451416/ilumina-wf
+
+gcloud run deploy ilumina-wf \
+  --image gcr.io/ilumina-451416/ilumina-wf \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --timeout 600
