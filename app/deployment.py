@@ -1,5 +1,5 @@
 from .context import RunContext
-from .models import DeploymentInstruction
+from .models import DeploymentInstruction, Code
 from .openai import ask_openai
 import os
 import json
@@ -91,6 +91,16 @@ class DeploymentAnalyzer:
         except Exception as e:
             print(f"Error: Failed to generate deployment instructions: {e}")
             return []
+        
+    def get_deployment_instructions(self):
+        instruction_path = self.context.deployment_instructions_path()
+        if os.path.exists(instruction_path):
+            with open(instruction_path, "r") as f:
+                instructions = json.loads(f.read())
+                return DeploymentInstruction.load(instructions)
+        else:
+            print(f"Warning: Deployment instructions not found at {instruction_path}")
+            return None
 
     def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
@@ -230,6 +240,43 @@ class DeploymentAnalyzer:
             error_trace = traceback.format_exc()
             print(f"Error during deployment verification: {e}")
             return -2, {}, "", ""
+        
+    def debug_deployment_script(self, step_data, step_status):
+        #submission = self.context.get_submission()
+        if step_status.get("status") == "error":
+            log = step_data.get("log")
+            return_code, contract_addresses, stdout, stderr = log[0], log[1], log[2], log[3]
+            code = self.context.deployment_code()
+            instructions = self.get_deployment_instructions()
+            llm = ThreeStageAnalyzer(Code)
+            new_code = llm.ask_llm(
+                f"""
+                Here is the code for the deployment script:
+                {code}
+
+                generated based on the deployment instructions:
+                {json.dumps(instructions)}
+
+                Here is the error log from the deployment:
+                {stderr}
+
+                stdout from the deployment:
+                {stdout}
+
+                Please analyze the code and provide updated code to fix the error.
+                """
+            )
+
+            # Save the new code
+            with open(self.context.deployment_code_path(), "w") as f:
+                f.write(new_code.to_dict())
+                self.context.commit(new_code.commit_message)
+
+            return new_code
+
+        else:
+            # Nothing to debug
+            pass
 
 
     def _parse_contract_addresses(self, output):

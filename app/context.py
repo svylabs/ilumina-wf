@@ -59,7 +59,7 @@ def prepare_context(data, optimize=True):
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace)
+    context = RunContext(submission_id, run_id, repo, workspace, metadata=data)
 
     # Ensure the root workspace exists
     ensure_directory_exists(workspace)
@@ -178,15 +178,18 @@ def prepare_context_lazy(data):
     return context
  
 class RunContext:
-    def __init__(self, submission_id, run_id, repo, workspace, metadata=None):
+    def __init__(self, submission_id, run_id, repo, workspace, submission=None):
         self.submission_id = submission_id
         self.run_id = run_id
         self.repo = repo
         self.workspace = workspace
         self.name = repo.split("/")[-1]
-        self.metadata = metadata if metadata else {}
+        self.submission = submission if submission else {}
         if (os.path.exists(self.cwd()) == False):
             os.makedirs(self.cwd())
+
+    def get_submission(self):
+        return self.submission
 
     def get_run_id(self):
         return self.run_id
@@ -243,6 +246,13 @@ class RunContext:
                         return file_path
 
         raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
+    
+    def deployment_code(self):
+        with open(self.deployment_instructions_path()) as f:
+            return f.read()
+        
+    def deployment_code_path(self):
+        return os.path.join(self.simulation_path(), "simulation", "contracts", "deploy.ts")
     
     def new_gcs_summary_path(self):
         version = str(uuid.uuid4())

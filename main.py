@@ -262,7 +262,7 @@ def analyze_project(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
 
         # Store user prompt if available
-        if user_prompt:
+        if (user_prompt):
             user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_project", user_prompt)
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
 
@@ -538,6 +538,53 @@ def verify_deploy_script(submission, request_context, user_prompt):
             "success": False,
             "log":   [-1, {}, "", str(e)]  # stderr or error message
         }), 200
+
+@app.route('/api/debug_deploy_script', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def debug_deploy_script(submission, request_context, user_prompt):
+    """Debug endpoint to provide detailed information about the submission and context."""
+    try:
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "in_progress"
+        )
+        # Get the current context using prepare_context
+        context = prepare_context(submission)
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+        step_data = submission.get("verify_deployment_script")
+        step_status = submission.get("completed_steps", [])
+        step_status = [step for step in step_status if step["step"] == "verify_deployment_script"]
+        new_code = deployer.debug_deployment_script(step_data, step_status)
+
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "success",
+            step_metadata={
+                "log": new_code.change_summary
+            }
+        )
+
+        return jsonify({
+            "success": True,
+            "log": {"summary": new_code.change_summary}
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in debug_deploy_script endpoint", exc_info=e)
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "error",
+            metadata={"log": str(e)}
+        )
+        return jsonify({"error": str(e)}), 200
+
+    except Exception as e:
+        app.logger.error("Error in debug endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

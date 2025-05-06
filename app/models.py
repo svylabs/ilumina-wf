@@ -487,3 +487,15 @@ class ActionInstruction(IluminaOpenAIResponseModel):
             "parameters": self.parameters,
             "content": self.content
         }
+    
+class Code(IluminaOpenAIResponseModel):
+    commit_message: str
+    change_summary: str
+    code: str
+
+    def to_dict(self):
+        return {
+            "commit_message": self.commit_message,
+            "change_summary": self.change_summary,
+            "content": self.content
+        }
