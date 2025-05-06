@@ -202,10 +202,11 @@ class RunContext:
     
     def code(self, code_path):
         """Returns path to simulation code"""
-        return os.path.join(self.simulation_path(), code_path)
+        with open(os.path.join(self.simulation_path(), code_path)) as f:
+            return f.read()
     
     def artifact_path(self):
-        os.path.join(self.cws(), "artifacts")
+        os.path.join(self.cws(), "artifacts")        
     
     def abi(self, contract_name):
         """Returns path to ABI file"""

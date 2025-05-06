@@ -189,6 +189,7 @@ class Function(IluminaOpenAIResponseModel):
 class Contract(IluminaOpenAIResponseModel):
     name: str
     type: Literal["abstract", "library", "interface", "contract"]  # external, library, interface
+    path: str = ""
     summary: str
     functions: list[Function]
     is_deployable: bool = False  # Default to False
@@ -203,6 +204,7 @@ class Contract(IluminaOpenAIResponseModel):
         return {
             #"path": self.path,
             "name": self.name,
+            "path": self.path,
             "type": self.type,
             "summary": self.summary,
             "functions": [function.to_dict() for function in self.functions],
