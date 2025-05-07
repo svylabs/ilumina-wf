@@ -1,5 +1,5 @@
 # Start with an official Python image
-FROM python:3.9
+FROM python:3.11-slim
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -64,14 +64,20 @@ WORKDIR /app
 #    git clone git@github.com:svylabs/ilumina.git /tmp/workspaces/ilumina && \
 #    git -C /tmp/workspaces/ilumina config --global --add safe.directory /tmp/workspaces/ilumina
 
+# Copy the .env file into the container
+COPY .env /app/.env
+
 # Copy project files (if needed)
-COPY . /app
+# COPY . /app
+COPY . .
 
 # Create virtual environment
-RUN python -m venv $VIRTUAL_ENV
 
 # Set PATH to use virtualenv packages
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+RUN python3 -m venv venv && \
+    . venv/bin/activate
 
 RUN pip install --upgrade pip
 
@@ -83,9 +89,14 @@ RUN pip install -r requirements.txt
 
 # Copy supervisord config (to manage multiple processes)
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+RUN which gunicorn
+RUN gunicorn --version
+# Verify gunicorn is installed
+
 
 # Expose the required port (Google App Engine listens on 8080)
 EXPOSE 8080
 
 # Start services using supervisord
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/bin/bash", "-c", ". /app/.env && . venv/bin/activate && venv/bin/gunicorn -b 0.0.0.0:8080 main:app --timeout 300"]
