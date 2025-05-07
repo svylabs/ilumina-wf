@@ -49,7 +49,7 @@ user_prompt_manager = UserPromptManager(datastore_client)
 PROJECT_ID = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
 QUEUE_ID = os.getenv("TASK_QUEUE_ID", "analysis-tasks")
 LOCATION = os.getenv("TASK_LOCATION", "us-central1")
-TASK_HANDLER_URL = "https://ilumina-451416.uc.r.appspot.com/api"
+TASK_HANDLER_URL = "https://ilumina-wf-tt2cgoxmbq-uc.a.run.app/api"
 
 SECRET_PASSWORD = os.getenv("API_SECRET", "my_secure_password")
 
