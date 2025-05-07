@@ -11,7 +11,8 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.actions import ActionGenerator
+from app.actions import AllActionGenerator
+from app.action import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
@@ -348,13 +349,45 @@ def create_actions(submission, request_context, user_prompt):
         # Get the current context using prepare_context
         context = prepare_context(submission)
 
-        # Initialize ActionGenerator
-        action_generator = ActionGenerator(context)
+        # Initialize AllActionGenerator
+        action_generator = AllActionGenerator(context)
 
         # Generate all actions
         action_generator.generate_all_actions()
 
         return jsonify({"message": "Action files generated successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/implement_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def implement_action(submission, request_context, user_prompt):
+    """Generate a single action file for a specific actor and action"""
+    try:
+        # Get parameters from request
+        data = request.get_json()
+        actor_name = data.get('actor_name')
+        action_name = data.get('action_name')
+        
+        if not actor_name or not action_name:
+            return jsonify({"error": "Both actor_name and action_name are required"}), 400
+
+        # Get the current context
+        context = prepare_context(submission)
+        
+        # Initialize ActionGenerator
+        action_generator = ActionGenerator(context)
+        
+        # Generate the specific action
+        result = action_generator.generate_single_action(actor_name, action_name)
+
+        return jsonify({
+            "message": f"Action '{action_name}' for actor '{actor_name}' generated successfully",
+            "file_path": result["file_path"],
+            "action_details": result["action_details"]
+        }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

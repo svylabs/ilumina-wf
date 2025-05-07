@@ -8,9 +8,10 @@ from typing import Dict, List, Optional
 from .context import RunContext
 from .three_stage_llm_call import ThreeStageAnalyzer
 from .models import ActionInstruction
+# from .action_openai import ask_openai
 from .compiler import Compiler
 
-class AllActionGenerator:
+class ActionGenerator:
     def __init__(self, context: RunContext):
         self.context = context
         self.actions_dir = os.path.join(context.simulation_path(), "simulation", "actions")
@@ -21,22 +22,69 @@ class AllActionGenerator:
         if not hasattr(context, "prng"):
             context.prng = random.Random()  # Add a default PRNG if missing
 
-    def generate_all_actions(self):
+    def generate_all_actions(self) -> List[Dict]:
         """Generate action files for all actors and actions"""
         # First compile contracts to get ABIs
         self.compiler.compile()
 
         with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
-            actors = json.load(f)["actors"]
+            actors = json.load(f).get("actors", [])
         
+        results = []
         for actor in actors:
-            for action in actor["actions"]:
-                self._generate_action_file(
+            for action in actor.get("actions", []):
+                result = self._generate_action_file(
                     action["name"],
                     action["contract_name"],
                     action["function_name"],
                     action["summary"]
                 )
+                results.append({
+                    "actor": actor["name"],
+                    "action": action["name"],
+                    "file_path": result["file_path"],
+                    "status": "generated" if not result["existing"] else "skipped"
+                })
+        
+        return results
+    
+    def generate_single_action(self, actor_name: str, action_name: str) -> Dict:
+        """Generate a single action file for specific actor and action"""
+        # First compile contracts to get ABIs
+        self.compiler.compile()
+
+        # Load actor data
+        with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
+            actors_data = json.load(f).get("actors", [])
+        
+        # Find the specific actor
+        target_actor = next((a for a in actors_data if a["name"] == actor_name), None)
+        if not target_actor:
+            raise ValueError(f"Actor '{actor_name}' not found")
+            
+        # Find the specific action
+        target_action = next((a for a in target_actor.get("actions", []) if a["name"] == action_name), None)
+        if not target_action:
+            raise ValueError(f"Action '{action_name}' not found for actor '{actor_name}'")
+        
+        # Generate the action file
+        result = self._generate_action_file(
+            target_action["name"],
+            target_action["contract_name"],
+            target_action["function_name"],
+            target_action["summary"]
+        )
+        
+        return {
+            "file_path": result["file_path"],
+            "action_details": {
+                "actor": actor_name,
+                "action": action_name,
+                "contract": target_action["contract_name"],
+                "function": target_action["function_name"],
+                "status": "generated" if not result["existing"] else "skipped"
+            }
+        }
 
     def _solidity_to_ts_type(self, solidity_type: str) -> str:
         """Convert Solidity type to TypeScript type"""
@@ -48,6 +96,19 @@ class AllActionGenerator:
             "int": "bigint",
             "bytes": "string"
         }
+        
+        # Handle arrays
+        if "[]" in solidity_type:
+            base_type = solidity_type.replace("[]", "")
+            return f"{self._solidity_to_ts_type(base_type)}[]"
+        
+        # Handle mappings
+        if "mapping(" in solidity_type:
+            return "Record<string, any>"
+        
+        # Handle tuples
+        if "tuple" in solidity_type:
+            return "any"
         
         for solidity, ts in type_map.items():
             if solidity_type.startswith(solidity):
@@ -125,9 +186,11 @@ class AllActionGenerator:
 
     def _generate_action_file(self, action_name: str, contract_name: str, 
                             function_name: str, summary: str):
+        """Generate action file using LLM with enhanced validation"""
         filename = f"{self._sanitize_for_filename(action_name)}.ts"
         filepath = os.path.join(self.actions_dir, filename)
         
+        # Return if file already exists
         if os.path.exists(filepath):
             return
             
@@ -140,12 +203,6 @@ class AllActionGenerator:
             raise Exception(f"ABI not found for contract: {contract_name}")
         
         # Find the function in ABI
-        # function_abi = next(
-        #     (item for item in contract_abi["abi"] 
-        #      if item["type"] == "function" and item["name"] == function_name),
-        #     None
-        # )
-        
         function_abi = None
         for item in contract_abi.get("abi", []):
             if item.get("name") == function_name:
@@ -157,59 +214,48 @@ class AllActionGenerator:
                 break
         
         if not function_abi:
-            # raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
             raise Exception(f"Function {function_name.capitalize()} not found in contract {contract_name} ABI")
         
         # Generate parameter initialization code and validation rules
         param_inits = []
         param_names = []
         validation_rules = []
+        param_types = {}
 
         for input_param in function_abi.get("inputs", []):
             param_name = input_param['name']
             param_type = input_param['type']
             param_names.append(param_name)
+            param_types[param_name] = param_type
             param_inits.append(self._generate_param_init_code(param_name, param_type, function_name))
             validation_rules.append(self._generate_validation_rule(param_name, param_type))
         
-        param_init_lines = "\n                ".join(param_inits)
-        param_return_lines = ",\n                            ".join(f"{name}: {name}" for name in param_names)
-        validation_rules = [rule for rule in validation_rules if rule]  # Remove empty rules
-
-        # Generate validation logic
-        validation_logic = "\n            ".join([
-            "// Basic parameter validation",
-            *validation_rules,
-            "return true;"
-        ])
+        # Enhanced LLM prompt with more context
+        prompt = self._build_llm_prompt(
+            action_name, class_name, contract_name, 
+            function_name, summary, param_names,
+            param_types, param_inits, validation_rules
+        )
         
-        prompt = f"""
-        Generate a TypeScript class for action '{action_name}' with EXACTLY this structure:
-        ...existing prompt content...
-        """
-
         try:
             analyzer = ThreeStageAnalyzer(ActionInstruction)
             action_instructions = analyzer.ask_llm(prompt)
             code = action_instructions.to_dict()["content"]
             code = self._clean_generated_code(code)
+            # code = ask_openai(prompt)
+            code = self._clean_generated_code(code)
             
-            required_patterns = [
-                r"this\.contract\.connect\(actor\.account\.value\)",
-                r"await tx\.wait\(\)",
-                r"actor\.log\(",
-                r"import \{ (BigNumber|ethers) .* from \"ethers\""
-            ]
-            
-            for pattern in required_patterns:
-                if not re.search(pattern, code):
-                    raise ValueError(f"Generated code missing required pattern: {pattern}")
+            # Validate the generated code
+            self._validate_generated_code(code, function_name, param_names)
             
             with open(filepath, "w") as f:
                 f.write(code)
                 
+            return {"file_path": filepath, "existing": False}
+                
         except Exception as e:
             print(f"Error generating {action_name}: {str(e)}")
+            # Fall back to template generation
             with open(filepath, "w") as f:
                 f.write(self._get_fallback_template(
                     class_name, action_name, 
@@ -217,6 +263,84 @@ class AllActionGenerator:
                     param_names, param_inits,
                     validation_rules
                 ))
+            return {"file_path": filepath, "existing": False}
+
+    def _build_llm_prompt(self, action_name: str, class_name: str, contract_name: str,
+                         function_name: str, summary: str, param_names: List[str],
+                         param_types: Dict[str, str], param_inits: List[str],
+                         validation_rules: List[str]) -> str:
+        """Build comprehensive LLM prompt for action generation"""
+        param_details = "\n".join(
+            f"- {name}: {param_types[name]} (Sample init: {param_inits[i]})"
+            for i, name in enumerate(param_names))
+        
+        validation_examples = "\n".join(
+            f"- {rule}" for rule in validation_rules if rule.strip())
+        
+        return f"""
+Generate a complete, production-ready TypeScript class for the '{action_name}' action that interacts with 
+the '{function_name}' function in the '{contract_name}' smart contract.
+
+CLASS REQUIREMENTS:
+1. Class name: {class_name}
+2. Must extend Action from "@svylabs/ilumina"
+3. Must use context.prng for all random values
+4. Must include comprehensive error handling
+5. Must validate all parameters before execution
+6. Must follow TypeScript best practices
+
+CONTRACT FUNCTION DETAILS:
+- Function: {function_name}
+- Parameters:
+{param_details}
+
+ACTION SUMMARY:
+{summary}
+
+VALIDATION REQUIREMENTS:
+{validation_examples}
+
+CODE STRUCTURE:
+1. Required imports (ethers, BigNumber, etc.)
+2. Class with:
+   - Constructor accepting Contract instance
+   - execute() method that:
+     * Initializes parameters
+     * Validates parameters
+     * Executes contract function
+     * Handles transaction
+     * Returns tx hash and params
+   - validate() method that checks all parameter constraints
+3. Proper TypeScript types for all parameters
+4. Comprehensive logging using actor.log()
+
+Generate the complete code following these requirements exactly. Include all necessary imports and 
+ensure the code is properly formatted and ready for production use.
+"""
+
+    def _validate_generated_code(self, code: str, function_name: str, param_names: List[str]):
+        """Validate the generated code meets requirements"""
+        required_patterns = [
+            r"extends Action",
+            r"this\.contract\.connect\(actor\.account\.value\)",
+            r"await tx\.wait\(\)",
+            r"actor\.log\(",
+            r"import \{.*ethers.*\} from \"ethers\"",
+            r"async execute\(",
+            r"async validate\(",
+            rf"\.{function_name}\(",
+            r"try\s*{",
+            r"catch\s*\(error\)\s*{"
+        ]
+        
+        for pattern in required_patterns:
+            if not re.search(pattern, code, re.MULTILINE):
+                raise ValueError(f"Generated code missing required pattern: {pattern}")
+        
+        # Verify all parameters are used
+        for param in param_names:
+            if not re.search(rf"\b{param}\b", code):
+                raise ValueError(f"Parameter {param} not properly used in generated code")
 
     def _generate_validation_rule(self, param_name: str, param_type: str) -> str:
         """Generate validation rules for parameters based on their type"""
