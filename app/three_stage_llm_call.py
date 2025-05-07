@@ -21,47 +21,84 @@ class ThreeStageAnalyzer:
     def __init__(self, model_class: Type[IluminaOpenAIResponseModel]):
         self.model_class = model_class
         self.draft = None
+        self.conversations = [
+            {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task, followed by checks to see if guidelines by users are met with regard to the output."},
+        ]
 
-    def ask_llm(self, prompt: str) -> IluminaOpenAIResponseModel:
+    def ask_llm(self, prompt: str, guidelines=[]) -> IluminaOpenAIResponseModel:
         self.prompt = prompt
+        new_conversation = {
+            "role": "user",
+            "content": "Step 1: Create draft\n\n" + prompt
+        }
+        self.conversations.append(new_conversation)
         response = ask_openai("Step 1: Create draft\n\n" + prompt, self.model_class, task="analyze")
         self.draft = response[1]
         self.verification_result = self.verify_draft()
         print("Verification result:", self.verification_result.to_dict())
-        return self.correct_draft()
+        if len(guidelines) == 0:
+            return self.correct_draft()
+        else:
+            self.draft = self.correct_draft()
+            self.conversations.append(
+                {
+                    "role": "assistant",
+                    "content": json.dumps(self.draft.to_dict())
+                }
+            )
+            response = ask_openai(
+                f"Please check if the above json draft meets the following guidelines: {guidelines}",
+                Verification,
+                conversations=self.conversations
+            )
+            self.verification_result = response[1]
+            print("Guideline verification:", json.dumps(self.verification_result.to_dict()))
+            if self.verification_result.is_change_needed:
+                return self.correct_draft()
+            else:
+                return self.draft
+                
+
+
 
     def verify_draft(self) -> IluminaOpenAIResponseModel:
         if self.draft is None:
             raise ValueError("Draft must be created first.")
         
-        conversations = [
-                {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task."},
-                {"role": "user", "content": "Step 1: Create draft\n\n" + self.prompt},
-                {"role": "assistant","content": json.dumps(self.draft.to_dict())}
-        ]
+        self.conversations.append(
+            {"role": "assistant","content": json.dumps(self.draft.to_dict())}
+        )
         
-        prompt = f"Please verify the json draft and suggest any changes necessary"
-        response = ask_openai(prompt, Verification, task="verify", conversations=conversations)
+        prompt = f"Step 2: Please verify the json draft and suggest any changes necessary"
+        response = ask_openai(prompt, Verification, task="verify", conversations=self.conversations)
         self.verification_result = response[1]
+        self.conversations.append(
+            {"role": "user", "content": prompt}
+        )
+        self.conversations.append(
+                {"role": "assistant", "content": json.dumps(self.verification_result.to_dict())}
+            )
+            
         return self.verification_result
     
-    def correct_draft(self):
+    def correct_draft(self, guidelines=[]):
         if self.verification_result is None:
             raise ValueError("Draft must be verified first.")
         if self.verification_result.is_change_needed:
-            conversations = [
-                {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task."},
-                {"role": "user", "content": "Step 1: Create draft\n\n" + self.prompt},
-                {"role": "assistant","content": json.dumps(self.draft.to_dict())},
-                {"role": "user", "content": "Step 2: Please verify the above json draft and suggest any changes necessary"},
-                {"role": "assistant", "content": json.dumps(self.verification_result.to_dict())}
-            ]
             prompt = "Step 3: Correct and finalize. Please correct the earlier draft based on the changes suggested"
+            if len(guidelines) > 0:
+                prompt += f" and use the following guidelines: {guidelines}"
             #prompt = f"Here is the original request from user: {self.prompt}\n\n"
             #prompt += f"Here is the draft created by the assistant: \n\n{self.draft.to_dict()}"
             #prompt += f"\n\nThe changes suggested by the assistant: {self.verification_result.to_dict()}"
-            response = ask_openai(prompt, self.model_class, task="correct", conversations=conversations)
+            response = ask_openai(prompt, self.model_class, task="correct", conversations=self.conversations)
             print("Corrected draft:", response[1].to_dict())
+            self.conversations.append(
+                {"role": "user", "content": prompt}
+            )
+            self.conversations.append(
+                {"role": "assistant", "content": json.dumps(response[1].to_dict())}
+            )
             return response[1]
         else:
             return self.draft

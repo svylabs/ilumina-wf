@@ -127,7 +127,9 @@ def get_submission(submission_id):
         latest_prompt = user_prompt_manager.query_latest_prompt(submission_id, step)
         if latest_prompt:
             latest_prompts[step] = latest_prompt.get("user_prompt")
-
+    step_metadata = {}
+    for step in submission.get("completed_steps", []):
+        step_metadata[step["step"]] = submission.get(step["step"])
     return jsonify({
         "submission_id": submission["submission_id"],
         "github_repository_url": submission["github_repository_url"],
@@ -138,7 +140,8 @@ def get_submission(submission_id):
         "status": submission.get("status"),
         "completed_steps": submission.get("completed_steps", []),
         "message": message,
-        "latest_prompts": latest_prompts
+        "latest_prompts": latest_prompts,
+        "step_metadata": step_metadata
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -221,6 +224,9 @@ def analyze():
                     next_step = "implement_deployment_script"
             elif step == "implement_deployment_script":
                 if status is not None and status == "success":
+                    next_step = "verify_deployment_script"
+            elif step == "verify_deployment_script":
+                if status is not None and status == "success":
                     next_step = "None"
         
         if next_step == "analyze_project":
@@ -234,8 +240,11 @@ def analyze():
             create_task({"submission_id": submission_id, "step": "analyze_deployment"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: analyze_deployment"}), 200
         elif next_step == "implement_deployment_script":
-            #create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
+            create_task({"submission_id": submission_id, "step": "implement_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: implement_deployment_script"}), 200
+        elif next_step == "verify_deployment_script":
+            create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
@@ -253,7 +262,7 @@ def analyze_project(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
 
         # Store user prompt if available
-        if user_prompt:
+        if (user_prompt):
             user_prompt_manager.store_latest_prompt(submission["submission_id"], "analyze_project", user_prompt)
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
 
@@ -396,161 +405,37 @@ def analyze_deployment(submission, request_context, user_prompt):
 @authenticate
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
-    """Execute and verify the deployment script"""
-    context = prepare_context(submission)
     try:
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_deployment_script",
+            "in_progress"
+        )
+        """Execute and verify the deployment script"""
+        context = prepare_context(submission, optimize=False)
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
-        contract_path = context.cws()
-        simulation_path = context.simulation_path()
-        print(f"Simulation path: {simulation_path}")
-        print(f"Contract path: {contract_path}")
         
-        # Verify contract directory exists
-        if not os.path.exists(contract_path):
-            raise FileNotFoundError(f"Contract directory not found at {contract_path}")
-        
-        hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
-        hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
-        simulation_config = "hardhat.config.simulation.js"
-        if os.path.exists(hardhat_config_path):
-            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path, hardhat_network)
-        if os.path.exists(hardhat_config_path_ts):
-            _,simulation_config = parse_and_modify_hardhat_config(hardhat_config_path_ts, hardhat_network)
-
-        # 1. Install dependencies with --legacy-peer-deps to resolve conflicts
-        install_command = f"cd {contract_path} && npm install --legacy-peer-deps"
-        # install_command = (
-        #     f"cd {contract_path} && "
-        #     "npm install --save-dev ts-node typescript @typechain/hardhat @nomicfoundation/hardhat-toolbox "
-        #     "@nomicfoundation/hardhat-ethers ethers && "
-        #     "npm install --legacy-peer-deps"
-        # )
-        install_process = subprocess.Popen(
-            install_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        install_stdout, install_stderr = install_process.communicate(timeout=300)  # 5 minute timeout
-        
-        if install_process.returncode != 0:
-            raise RuntimeError(f"Dependency installation failed: {_extract_error_details(install_stderr, install_stdout)}")
-
-        # 2. Compile the contracts
-        # compile_command = f"cd {contract_path} && npx hardhat compile"
-        compile_command = f"cd {contract_path} && npx hardhat compile --config {simulation_config}"
-        compile_process = subprocess.Popen(
-            compile_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        compile_stdout, compile_stderr = compile_process.communicate(timeout=300)
-        
-        if compile_process.returncode != 0:
-            raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
-
         # 3. Generate deploy.ts
-        deploy_ts_path = deployer.implement_deployment_script()
-        
-        # 4. Run the deployment verification
-        verification_command = (
-            f"cd {contract_path} && "
-            "npx hardhat test --config hardhat.config.ts simulation/check_deployment.ts"
-        )
-        
-        process = subprocess.Popen(
-            verification_command,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True
-        )
-        stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
-        
-        # Parse results
-        if process.returncode != 0:
-            error_msg = _extract_error_details(stderr, stdout)
-            update_analysis_status(
-                submission["submission_id"],
-                "implement_deployment_script",
-                "error",
-                metadata={
-                    "message": "Deployment verification failed",
-                    "error": error_msg,
-                    "log": stdout + stderr,
-                    "compile_log": compile_stdout + compile_stderr,
-                    "install_log": install_stdout + install_stderr
-                }
-            )
-            return jsonify({
-                "success": False,
-                "error": error_msg,
-                "log": stdout + stderr,
-                "compile_log": compile_stdout + compile_stderr,
-                "install_log": install_stdout + install_stderr
-            }), 400
-        
-        # Extract contract addresses from output
-        contract_addresses = _parse_contract_addresses(stdout)
-        
-        result = {
-            "success": True,
-            "contract_addresses": contract_addresses,
-            "log": stdout,
-            "compile_log": compile_stdout + compile_stderr,
-            "install_log": install_stdout + install_stderr,
-            "deployment_path": deploy_ts_path
-        }
-
+        deployer.implement_deployment_script_v2()
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
-            "success",
-            metadata=result
-        )
-
-        return jsonify(result), 200
-
-    except subprocess.TimeoutExpired:
-        error_msg = "Operation timed out"
-        update_analysis_status(
-            submission["submission_id"],
-            "implement_deployment_script",
-            "error",
-            metadata={"message": error_msg}
+            "success"
         )
         return jsonify({
-            "success": False,
-            "error": error_msg,
-            "type": "timeout"
-        }), 400
-        
+            "message": "Deployment script implemented successfully",
+            "log": "Deployment script implemented successfully"
+        }), 200
     except Exception as e:
-        error_trace = traceback.format_exc()
-        logs = {
-            "compile_log": compile_stdout + compile_stderr if 'compile_stdout' in locals() else "Not attempted",
-            "install_log": install_stdout + install_stderr if 'install_stdout' in locals() else "Not attempted"
-        }
+        app.logger.error("Error in implement_deployment_script endpoint", exc_info=e)
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
             "error",
-            metadata={
-                "message": str(e),
-                "trace": error_trace,
-                **logs
-            }
+            metadata={"message": str(e)}
         )
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": error_trace,
-            **logs
-        }), 500
+        return jsonify({"error": str(e)}), 200
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -560,23 +445,6 @@ def _extract_error_details(stderr, stdout):
             error_lines.append(line.strip())
     return '\n'.join(error_lines[-5:]) if error_lines else "Unknown deployment error"
 
-def _parse_contract_addresses(output):
-    """Parse contract addresses from deployment output"""
-    addresses = {}
-    for line in output.split('\n'):
-        if 'deployed to:' in line:
-            parts = line.split('deployed to:')
-            if len(parts) == 2:
-                name = parts[0].strip()
-                address = parts[1].strip()
-                addresses[name] = address
-        elif ':' in line and '===' not in line:  # Address summary lines
-            parts = line.split(':')
-            if len(parts) >= 2:
-                name = parts[0].strip()
-                address = ':'.join(parts[1:]).strip()
-                addresses[name] = address
-    return addresses
 
 @app.route('/api/submission_logs/<submission_id>', methods=['GET'])
 @authenticate
@@ -607,6 +475,122 @@ def handle_exception(e):
 
 # Register the storage blueprint
 app.register_blueprint(storage_blueprint)
+
+@app.route('/api/verify_deployment_script', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def verify_deploy_script(submission, request_context, user_prompt):
+    """Verify the deployment script without executing it."""
+    try:
+        update_analysis_status(
+            submission["submission_id"],
+            "verify_deployment_script",
+            "in_progress"
+        )
+        # Get the current context using prepare_context
+        context = prepare_context(submission, optimize=False)
+
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+
+        # Verify the deployment script
+        result = deployer.verify_deployment_script()
+
+        # Process the result based on returncode
+        if result[0] == 0:  # Success
+            update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "success",
+                step_metadata={
+                    "log": list(result)  # contract addresses
+                }
+            )
+            return jsonify({
+                "success": True,
+                "log": list(result)  # stdout
+            }), 200
+        else:  # Failure
+            update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "error",
+                step_metadata={
+                    "log": list(result)  # stderr or error message
+                }
+            )
+            return jsonify({
+                "success": False,
+                "log": list(result)  # stdout
+            }), 200
+
+    except Exception as e:
+        app.logger.error("Error in verify_deploy_script endpoint", exc_info=e)
+        update_analysis_status(
+                submission["submission_id"],
+                "verify_deployment_script",
+                "error",
+                step_metadata={
+                    "log": [-1, {}, "", str(e)]  # stderr or error message
+                }
+            )
+        return jsonify({
+            "success": False,
+            "log":   [-1, {}, "", str(e)]  # stderr or error message
+        }), 200
+
+@app.route('/api/debug_deploy_script', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def debug_deploy_script(submission, request_context, user_prompt):
+    """Debug endpoint to provide detailed information about the submission and context."""
+    try:
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "in_progress"
+        )
+        # Get the current context using prepare_context
+        context = prepare_context(submission)
+        # Initialize DeploymentAnalyzer
+        deployer = DeploymentAnalyzer(context)
+        step_data = submission.get("verify_deployment_script")
+        if step_data:
+            step_data = json.loads(step_data)
+        step_status = submission.get("completed_steps", [])
+        step_status = [step for step in step_status if step["step"] == "verify_deployment_script"]
+        if step_status:
+            step_status = step_status[0]
+        else:
+            step_status = None
+        new_code = deployer.debug_deployment_script(step_data, step_status)
+
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "success",
+            step_metadata={
+                "log": new_code.change_summary
+            }
+        )
+
+        return jsonify({
+            "success": True,
+            "log": {"summary": new_code.change_summary}
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in debug_deploy_script endpoint", exc_info=e)
+        update_analysis_status(
+            submission["submission_id"],
+            "debug_deployment_script",
+            "error",
+            metadata={"log": str(e)}
+        )
+        return jsonify({"error": str(e)}), 200
+
+    except Exception as e:
+        app.logger.error("Error in debug endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

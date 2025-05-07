@@ -1,9 +1,11 @@
 from .context import RunContext
-from .models import DeploymentInstruction
+from .models import DeploymentInstruction, Code
 from .openai import ask_openai
 import os
 import json
 from .three_stage_llm_call import ThreeStageAnalyzer
+import subprocess
+import traceback
 
 class DeploymentAnalyzer:
     def __init__(self, context: RunContext):
@@ -89,6 +91,126 @@ class DeploymentAnalyzer:
         except Exception as e:
             print(f"Error: Failed to generate deployment instructions: {e}")
             return []
+        
+    def get_deployment_instructions(self):
+        instruction_path = self.context.deployment_instructions_path()
+        if os.path.exists(instruction_path):
+            with open(instruction_path, "r") as f:
+                instructions = json.loads(f.read())
+                return DeploymentInstruction.load(instructions)
+        else:
+            print(f"Warning: Deployment instructions not found at {instruction_path}")
+            return None
+        
+    def get_artifact_imports(self):
+        deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
+        deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
+        instructions = None
+        with open(deployment_path, "r") as f:
+            instructions = json.load(f)
+        
+        # Generate imports and artifact loading
+        artifacts = {}
+        all_contracts = set()
+
+        for step in instructions["sequence"]:
+            if step["type"] in ["deploy", "call"]:
+                all_contracts.add(step["contract"])
+
+        for contract in sorted(all_contracts):
+            artifact_path = self.context.contract_artifact_path(contract)
+            # Calculate relative path from deploy.ts to artifact
+            rel_path = os.path.relpath(
+                artifact_path,
+                os.path.dirname(deploy_ts_path)
+            ).replace("\\", "/")  # Windows compatibility
+            artifacts[contract] = rel_path
+        return artifacts
+    
+    def implement_deployment_script_v2(self):
+        deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
+        deploy_ts_path = os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts")
+        
+        if not os.path.exists(deployment_path):
+            raise FileNotFoundError(f"Missing deployment instructions at {deployment_path}")
+        if not os.path.exists(deploy_ts_path):
+            raise FileNotFoundError(f"Missing deploy.ts template at {deploy_ts_path}")
+
+        with open(deployment_path, "r") as f:
+            instructions = json.load(f)
+
+        # Read existing deploy.ts template
+        with open(deploy_ts_path, "r") as f:
+            template = f.read()
+
+        # Track all unique contracts we need artifacts for
+        all_contracts = set()
+        for step in instructions["sequence"]:
+            if step["type"] in ["deploy", "call"]:
+                all_contracts.add(step["contract"])
+
+        # Generate imports and artifact loading
+        artifact_imports = {}
+
+        for contract in sorted(all_contracts):
+            artifact_path = self.context.contract_artifact_path(contract)
+            # Calculate relative path from deploy.ts to artifact
+            rel_path = os.path.relpath(
+                artifact_path,
+                os.path.dirname(deploy_ts_path)
+            ).replace("\\", "/")  # Windows compatibility
+            
+            # imports_block.append(f"const {contract}_artifact = require('{rel_path}');\n")
+            artifact_imports[contract]=rel_path
+        
+        prompt = f"""
+
+        Here is the deployment instructions in json format:
+        {json.dumps(instructions)}
+
+        Can you implement a deployment module in typescript, using hardhat / ethers.js that will export a async function `deployContracts()`
+
+        The function should be implemented to deploy the contracts in the order specified in the deployment instructions.
+        Additionally, the instructions also includes function calls to be made after deployment to setup the contracts correctly.
+
+        The module should also using the correct artifact import paths for the contracts from
+        the mapping provided below. The import paths are relative to the deploy.ts file.
+        {json.dumps(artifact_imports)}
+
+        And we will use the code similar to below to load the contract from abi / bytecode directly from the imported json files.
+
+        new ethers.ContractFactory(
+                    <contract_artifact.json>.abi,
+                    <contract_artifact.json>.bytecode,
+                    deployer
+                );
+        """
+
+        guidelines = [
+            "0. This is a typescript library / module that need to be exported. So no need for a main function."
+            "1. Please make sure the function name is deployContracts() that returns a mapping of all contract references based on defined references as same contract may be deployed multiple times, so need all references. This will be used by other scripts to call the contract.",
+            "2. Ensure that all imports for json abi are from the mapping provided",
+            "3. Use waitForDeployment() for all contract deployments.",
+            "4. use contract.target instead of contract.address to get all contract addresses."
+            "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
+        ]
+
+        llm = ThreeStageAnalyzer(Code)
+        new_code = llm.ask_llm(
+            prompt,
+            guidelines=guidelines
+        )
+
+        with open(self.context.deployment_code_path(), "w") as f:
+            f.write(str(new_code.code))
+
+        self.context.commit(new_code.commit_message)
+
+        return deploy_ts_path
+
+
+
+
 
     def implement_deployment_script(self):
         deployment_path = os.path.join(self.context.simulation_path(), "deployment_instructions.json")
@@ -108,8 +230,8 @@ class DeploymentAnalyzer:
 
         # Track all unique contracts we need artifacts for
         all_contracts = set()
-        for step in instructions["DeploymentInstruction"]["sequence"]:
-            if step["type"] in ["contract", "transaction"]:
+        for step in instructions["sequence"]:
+            if step["type"] in ["deploy", "call"]:
                 all_contracts.add(step["contract"])
 
         # Generate imports and artifact loading
@@ -136,8 +258,8 @@ class DeploymentAnalyzer:
 
         # Generate DEPLOY_BLOCK content
         deploy_block = []
-        for step in instructions["DeploymentInstruction"]["sequence"]:
-            if step["type"] == "contract":
+        for step in instructions["sequence"]:
+            if step["type"] == "deploy":
                 contract_name = step["contract"]
                 params = ", ".join([str(p["value"]) for p in step.get("params", [])])
                 
@@ -155,13 +277,13 @@ class DeploymentAnalyzer:
 
         # Generate TRANSACTION_BLOCK content
         transaction_block = []
-        for step in instructions["DeploymentInstruction"]["sequence"]:
-            if step["type"] == "transaction":
+        for step in instructions["sequence"]:
+            if step["type"] == "call":
                 params = ", ".join([f"contracts.{p['value']}.address" for p in step.get("params", [])])
                 transaction_block.append(f"""
-        // Configure {step['contract']}.{step['method']}
-        await contracts.{step['contract']}.{step['method']}({params});
-        console.log(`{step['contract']}.{step['method']} configured`);
+        // Configure {step['contract']}.{step['function']}
+        await contracts.{step['contract']}.{step['function']}({params});
+        console.log(`{step['contract']}.{step['function']} configured`);
     """)
 
         # Generate MAPPING_BLOCK content
@@ -197,3 +319,118 @@ class DeploymentAnalyzer:
 
         self.context.commit("Updated deploy.ts with generated deployment blocks")
         return deploy_ts_path
+    
+    def verify_deployment_script(self):
+        contract_path = self.context.cws()
+        # 4. Run the deployment verification
+        verification_command = (
+            f"./scripts/check_deploy.sh {self.context.simulation_path()}"
+        )
+        print(f"Running deployment verification command: {verification_command}")
+        
+        process = subprocess.Popen(
+            verification_command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout for deployment
+            contract_addresses = {}
+            if process.returncode == 0:
+                contract_addresses = self._parse_contract_addresses(stdout)
+            return process.returncode, contract_addresses, stdout, stderr
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            print(f"Deployment verification timed out: {stderr}")
+            return -1, {}, stdout, stderr
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            print(f"Error during deployment verification: {e}")
+            return -2, {}, "", ""
+        
+    def debug_deployment_script(self, step_data, step_status):
+        #submission = self.context.get_submission()
+        if step_status is not None and step_status.get("status") == "error":
+            print(step_data)
+            log = step_data.get("log")
+            return_code, contract_addresses, stdout, stderr = log[0], log[1], log[2], log[3]
+            code = self.context.deployment_code()
+            instructions = self.get_deployment_instructions()
+            import_prefix = self.context.relative_path_prefix_artifacts(os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts"))
+            guidelines = [
+                "0. This is a typescript library / module that need to be exported. So no need for a main function.",
+                "1. Please make sure the function name is deployContracts() that returns a mapping of all contract references based on defined references as same contract may be deployed multiple times, so need all references. This will be used by other scripts to call the contract.",
+                "2. Ensure that all imports for json abi are from the mapping provided",
+                "3. Use waitForDeployment() for all contract deployments.",
+                "4. use contract.target instead of contract.address to get all contract addresses.",
+                "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
+                "6. As much as possible, keep the code same as the original code and change only the parts that are necessary to fix the error."
+            ]
+            print(guidelines)
+            print(self.get_artifact_imports())
+            llm = ThreeStageAnalyzer(Code)
+            new_code = llm.ask_llm(
+                f"""
+                Here is the code for the deployment module:
+                {code}
+
+                generated based on the deployment instructions:
+                {instructions.to_dict()}
+
+                Here is the error log from the deployment:
+                {stderr}
+
+                stdout from the deployment:
+                {stdout}
+
+                Here is a mapping of artifact import paths for the contracts.
+                {json.dumps(self.get_artifact_imports())}
+
+                Please analyze the code and provide updated code to fix the error.
+                1. Please make sure the function name is deployContracts() that returns a mapping of all contract and contract object. This will be used by other scripts to call the contract.
+                2. Ensure that all imports for json are from the provided mapping, including relative paths as we refer to a different repo for ABI json.
+                3. Use waitForDeployment() for all contract deployments.
+                4. use contract.target instead of contract.address to get all contract addresses.
+                5. As much as possible, keep the code same as the original code and change only the parts that are necessary to fix the error.
+                6. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
+                """
+                ,
+                guidelines=guidelines
+            )
+
+            # Save the new code
+            with open(self.context.deployment_code_path(), "w") as f:
+                #print(new_code.code)
+                f.write(str(new_code.code))
+            
+            self.context.commit(new_code.commit_message)
+            return new_code
+
+        else:
+            # Nothing to debug
+            pass
+
+
+    def _parse_contract_addresses(self, output):
+        """Parse contract addresses from deployment output"""
+        addresses = {}
+        for line in output.split('\n'):
+            if 'deployed to:' in line:
+                parts = line.split('deployed to:')
+                if len(parts) == 2:
+                    name = parts[0].strip()
+                    address = parts[1].strip()
+                    addresses[name] = address
+            elif ':' in line and '===' not in line:  # Address summary lines
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    name = parts[0].strip()
+                    address = ':'.join(parts[1:]).strip()
+                    addresses[name] = address
+        return addresses
+
+        
+        

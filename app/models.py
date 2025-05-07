@@ -189,6 +189,7 @@ class Function(IluminaOpenAIResponseModel):
 class Contract(IluminaOpenAIResponseModel):
     name: str
     type: Literal["abstract", "library", "interface", "contract"]  # external, library, interface
+    path: str = ""
     summary: str
     functions: list[Function]
     is_deployable: bool = False  # Default to False
@@ -203,6 +204,7 @@ class Contract(IluminaOpenAIResponseModel):
         return {
             #"path": self.path,
             "name": self.name,
+            "path": self.path,
             "type": self.type,
             "summary": self.summary,
             "functions": [function.to_dict() for function in self.functions],
@@ -379,6 +381,10 @@ class DeploymentInstruction(IluminaOpenAIResponseModel):
 
     def to_dict(self):
         return {"sequence": [step.to_dict() for step in self.sequence]}
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
 
     @staticmethod
     def build_dependency_tree(contracts: List[Contract]) -> Dict[str, List[str]]:
@@ -469,3 +475,32 @@ class DeploymentInstruction(IluminaOpenAIResponseModel):
                     ],
                 )
                 sequence.append(call_step)
+
+class ActionInstruction(IluminaOpenAIResponseModel):
+    name: str
+    contract: str
+    function: str
+    parameters: List[Dict[str, str]]  # List of parameter name and type
+    content: str  # Generated TypeScript code
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "contract": self.contract,
+            "function": self.function,
+            "parameters": self.parameters,
+            "content": self.content
+        }
+    
+class Code(IluminaOpenAIResponseModel):
+    commit_message: str
+    change_summary: str
+    code: str
+    language: str = Literal["typescript"]
+
+    def to_dict(self):
+        return {
+            "commit_message": self.commit_message,
+            "change_summary": self.change_summary,
+            "code": self.code
+        }

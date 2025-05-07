@@ -72,6 +72,7 @@ class ProjectSummarizer:
                 analyzer = ThreeStageAnalyzer(Contract)
                 contract_summary = analyzer.ask_llm(prompt)
                 contract_summary.type = contract_detail["type"]
+                contract_summary.path = contract["path"]
                 project_summary.add_contract(contract_summary)
         return project_summary
 

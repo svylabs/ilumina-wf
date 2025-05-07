@@ -1,12 +1,13 @@
-# actions.py
 #!/usr/bin/env python3
 import json
 import os
 import re
+import random
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .context import RunContext
-from .action_openai import ask_openai
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .models import ActionInstruction
 from .compiler import Compiler
 
 class ActionGenerator:
@@ -16,6 +17,10 @@ class ActionGenerator:
         os.makedirs(self.actions_dir, exist_ok=True)
         self.compiler = Compiler(context)
         
+        # Ensure context has a prng attribute
+        if not hasattr(context, "prng"):
+            context.prng = random.Random()  # Add a default PRNG if missing
+
     def generate_all_actions(self):
         """Generate action files for all actors and actions"""
         # First compile contracts to get ABIs
@@ -47,7 +52,7 @@ class ActionGenerator:
         for solidity, ts in type_map.items():
             if solidity_type.startswith(solidity):
                 return ts
-                
+            
         return "any"
 
     def _sanitize_for_filename(self, name: str) -> str:
@@ -61,6 +66,62 @@ class ActionGenerator:
         cleaned = re.sub(r'[^\w\s]', '', name)  # Remove non-alphanum (keep spaces)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return ''.join(word.capitalize() for word in cleaned.split())
+
+    def _generate_time_offset(self) -> int:
+        """Generate a reasonable time offset in seconds using context.prng"""
+        return self.context.prng.randint(3600, 259200)  # 1 hour to 3 days
+
+    def _generate_param_init_code(self, param_name: str, param_type: str, function_name: str) -> str:
+        """Generate initialization code for a parameter using context.prng"""
+        if param_name.lower().endswith("address"):
+            return f"const {param_name} = actor.account.value; // Using actor's address"
+        
+        if "strategy" in param_name.lower():
+            return f"const {param_name} = context.getStrategy('{param_name}'); // Get strategy from context"
+        
+        if "time" in param_name.lower():
+            offset = self._generate_time_offset()
+            return f"const {param_name} = Math.floor(Date.now() / 1000) + {offset}; // Current timestamp with offset"
+        
+        if param_type.startswith("uint") or param_type.startswith("int"):
+            bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
+            max_val = 2 ** (int(bits) if bits else 256) - 1
+            return f"const {param_name} = new BigNumber(context.prng.next().toFixed()).mod({max_val}); // Random {param_type}"
+        
+        if param_type == "bool":
+            return f"const {param_name} = context.prng.next() > 0.5; // Random boolean"
+        
+        if param_type == "string":
+            return f"const {param_name} = `{function_name}_${{context.prng.next().toString(36).substring(2, 8)}}`; // Random string"
+        
+        if param_type.startswith("bytes"):
+            size = int(param_type[5:]) if param_type[5:] else 32
+            return (
+                f"const {param_name} = ethers.hexlify(Uint8Array.from("
+                f"Array.from({{length: {size}}}, () => Math.floor(context.prng.next() * 256)))); // Random bytes"
+            )
+        
+        return f"const {param_name} = context.getParam('{param_name}') || '{param_name}_default'; // Get from context or use default"
+
+    def _clean_generated_code(self, code: str) -> str:
+        """Clean and format generated TypeScript code"""
+        code = code.replace("```typescript", "").replace("```", "").strip()
+        lines = code.split('\n')
+        imports = []
+        other_lines = []
+        seen_imports = set()
+        
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("import"):
+                if stripped not in seen_imports:
+                    seen_imports.add(stripped)
+                    imports.append(line)
+            else:
+                other_lines.append(line)
+        
+        imports.sort()
+        return '\n'.join(imports + other_lines)
 
     def _generate_action_file(self, action_name: str, contract_name: str, 
                             function_name: str, summary: str):
@@ -79,86 +140,65 @@ class ActionGenerator:
             raise Exception(f"ABI not found for contract: {contract_name}")
         
         # Find the function in ABI
-        function_abi = next(
-            (item for item in contract_abi["abi"] 
-             if item["type"] == "function" and item["name"] == function_name),
-            None
-        )
+        # function_abi = next(
+        #     (item for item in contract_abi["abi"] 
+        #      if item["type"] == "function" and item["name"] == function_name),
+        #     None
+        # )
+        
+        function_abi = None
+        for item in contract_abi.get("abi", []):
+            if item.get("name") == function_name:
+                function_abi = item
+                break
+            # Fallback for unnamed items like constructor, fallback, receive
+            if "name" not in item and item["type"] == function_name:
+                function_abi = item
+                break
         
         if not function_abi:
-            raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
+            # raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
+            raise Exception(f"Function {function_name.capitalize()} not found in contract {contract_name} ABI")
         
-        # Generate parameter types for TypeScript
-        input_types = ", ".join(
-            f"{input['name']}: {self._solidity_to_ts_type(input['type'])}"
-            for input in function_abi.get("inputs", [])
-        )
+        # Generate parameter initialization code and validation rules
+        param_inits = []
+        param_names = []
+        validation_rules = []
+
+        for input_param in function_abi.get("inputs", []):
+            param_name = input_param['name']
+            param_type = input_param['type']
+            param_names.append(param_name)
+            param_inits.append(self._generate_param_init_code(param_name, param_type, function_name))
+            validation_rules.append(self._generate_validation_rule(param_name, param_type))
         
-        # Generate parameter names for the function call
-        param_names = ", ".join(
-            input['name'] for input in function_abi.get("inputs", [])
-        )
+        param_init_lines = "\n                ".join(param_inits)
+        param_return_lines = ",\n                            ".join(f"{name}: {name}" for name in param_names)
+        validation_rules = [rule for rule in validation_rules if rule]  # Remove empty rules
+
+        # Generate validation logic
+        validation_logic = "\n            ".join([
+            "// Basic parameter validation",
+            *validation_rules,
+            "return true;"
+        ])
         
-        # Generate prompt with ABI-aware implementation
         prompt = f"""
         Generate a TypeScript class for action '{action_name}' with EXACTLY this structure:
-        
-        import {{ Action, Actor }} from "@svylabs/ilumina";
-        import type {{ RunContext }} from "@svylabs/ilumina";
-        import type {{ Contract }} from "ethers";
-
-        export class {class_name} extends Action {{
-            private contract: Contract;
-            
-            constructor(contract: Contract) {{
-                super("{sanitized_class_name}");
-                this.contract = contract;
-            }}
-
-            async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
-                actor.log(`Executing {action_name}...`);
-                try {{
-                    // Call contract function with parameters
-                    const tx = await this.contract.connect(actor.account.value)
-                        .{function_name}({param_names});
-                    
-                    await tx.wait(); // Wait for transaction confirmation
-                    actor.log(`{action_name} executed successfully. TX hash: ${{tx.hash}}`);
-                    return {{ txHash: tx.hash }};
-                }} catch (error) {{
-                    actor.log(`Error executing {action_name}: ${{error}}`);
-                    throw error;
-                }}
-            }}
-
-            async validate(context: RunContext, actor: Actor, 
-                         previousSnapshot: any, newSnapshot: any, 
-                         actionParams: any): Promise<boolean> {{
-                actor.log(`Validating {action_name}...`);
-                // Add validation logic here
-                return true;
-            }}
-        }}
-
-        Requirements:
-        1. MUST maintain this exact structure
-        2. Use this.contract.connect(actor.account.value) for all contract calls
-        3. Include proper parameter handling based on ABI
-        4. Include proper error handling
-        5. Use actor.log() for all logging
-        6. validate() must return boolean
-        7. Wait for transaction confirmation with await tx.wait()
+        ...existing prompt content...
         """
-        
+
         try:
-            code = ask_openai(prompt)
+            analyzer = ThreeStageAnalyzer(ActionInstruction)
+            action_instructions = analyzer.ask_llm(prompt)
+            code = action_instructions.to_dict()["content"]
             code = self._clean_generated_code(code)
             
-            # Additional validation to ensure proper contract call syntax
             required_patterns = [
                 r"this\.contract\.connect\(actor\.account\.value\)",
                 r"await tx\.wait\(\)",
-                r"actor\.log\("
+                r"actor\.log\(",
+                r"import \{ (BigNumber|ethers) .* from \"ethers\""
             ]
             
             for pattern in required_patterns:
@@ -170,70 +210,131 @@ class ActionGenerator:
                 
         except Exception as e:
             print(f"Error generating {action_name}: {str(e)}")
-            # Fallback to basic implementation
             with open(filepath, "w") as f:
                 f.write(self._get_fallback_template(
                     class_name, action_name, 
                     contract_name, function_name,
-                    input_types, param_names
+                    param_names, param_inits,
+                    validation_rules
                 ))
 
-    def _clean_generated_code(self, code: str) -> str:
-        """Remove unwanted formatting and duplicates"""
-        # Remove markdown code blocks
-        code = code.replace("```typescript", "").replace("```", "").strip()
-        # Normalize whitespace for better verification
-        code = '\n'.join(line.strip() for line in code.splitlines())
-        # Remove duplicate imports
-        lines = code.split('\n')
-        unique_lines = []
-        seen_imports = set()
+    def _generate_validation_rule(self, param_name: str, param_type: str) -> str:
+        """Generate validation rules for parameters based on their type"""
+        if param_type.startswith("uint") or param_type.startswith("int"):
+            bits = param_type[4:] if param_type.startswith("uint") else param_type[3:]
+            max_val = 2 ** (int(bits) if bits else 256) - 1
+            return (
+                f"if (actionParams.{param_name}.isGreaterThan(new BigNumber({max_val}))) {{\n"
+                f"    actor.log(`{param_name} exceeds maximum value for {param_type}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        if param_type == "address":
+            return (
+                f"if (!ethers.isAddress(actionParams.{param_name})) {{\n"
+                f"    actor.log(`Invalid address format for {param_name}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+
+        if "time" in param_name.lower():
+            return (
+                f"if (actionParams.{param_name} < Math.floor(Date.now() / 1000)) {{\n"
+                f"    actor.log(`{param_name} cannot be in the past`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
         
-        for line in lines:
-            if line.strip().startswith("import"):
-                if line not in seen_imports:
-                    seen_imports.add(line)
-                    unique_lines.append(line)
-            else:
-                unique_lines.append(line)
+        if param_type == "string":
+            return (
+                f"if (actionParams.{param_name}.length === 0) {{\n"
+                f"    actor.log(`{param_name} cannot be empty`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
         
-        return '\n'.join(unique_lines)
+        if "strategy" in param_name.lower():
+            return (
+                f"if (!context.strategies.has(actionParams.{param_name})) {{\n"
+                f"    actor.log(`Invalid strategy for {param_name}`);\n"
+                f"    return false;\n"
+                f"}}"
+            )
+        
+        return ""
 
     def _get_fallback_template(self, class_name: str, action_name: str, 
                              contract_name: str, function_name: str,
-                             input_types: str = "", param_names: str = "") -> str:
+                             param_names: List[str], param_inits: List[str],
+                             validation_rules: List[str] = None) -> str:
+        """Fallback template generator with proper validation support"""
+        if validation_rules is None:
+            validation_rules = []
+
         sanitized_class_name = self._sanitize_for_classname(action_name)
+        param_return_lines = ",\n                    ".join(f"{name}: {name}" for name in param_names)
+        validation_logic = "\n        ".join([
+            "// Basic parameter validation",
+            *[rule for rule in validation_rules if rule],
+            "return true;"
+        ])
         
-        return f"""import {{ Action, Actor }} from "@svylabs/ilumina";
-import type {{ RunContext }} from "@svylabs/ilumina";
-import type {{ Contract }} from "ethers";
-
-export class {class_name} extends Action {{
-    private contract: Contract;
-    
-    constructor(contract: Contract) {{
-        super("{sanitized_class_name}");
-        this.contract = contract;
-    }}
-
-    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{
-        actor.log("Executing {action_name}...");
-        try {{
-            const tx = await this.contract.connect(actor.account.value)
-                .{function_name}({param_names});
-            await tx.wait();
-            actor.log(`{action_name} executed successfully. TX hash: ${{tx.hash}}`);
-            return {{ txHash: tx.hash }};
-        }} catch (error) {{
-            actor.log(`Error in {action_name}: ${{error}}`);
-            throw error;
-        }}
-    }}
-
-    async validate(context: RunContext, actor: Actor, 
-                 previousSnapshot: any, newSnapshot: any, 
-                 actionParams: any): Promise<boolean> {{
-        actor.log("Validating {action_name}...");
-        return true;
-    }}
-}}"""
+        return (
+            "import {{ Action, Actor }} from \"@svylabs/ilumina\";\n"
+            "import type {{ RunContext }} from \"@svylabs/ilumina\";\n"
+            "import type {{ Contract }} from \"ethers\";\n"
+            "import {{ ethers }} from \"ethers\";\n"
+            "import BigNumber from \"bignumber.js\";\n\n"
+            "export class {} extends Action {{\n"
+            "    private contract: Contract;\n\n"
+            "    constructor(contract: Contract) {{\n"
+            "        super(\"{}\");\n"
+            "        this.contract = contract;\n"
+            "    }}\n\n"
+            "    async execute(context: RunContext, actor: Actor, currentSnapshot: any): Promise<any> {{\n"
+            "        actor.log(\"Executing {}...\");\n"
+            "        try {{\n"
+            "            // Initialize parameters using context.prng\n"
+            "            {}\n\n"
+            "            // Validate parameters before execution\n"
+            "            if (!(await this.validate(context, actor, currentSnapshot, currentSnapshot, {{\n"
+            "                {}\n"
+            "            }}))) {{\n"
+            "                throw new Error('Parameter validation failed');\n"
+            "            }}\n\n"
+            "            const tx = await this.contract.connect(actor.account.value)\n"
+            "                .{}({});\n"
+            "            await tx.wait();\n"
+            "            actor.log(`{} executed successfully. TX hash: ${{tx.hash}}`);\n"
+            "            return {{\n"
+            "                txHash: tx.hash,\n"
+            "                params: {{\n"
+            "                    {}\n"
+            "                }}\n"
+            "            }};\n"
+            "        }} catch (error) {{\n"
+            "            actor.log(`Error in {}: ${{error}}`);\n"
+            "            throw error;\n"
+            "        }}\n"
+            "    }}\n\n"
+            "    async validate(context: RunContext, actor: Actor,\n"
+            "                 previousSnapshot: any, newSnapshot: any,\n"
+            "                 actionParams: any): Promise<boolean> {{\n"
+            "        actor.log(\"Validating {}...\");\n"
+            "        {}\n"
+            "    }}\n"
+            "}}"
+        ).format(
+            class_name,
+            sanitized_class_name,
+            action_name,
+            "\n            ".join(param_inits),
+            param_return_lines,
+            function_name,
+            ", ".join(param_names),
+            action_name,
+            param_return_lines,
+            action_name,
+            action_name,
+            validation_logic
+        )

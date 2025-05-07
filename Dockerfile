@@ -10,6 +10,7 @@ ENV GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no"
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    vim \
     git \
     unzip \
     ca-certificates \
@@ -18,12 +19,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm (LTS version)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm
 
 # Install Hardhat globally
-RUN npm install -g hardhat
+# RUN npm install -g hardhat
+
+# Verify installation
+RUN node -v && npm -v
 
 # Install Foundry (includes forge, cast, anvil)
 RUN curl -L https://foundry.paradigm.xyz | bash \
