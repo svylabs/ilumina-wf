@@ -140,11 +140,21 @@ class ActionGenerator:
             raise Exception(f"ABI not found for contract: {contract_name}")
         
         # Find the function in ABI
-        function_abi = next(
-            (item for item in contract_abi["abi"] 
-             if item["type"] == "function" and item["name"] == function_name),
-            None
-        )
+        # function_abi = next(
+        #     (item for item in contract_abi["abi"] 
+        #      if item["type"] == "function" and item["name"] == function_name),
+        #     None
+        # )
+        
+        function_abi = None
+        for item in contract_abi.get("abi", []):
+            if item.get("name") == function_name:
+                function_abi = item
+                break
+            # Fallback for unnamed items like constructor, fallback, receive
+            if "name" not in item and item["type"] == function_name:
+                function_abi = item
+                break
         
         if not function_abi:
             raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
