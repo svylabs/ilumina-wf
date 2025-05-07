@@ -417,7 +417,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
         deployer = DeploymentAnalyzer(context)
         
         # 3. Generate deploy.ts
-        deployer.implement_deployment_script()
+        deployer.implement_deployment_script_v2()
         update_analysis_status(
             submission["submission_id"],
             "implement_deployment_script",
@@ -555,8 +555,14 @@ def debug_deploy_script(submission, request_context, user_prompt):
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         step_data = submission.get("verify_deployment_script")
+        if step_data:
+            step_data = json.loads(step_data)
         step_status = submission.get("completed_steps", [])
         step_status = [step for step in step_status if step["step"] == "verify_deployment_script"]
+        if step_status:
+            step_status = step_status[0]
+        else:
+            step_status = None
         new_code = deployer.debug_deployment_script(step_data, step_status)
 
         update_analysis_status(

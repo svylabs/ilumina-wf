@@ -59,7 +59,7 @@ def prepare_context(data, optimize=True):
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace, metadata=data)
+    context = RunContext(submission_id, run_id, repo, workspace, submission=data)
 
     # Ensure the root workspace exists
     ensure_directory_exists(workspace)
@@ -83,12 +83,7 @@ def prepare_context(data, optimize=True):
         else:
             # Full install with explicit required packages
             subprocess.run(
-                ["npm", "install", "--legacy-peer-deps",
-                 "hardhat@^2.12.0",
-                 "@nomicfoundation/hardhat-toolbox@^2.0.0",
-                 "ethers@^5.7.2",
-                 "typescript@^4.9.5",
-                 "ts-node@^10.9.1"],
+                ["npm", "install", "--legacy-peer-deps"],
                 cwd=context.cws(),
                 check=True,
                 capture_output=True,
@@ -125,29 +120,7 @@ def prepare_context(data, optimize=True):
                      cwd=simulation_repo_path,
                      check=True,
                      capture_output=True,
-                     text=True)
-        # Install additional dev dependencies
-        subprocess.run(["npm", "install", "--save-dev", "--legacy-peer-deps",
-                        "@nomicfoundation/hardhat-network-helpers",
-                        "@nomicfoundation/hardhat-chai-matchers",
-                        "@nomiclabs/hardhat-ethers",
-                        "@nomiclabs/hardhat-etherscan",
-                        "@types/chai",
-                        "@types/mocha",
-                        "@typechain/ethers-v5",
-                        "chai",
-                        "hardhat-gas-reporter",
-                        "solidity-coverage",
-                        "typechain",
-                        "@nomicfoundation/hardhat-ethers",
-                        "ethers@^5.7.2",
-                        "bignumber.js",
-                        "@types/bignumber.js"
-                        ],
-                        cwd=simulation_repo_path,
-                        check=True,
-                        capture_output=True,
-                        text=True)        
+                     text=True)    
 
     except subprocess.CalledProcessError as e:
         # Fallback to full install if clean install fails
@@ -228,6 +201,12 @@ class RunContext:
     def compiled_contracts_path(self):
         """Returns path to compiled contracts JSON file"""
         return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
+    
+    def relative_path_prefix_artifacts(self, file):
+        artifact_path = os.path.join(self.cws(), "artifacts")
+        relative_path = os.path.relpath(artifact_path, os.path.dirname(file))
+        return relative_path.replace("\\", "/")  # Normalize path for GCS
+        
     
     def contract_artifact_path(self, contract_name):
         """Search for any JSON file containing the contract name in artifacts/contracts."""
