@@ -99,4 +99,4 @@ EXPOSE 8080
 
 # Start services using supervisord
 # CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
-CMD ["/bin/bash", "-c", ". /app/.env && . venv/bin/activate && .venv/bin/gunicorn -b 0.0.0.0:8080 main:app --timeout 300"]
+CMD ["/bin/bash", "-c", ". /app/.env && . venv/bin/activate && venv/bin/gunicorn -b 0.0.0.0:8080 main:app --timeout 300"]
