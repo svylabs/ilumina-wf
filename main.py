@@ -38,8 +38,8 @@ app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
 
 # Debug: Log all environment variables
-for key, value in os.environ.items():
-    print(f"ENV {key}: {value}")
+#for key, value in os.environ.items():
+#    print(f"ENV {key}: {value}")
 
 # Initialize services
 gcs = GCSStorage()
