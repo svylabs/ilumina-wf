@@ -187,7 +187,8 @@ class DeploymentAnalyzer:
         """
 
         guidelines = [
-            "1. Please make sure the function name is deployContracts() and ensure that it is exported.",
+            "0. This is a typescript library / module that need to be exported. So no need for a main function."
+            "1. Please make sure the function name is deployContracts() that returns a mapping of all contract references based on defined references as same contract may be deployed multiple times, so need all references. This will be used by other scripts to call the contract.",
             "2. Ensure that all imports for json abi are from the mapping provided",
             "3. Use waitForDeployment() for all contract deployments.",
             "4. use contract.target instead of contract.address to get all contract addresses."
@@ -360,7 +361,8 @@ class DeploymentAnalyzer:
             instructions = self.get_deployment_instructions()
             import_prefix = self.context.relative_path_prefix_artifacts(os.path.join(self.context.simulation_path(), "simulation/contracts/deploy.ts"))
             guidelines = [
-                "1. Please make sure the function name is deployContracts() that returns a mapping of all contract and contract object. This will be used by other scripts to call the contract.",
+                "0. This is a typescript library / module that need to be exported. So no need for a main function.",
+                "1. Please make sure the function name is deployContracts() that returns a mapping of all contract references based on defined references as same contract may be deployed multiple times, so need all references. This will be used by other scripts to call the contract.",
                 "2. Ensure that all imports for json abi are from the mapping provided",
                 "3. Use waitForDeployment() for all contract deployments.",
                 "4. use contract.target instead of contract.address to get all contract addresses.",

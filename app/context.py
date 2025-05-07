@@ -221,7 +221,7 @@ class RunContext:
                 if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     file_path = os.path.join(root, file)
                     # print(f"Found JSON file in context: {file_path}")  # Print the JSON file path
-                    if contract_name in file:
+                    if file == f"{contract_name}.json":
                         return file_path
 
         raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
