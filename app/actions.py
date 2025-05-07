@@ -157,7 +157,8 @@ class ActionGenerator:
                 break
         
         if not function_abi:
-            raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
+            # raise Exception(f"Function {function_name} not found in contract {contract_name} ABI")
+            raise Exception(f"Function {function_name.capitalize()} not found in contract {contract_name} ABI")
         
         # Generate parameter initialization code and validation rules
         param_inits = []
