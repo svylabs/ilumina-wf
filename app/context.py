@@ -257,6 +257,9 @@ class RunContext:
     def deployment_instructions_path(self):
         return self.simulation_path() + "/deployment_instructions.json"
     
+    def simulation_log_path(self, simulation_id):
+        return os.path.join(self.simulation_path(), "logs", f"{simulation_id}.log")
+    
     def commit(self, message):
         simulation_path = self.simulation_path()
         try:

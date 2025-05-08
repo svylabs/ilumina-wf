@@ -32,6 +32,7 @@ from google.protobuf import timestamp_pb2
 from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
+from app.simulation_runner import SimulationRunner
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -623,6 +624,54 @@ def debug_deploy_script(submission, request_context, user_prompt):
 
     except Exception as e:
         app.logger.error("Error in debug endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/submission/<submission_id>/simulations/new', methods=['POST'])
+@authenticate
+def run_simulation(submission_id):
+    """Run a simulation and track its status."""
+    try:
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        context = prepare_context(submission)
+        
+        # Initialize SimulationRunner
+        runner = SimulationRunner(context)
+
+        # Start the simulation
+        runner.start_simulation()
+
+        return jsonify({"message": "Simulation started successfully", "simulation_id": runner.simulation_id}), 200
+
+    except Exception as e:
+        app.logger.error("Error in run_simulation endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 200
+
+@app.route('/api/submission/<submission_id>/simulation_runs', methods=['GET'])
+@authenticate
+def get_simulation_runs_for_submission(submission_id):
+    """Fetch all simulation runs for a specific submission ID."""
+    try:
+        # Fetch the submission from the datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Prepare the context for the submission
+        context = prepare_context_lazy(submission)
+
+        # Initialize SimulationRunner
+        runner = SimulationRunner(context)
+
+        # Get all simulation runs for the submission
+        simulation_runs = runner.get_runs()
+
+        return jsonify({"simulation_runs": simulation_runs}), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_simulation_runs_for_submission endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
