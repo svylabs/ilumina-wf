@@ -649,7 +649,7 @@ def run_simulation(submission_id):
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
         
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
         
         # Initialize SimulationRunner
         runner = SimulationRunner(context)
