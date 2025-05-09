@@ -408,11 +408,18 @@ def implement_action(submission, request_context, user_prompt):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-@app.route('/api/submission/<submission_id>/generate_snapshots', methods=['POST'])
+@app.route('/api/generate_snapshots', methods=['POST'])
 @authenticate
-def generate_snapshots(submission_id):
+def generate_snapshots():
     """Generate snapshot code for all contracts"""
     try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id in request body"}), 400
+        
+        # Fetch the submission from Datastore
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
