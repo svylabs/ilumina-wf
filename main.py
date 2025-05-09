@@ -674,5 +674,36 @@ def get_simulation_runs_for_submission(submission_id):
         app.logger.error("Error in get_simulation_runs_for_submission endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/simulation_runs/<simulation_id>/log', methods=['GET'])
+@authenticate
+def get_simulation_run_log(simulation_id):
+    """Get a presigned link for the simulation run log."""
+    try:
+        # Fetch the simulation run from the datastore
+        key = datastore_client.key("SimulationRun", simulation_id)
+        simulation_run = datastore_client.get(key)
+        if not simulation_run:
+            return jsonify({"error": "Simulation run not found"}), 404
+
+        # Generate a signed URL for the log file
+        bucket = storage_client.bucket("ilumina-simulation-logs")  # Replace with your GCS bucket name
+        blob = bucket.blob(f"simulation_logs/{simulation_id}.log")
+
+        if not blob.exists():
+            return jsonify({"error": "Log file not found"}), 404
+
+        signed_url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), 
+                                              method="GET",
+                                              version='v4',
+                                              response_disposition='inline',
+                                              response_content_type='text/plain'
+                                            )
+
+        return jsonify({"log_url": signed_url}), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_simulation_run_log endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

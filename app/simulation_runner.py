@@ -103,5 +103,10 @@ class SimulationRunner:
         if simulation_id is None:
             simulation_id = self.simulation_id
         blob = bucket.blob(f"simulation_logs/{simulation_id}.log")
-        url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), method="GET")
+        url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), 
+                                       method="GET",
+                                       version='v4',
+                                       response_disposition='inline',
+                                       response_content_type='text/plain'
+                            )
         return url
