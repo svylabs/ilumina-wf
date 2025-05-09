@@ -695,8 +695,7 @@ def get_simulation_run_log(simulation_id):
         signed_url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), 
                                               method="GET",
                                               version='v4',
-                                              response_disposition='inline',
-                                              response_content_type='text/plain'
+                                              response_disposition='inline'
                                             )
 
         return jsonify({"log_url": signed_url}), 200
