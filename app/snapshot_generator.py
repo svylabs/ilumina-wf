@@ -71,11 +71,9 @@ class SnapshotGenerator:
                 constructor(contracts: Record<string, Contract>) {
                     this.contracts = contracts;
                     // Initialize snapshot implementations
-                    Object.keys(this.contracts).forEach(name => {
-                        if (snapshots[name]) {
-                            this.snapshotImplementations[name] = new (snapshots[name].constructor)();
-                        }
-                    });
+                    ${Object.keys(snapshots).map(name => 
+                        `this.snapshotImplementations['${name}'] = new ${name}Snapshot();`
+                    ).join('\n')}
                 }
 
                 async snapshot(): Promise<any> {

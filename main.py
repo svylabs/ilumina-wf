@@ -33,6 +33,7 @@ from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner
+from app.snapshot_generator import SnapshotGenerator
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -405,6 +406,31 @@ def implement_action(submission, request_context, user_prompt):
         }), 200
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/submission/<submission_id>/generate_snapshots', methods=['POST'])
+@authenticate
+def generate_snapshots(submission_id):
+    """Generate snapshot code for all contracts"""
+    try:
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        context = prepare_context(submission, optimize=False)
+        generator = SnapshotGenerator(context)
+        
+        # Generate and save snapshots
+        snapshot_path = os.path.join(context.simulation_path(), "simulation/contracts/snapshot.ts")
+        generator.save_snapshots(snapshot_path)
+        
+        return jsonify({
+            "message": "Snapshot code generated successfully",
+            "path": snapshot_path
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error generating snapshots", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
