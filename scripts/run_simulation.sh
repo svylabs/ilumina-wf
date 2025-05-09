@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ensure the script exits on any error
-#set -e
+set -e
 
 # Check if simulation ID is provided
 if [ -z "$1" ]; then
