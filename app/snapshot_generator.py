@@ -22,12 +22,12 @@ class SnapshotGenerator:
         {json.dumps(abi)}
         
         Requirements:
-        1. Create a class that implements SnapshotProvider interface
-        2. The class should capture all public state variables and view functions
+        1. Create a class named {contract_name}Snapshot with a single method: snapshot(contract: Contract)
+        2. The method should return a Promise<any> with all relevant contract state
         3. Include proper error handling
-        4. Use ethers.js for contract interaction
-        5. Generate methods to snapshot all relevant contract data
-        6. Return the complete class implementation
+        4. Use ethers.js Contract type for the parameter
+        5. Should not include constructor - we'll call it with existing contract instance
+        6. Should capture all public state variables and view functions
         """
         
         snapshot_code = self.analyzer.ask_llm(prompt)
@@ -49,48 +49,50 @@ class SnapshotGenerator:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         with open(output_path, 'w') as f:
-            imports = """
-            import { ethers } from "ethers";
-            import { Contract } from "ethers";
-            import { SnapshotProvider } from "@svylabs/ilumina";
-            """
+            # Write imports
+            f.write("""import { Contract } from "ethers";
+import { SnapshotProvider } from "@svylabs/ilumina";
+
+""")
             
-            f.write(imports + "\n\n")
-            
+            # Write individual snapshot classes
             for contract_name, snapshot in snapshots.items():
                 f.write(f"// Snapshot for {contract_name}\n")
                 f.write(snapshot.code + "\n\n")
             
             # Generate main provider class
-            f.write("""
-            export class ContractSnapshotProvider implements SnapshotProvider {
-                private contracts: Record<string, Contract>;
-                private snapshots: Record<string, any> = {};
-                private snapshotImplementations: Record<string, any> = {};
+            implementations = "\n        ".join(
+                f"this.snapshotImplementations['{name}'] = new {name}Snapshot();"
+                for name in snapshots.keys()
+            )
+            
+            f.write(f"""
+export class ContractSnapshotProvider implements SnapshotProvider {{
+    private contracts: Record<string, Contract>;
+    private snapshots: Record<string, any> = {{}};
+    private snapshotImplementations: Record<string, any> = {{}};
 
-                constructor(contracts: Record<string, Contract>) {
-                    this.contracts = contracts;
-                    // Initialize snapshot implementations
-                    ${Object.keys(snapshots).map(name => 
-                        `this.snapshotImplementations['${name}'] = new ${name}Snapshot();`
-                    ).join('\n')}
-                }
+    constructor(contracts: Record<string, Contract>) {{
+        this.contracts = contracts;
+        // Initialize snapshot implementations
+        {implementations}
+    }}
 
-                async snapshot(): Promise<any> {
-                    const results: Record<string, any> = {};
-                    
-                    for (const [name, contract] of Object.entries(this.contracts)) {
-                        if (this.snapshotImplementations[name]) {
-                            results[name] = await this.snapshotImplementations[name].snapshot(contract);
-                        }
-                    }
-                    
-                    this.snapshots = results;
-                    return results;
-                }
+    async snapshot(): Promise<any> {{
+        const results: Record<string, any> = {{}};
+        
+        for (const [name, contract] of Object.entries(this.contracts)) {{
+            if (this.snapshotImplementations[name]) {{
+                results[name] = await this.snapshotImplementations[name].snapshot(contract);
+            }}
+        }}
+        
+        this.snapshots = results;
+        return results;
+    }}
 
-                getSnapshots() {
-                    return this.snapshots;
-                }
-            }
-            """)
+    getSnapshots() {{
+        return this.snapshots;
+    }}
+}}
+""")
