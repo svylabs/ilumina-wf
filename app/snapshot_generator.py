@@ -49,7 +49,7 @@ class SnapshotGenerator:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         with open(output_path, 'w') as f:
-            # Write imports
+            # Write imports at top (only once)
             f.write("""import { Contract } from "ethers";
 import { SnapshotProvider } from "@svylabs/ilumina";
 
@@ -58,7 +58,11 @@ import { SnapshotProvider } from "@svylabs/ilumina";
             # Write individual snapshot classes
             for contract_name, snapshot in snapshots.items():
                 f.write(f"// Snapshot for {contract_name}\n")
-                f.write(snapshot.code + "\n\n")
+                # Remove any duplicate imports from the generated code
+                clean_code = snapshot.code.replace('import { Contract } from "ethers";', '')
+                clean_code = clean_code.replace('import { ethers } from "ethers";', '')
+                clean_code = clean_code.replace('import { SnapshotProvider } from "@svylabs/ilumina";', '')
+                f.write(clean_code.strip() + "\n\n")
             
             # Generate main provider class
             implementations = "\n        ".join(
