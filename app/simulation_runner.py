@@ -4,6 +4,8 @@ from google.cloud import datastore, storage
 from .clients import datastore_client, storage_client
 import uuid
 from .context import RunContext
+import os
+import traceback
 
 class SimulationRunner:
     def __init__(self, context: RunContext):
@@ -11,14 +13,19 @@ class SimulationRunner:
         self.simulation_id = str(uuid.uuid4())
         self.bucket_name = "ilumina-simulation-logs"  # Replace with your GCS bucket name
 
-    def start_simulation(self):
+    def run(self):
         """Start the simulation and track its status."""
         # Record the start of the simulation
         self._update_simulation_status("in_progress")
+        returncode = 0
 
         try:
             # Run the simulation script
-            result = subprocess.run(["/bin/bash", "scripts/run_simulation.sh", self.simulation_id], capture_output=True, text=True)
+            result = subprocess.run(["/bin/bash", "scripts/run_simulation.sh", self.simulation_id, self.context.simulation_path()], 
+                                    capture_output=True,
+                                    check=True,
+                                    text=True)
+            returncode = result.returncode
 
             # Check the result
             if result.returncode == 0:
@@ -34,11 +41,16 @@ class SimulationRunner:
                     "stdout": result.stdout,
                     "stderr": result.stderr 
                 })
-                self._upload_log(self.context.simulation_log_path(self.simulation_id))
+                if (os.path.exists(self.context.simulation_log_path(self.simulation_id))):
+                    self._upload_log(self.context.simulation_log_path(self.simulation_id))
 
         except Exception as e:
+            error = traceback.format_exc()
+            print(f"Error during simulation: {error}")
             self._update_simulation_status("error", metadata={
-                "log": str(e),
+                "return_code": returncode,
+                "log": error,
+                "no_log": True
             })
 
     def _update_simulation_status(self, status, metadata=None):
@@ -69,22 +81,27 @@ class SimulationRunner:
         """Upload the simulation log from a file to Google Cloud Storage."""
         bucket = storage_client.bucket(self.bucket_name)
         blob = bucket.blob(f"simulation_logs/{self.simulation_id}.log")
-        with open(log_file_path, 'r') as log_file:
+        with open(log_file_path, 'rb') as log_file:
             blob.upload_from_file(log_file)
 
     def get_runs(self):
         """Fetch all simulation runs from the datastore."""
         query = datastore_client.query(kind="SimulationRun")
         query.add_filter("submission_id", "=", self.context.submission_id)
-        query.order = ["-created_at"]
         results = list(query.fetch())
+        results = sorted(results, key=lambda x: x['created_at'], reverse=True)
         for result in results:
-            result["log_url"] = self.get_signed_simulation_log()
+            if "no_log" in result:
+                result["log_url"] = None
+            else:
+                result["log_url"] = self.get_signed_simulation_log(simulation_id=result["simulation_id"])
         return results
     
-    def get_signed_simulation_log(self):
+    def get_signed_simulation_log(self, simulation_id=None):
         """Get a signed URL for the simulation log."""
         bucket = storage_client.bucket(self.bucket_name)
-        blob = bucket.blob(f"simulation_logs/{self.simulation_id}.log")
+        if simulation_id is None:
+            simulation_id = self.simulation_id
+        blob = bucket.blob(f"simulation_logs/{simulation_id}.log")
         url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), method="GET")
         return url

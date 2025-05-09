@@ -641,7 +641,7 @@ def run_simulation(submission_id):
         runner = SimulationRunner(context)
 
         # Start the simulation
-        runner.start_simulation()
+        runner.run()
 
         return jsonify({"message": "Simulation started successfully", "simulation_id": runner.simulation_id}), 200
 
@@ -649,7 +649,7 @@ def run_simulation(submission_id):
         app.logger.error("Error in run_simulation endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 200
 
-@app.route('/api/submission/<submission_id>/simulation_runs', methods=['GET'])
+@app.route('/api/submission/<submission_id>/simulations/list', methods=['GET'])
 @authenticate
 def get_simulation_runs_for_submission(submission_id):
     """Fetch all simulation runs for a specific submission ID."""
