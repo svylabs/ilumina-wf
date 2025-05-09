@@ -87,6 +87,17 @@ def inject_analysis_params(f):
 
     return decorated_function
 
+def create_run_simulation_task(submission_id):
+    task = {
+        "http_request": {
+            "http_method": "POST",
+            "url": TASK_HANDLER_URL + "/api/submission/" + submission_id + "/simulations/new",
+            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
+            "body": json.dumps({}).encode(),
+        }
+    }
+    return tasks_client.create_task(request={"parent": parent, "task": task}).name
+
 def create_task(data, forward_params=None):
     api_suffix = "/analyze"
     if forward_params:
@@ -247,6 +258,9 @@ def analyze():
         elif next_step == "verify_deployment_script":
             create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
+        elif next_step == "run_simulation":
+            create_run_simulation_task(submission_id)
+            return jsonify({"message": "Created a task to run simulation."}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
