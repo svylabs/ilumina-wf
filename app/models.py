@@ -504,3 +504,15 @@ class Code(IluminaOpenAIResponseModel):
             "change_summary": self.change_summary,
             "code": self.code
         }
+    
+class SnapshotCode(IluminaOpenAIResponseModel):
+    contract_name: str
+    code: str
+    dependencies: List[str] = []
+    
+    def to_dict(self):
+        return {
+            "contract_name": self.contract_name,
+            "code": self.code,
+            "dependencies": self.dependencies
+        }
