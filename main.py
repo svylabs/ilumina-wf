@@ -91,7 +91,7 @@ def create_run_simulation_task(submission_id):
     task = {
         "http_request": {
             "http_method": "POST",
-            "url": TASK_HANDLER_URL + "/api/submission/" + submission_id + "/simulations/new",
+            "url": TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/new",
             "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
             "body": json.dumps({}).encode(),
         }
