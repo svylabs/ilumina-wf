@@ -81,6 +81,20 @@ class SimulationRun:
         else:
             raise ValueError(f"SimulationRun with ID {simulation_id} not found.")
         
+    @classmethod
+    def load_lazy(cls, simulation_entity):
+        """Load a simulation run from the datastore."""
+        return SimulationRun(
+            simulation_id=simulation_entity["simulation_id"],
+            submission_id=simulation_entity["submission_id"],
+            status=simulation_entity["status"],
+            type=simulation_entity.get("type", "run"),
+            batch_id=simulation_entity.get("batch_id"),
+            description=simulation_entity.get("description", ""),
+            num_simulations=simulation_entity.get("num_simulations", 1),
+            branch=simulation_entity.get("branch", "main")
+        )
+        
     
     def __str__(self):
         return f"SimulationRun(simulation_id={self.simulation_id}, submission_id={self.submission_id}, status={self.status}, type={self.type}, batch_id={self.batch_id}, description={self.description}, num_simulations={self.num_simulations}, branch={self.branch})"
@@ -96,35 +110,37 @@ class SimulationRunner:
         self._update_simulation_status("in_progress")
         all_simulations = self.get_runs_by_batch(self.simulation.submission_id, self.simulation_id)
         simulations_for_worker = []
-        total_run = 0
-        for i, all_simulations in enumerate(all_simulations):
+        total_run = len(all_simulations)
+        for i, simulation in enumerate(all_simulations):
             if i % total_workers == worker_id:
-                total_run += 1
-                simulations_for_worker.append(all_simulations)
+                simulations_for_worker.append(simulation)
         
         # Run the simulation script for each simulation
         for simulation in simulations_for_worker:
-            if simulation.type == "run" and simulation.status != "error" or simulation.status != "success":
+            print(f"Running simulation {simulation["simulation_id"]} for worker {worker_id} {simulation}")
+            simulation = SimulationRun.load_lazy(simulation)
+            simulation.branch = self.simulation.branch
+            if simulation.type == "run" and (simulation.status != "error" and simulation.status != "success"):
                 runner = SimulationRunner(self.context, simulation)
                 runner.run()
 
         
-        all_simulations = self.get_runs_by_batch(self.simulation.submission_id)
+        all_simulations = self.get_runs_by_batch(self.simulation.submission_id, self.simulation_id)
         success = 0
         failed = 0
         scheduled = 0
         for simulation in all_simulations:
-            if simulation.type == "run":
-                if simulation.status == "success":
+            if simulation["type"] == "run":
+                if simulation["status"] == "success":
                     success += 1
-                elif simulation.status == "error":
+                elif simulation["status"] == "error":
                     failed += 1
                 else:
                     scheduled += 1
 
         status = "success" if failed == 0 else "error"
                 
-        self._update_simulation_status("success", metadata={
+        self._update_simulation_status(status, metadata={
             "total": total_run,
             "success": success,
             "failed": failed,
@@ -194,7 +210,7 @@ class SimulationRunner:
 
     def _upload_log(self, log_file_path):
         """Upload the simulation log from a file to Google Cloud Storage."""
-        bucket = storage_client.bucket(self.bucket_name)
+        bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(f"simulation_logs/{self.simulation_id}.log")
         with open(log_file_path, 'rb') as log_file:
             blob.upload_from_file(log_file)
