@@ -60,12 +60,73 @@ class SimulationRun:
             datastore_client.put(entity)
         else:
             raise ValueError(f"SimulationRun with ID {self.simulation_id} not found.")
+        
+    @classmethod
+    def load(cls, simulation_id):
+        """Load a simulation run from the datastore."""
+        key = datastore_client.key("SimulationRun", simulation_id)
+        entity = datastore_client.get(key)
+
+        if entity:
+            return cls(
+                simulation_id=entity["simulation_id"],
+                submission_id=entity["submission_id"],
+                status=entity["status"],
+                type=entity.get("type", "run"),
+                batch_id=entity.get("batch_id"),
+                description=entity.get("description", ""),
+                num_simulations=entity.get("num_simulations", 1),
+                branch=entity.get("branch", "main")
+            )
+        else:
+            raise ValueError(f"SimulationRun with ID {simulation_id} not found.")
+
 
 class SimulationRunner:
     def __init__(self, context: RunContext, simulation):
         self.context = context
         self.simulation = simulation
         self.simulation_id = simulation.simulation_id
+
+    def run_batch(self, total_workers, worker_id):
+        self._update_simulation_status("in_progress")
+        all_simulations = self.get_runs_by_batch(self.simulation.submission_id, self.simulation_id)
+        simulations_for_worker = []
+        total_run = 0
+        for i, all_simulations in enumerate(all_simulations):
+            if i % total_workers == worker_id:
+                total_run += 1
+                simulations_for_worker.append(all_simulations)
+        
+        # Run the simulation script for each simulation
+        for simulation in simulations_for_worker:
+            if simulation.type == "run" and simulation.status != "error" or simulation.status != "success":
+                runner = SimulationRunner(self.context, simulation)
+                runner.run()
+
+        
+        all_simulations = self.get_runs_by_batch(self.simulation.submission_id)
+        success = 0
+        failed = 0
+        scheduled = 0
+        for simulation in all_simulations:
+            if simulation.type == "run":
+                if simulation.status == "success":
+                    success += 1
+                elif simulation.status == "error":
+                    failed += 1
+                else:
+                    scheduled += 1
+
+        status = "success" if failed == 0 else "error"
+                
+        self._update_simulation_status("success", metadata={
+            "total": total_run,
+            "success": success,
+            "failed": failed,
+            "scheduled": scheduled})
+
+
 
     def run(self):
         """Start the simulation and track its status."""
@@ -149,18 +210,19 @@ class SimulationRunner:
         return results
 
     @classmethod
-    def get_runs_by_batch(cls, submission_id, batch_id):
+    def get_runs_by_batch(cls, submission_id, batch_id, with_log=True):
         """Fetch simulation runs by batch ID."""
         query = datastore_client.query(kind="SimulationRun")
         query.add_filter("submission_id", "=", submission_id)
         query.add_filter("batch_id", "=", batch_id)
         results = list(query.fetch())
-        results = sorted(results, key=lambda x: x['created_at'], reverse=True)
-        for result in results:
-            if "no_log" in result:
-                result["log_url"] = None
-            else:
-                result["log_url"] = cls.get_signed_simulation_log(result["simulation_id"])
+        results = sorted(results, key=lambda x: x['simulation_id'], reverse=True)
+        if with_log == True:
+            for result in results:
+                if "no_log" in result:
+                    result["log_url"] = None
+                else:
+                    result["log_url"] = cls.get_signed_simulation_log(result["simulation_id"])
         return results
     
     @classmethod
