@@ -11,6 +11,7 @@ from google.protobuf import duration_pb2
 from datetime import timedelta
 
 BUCKET_NAME = "ilumina-simulation-logs"
+CONTAINER_IMAGE = os.getenv("CONTAINER_IMAGE", "us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf:latest")
 
 class SimulationRun:
     def __init__(self, simulation_id, submission_id, status, type="run", batch_id=None, description="", num_simulations=1, branch="main"):
@@ -270,7 +271,7 @@ class SimulationRunner:
         # Define the job name and container image
         job_id = f"simulation-{self.simulation_id}"
         job_name = f"projects/{project_id}/locations/us-central1/jobs/{job_id}"
-        container_image = "us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf:latest"
+        container_image = CONTAINER_IMAGE
 
         timeout = timedelta(minutes=24*60)  # 5 minutes
         duration = duration_pb2.Duration()
