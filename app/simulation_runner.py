@@ -117,7 +117,7 @@ class SimulationRunner:
         
         # Run the simulation script for each simulation
         for simulation in simulations_for_worker:
-            print(f"Running simulation {simulation["simulation_id"]} for worker {worker_id} {simulation}")
+            print(f"Running simulation {simulation['simulation_id']} for worker {worker_id} {simulation}")
             simulation = SimulationRun.load_lazy(simulation)
             simulation.branch = self.simulation.branch
             if simulation.type == "run" and (simulation.status != "error" and simulation.status != "success"):
