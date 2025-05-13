@@ -1,11 +1,14 @@
 import datetime
 import subprocess
 from google.cloud import datastore, storage
-from .clients import datastore_client, storage_client
+from .clients import datastore_client, storage_client, run_client
 import uuid
 from .context import RunContext
 import os
 import traceback
+from google.cloud import run_v2
+from google.protobuf import duration_pb2
+from datetime import timedelta
 
 BUCKET_NAME = "ilumina-simulation-logs"
 
@@ -260,3 +263,57 @@ class SimulationRunner:
                                        response_disposition='inline'
                             )
         return url
+
+    def create_and_execute_cloud_run_job(self):
+        """Create and execute a Google Cloud Run job."""
+        project_id = os.getenv("GCS_PROJECT_ID", "ilumina-451416")
+        # Define the job name and container image
+        job_id = f"simulation-{self.simulation_id}"
+        job_name = f"projects/{project_id}/locations/us-central1/jobs/{job_id}"
+        container_image = "us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf:latest"
+
+        timeout = timedelta(minutes=24*60)  # 5 minutes
+        duration = duration_pb2.Duration()
+        duration.FromTimedelta(timeout)
+
+        # Create the job definition
+        job = run_v2.Job(
+            template=run_v2.ExecutionTemplate(
+                template=run_v2.TaskTemplate(
+                    containers=[
+                        run_v2.Container(
+                            image=container_image,
+                            env=[
+                                run_v2.EnvVar(name="MODE", value="runner"),
+                                run_v2.EnvVar(name="SIMULATION_ID", value=self.simulation_id)
+                            ],
+                            resources=run_v2.ResourceRequirements(
+                                limits={"memory": "2Gi"}
+                            )
+                        )
+                    ],
+                    max_retries=3,
+                    timeout=duration # 1 day
+                )
+            )
+        )
+
+        # Create the job
+        job_request = run_client.create_job(parent=f"projects/{project_id}/locations/us-central1", job=job, job_id=job_id)
+
+        job = job_request.result()
+
+        print(f"Created job: {job.name}")
+
+        # Execute the job
+        request = run_v2.RunJobRequest(name=job.name)
+        response = run_client.run_job(request=request)
+
+        #execution = response.result()
+
+        # Store job details in the SimulationRun table
+        self._update_simulation_status("scheduled", metadata={
+            "job_name": job_name
+        })
+
+        return job.name

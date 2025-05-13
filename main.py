@@ -730,14 +730,19 @@ def run_simulation(submission_id):
         run = SimulationRun(
             run_id,
             submission_id,
-            "scheduled",
+            "created",
             "run",
             description=description,
             branch=branch
         )
         run.create()
+
+        context = prepare_context_lazy(submission)
+
+        runner = SimulationRunner(context, run)
+        job = runner.create_and_execute_cloud_run_job()
         
-        return jsonify({"message": "Simulation started successfully", "simulation_id": run_id}), 200
+        return jsonify({"message": "Simulation started successfully", "simulation_id": run_id, "job_name": job}), 200
 
     except Exception as e:
         app.logger.error("Error in run_simulation endpoint", exc_info=e)
@@ -852,17 +857,23 @@ def run_simulation_batch(submission_id):
             run = SimulationRun(run_id, submission_id, "scheduled", "run", batch_id=batch_id)
             run.create()
 
-        batch.update_status("scheduled", metadata={
+        batch.update_status("created", metadata={
             "total": num_simulations,
             "scheduled": num_simulations,
             "success": 0,
             "failed": 0
         })
 
+        context = prepare_context_lazy(submission)
+
+        runner = SimulationRunner(context, batch)
+        job = runner.create_and_execute_cloud_run_job()
+
         # Return success response
         return jsonify({
             "message": "Batch simulation run created successfully",
             "simulation_run_id": batch_id,
+            "task_name": job,
             "status": "scheduled"
         }), 200
 
