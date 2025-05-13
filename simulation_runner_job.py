@@ -28,8 +28,10 @@ def main():
         runner = SimulationRunner(context, simulation)
         runner.run()
     elif simulation.type == "batch":
+        worker_id = int(os.getenv("CLOUD_RUN_TASK_INDEX", 0))
+        total_workers = int(os.getenv("CLOUD_RUN_TASK_COUNT", 1))
         runner = SimulationRunner(context, simulation)
-        runner.run_batch()
+        runner.run_batch(total_workers, worker_id)
 
 if __name__ == "__main__":
     main()

@@ -167,6 +167,8 @@ class SimulationRunner:
                 "log": error,
                 "no_log": True
             })
+            if (os.path.exists(self.context.simulation_log_path(self.simulation_id))):
+                self._upload_log(self.context.simulation_log_path(self.simulation_id))
 
     def _update_simulation_status(self, status, metadata=None):
         """Update the simulation status in the datastore."""
@@ -192,6 +194,7 @@ class SimulationRunner:
         blob = bucket.blob(f"simulation_logs/{self.simulation_id}.log")
         with open(log_file_path, 'rb') as log_file:
             blob.upload_from_file(log_file)
+        os.remove(log_file_path)
 
     @classmethod
     def get_runs(cls, submission_id):
