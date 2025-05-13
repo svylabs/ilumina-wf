@@ -1,4 +1,3 @@
-import datetime
 import subprocess
 from google.cloud import datastore, storage
 from .clients import datastore_client, storage_client, run_client
@@ -23,8 +22,8 @@ class SimulationRun:
         self.type = type
         self.branch = branch
         self.num_simulations = num_simulations
-        self.created_at = datetime.datetime.now(timezone.utc)
-        self.updated_at = datetime.datetime.now(timezone.utc)
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def create(self):
         """Create a new simulation run in the datastore."""
@@ -52,7 +51,7 @@ class SimulationRun:
         if entity:
             entity.update({
                 "status": status,
-                "updated_at": datetime.datetime.now(timezone.utc)
+                "updated_at": datetime.now(timezone.utc)
             })
 
             if metadata:
@@ -201,7 +200,7 @@ class SimulationRunner:
 
         entity.update({
             "status": status,
-            "updated_at": datetime.datetime.now(timezone.utc)
+            "updated_at": datetime.now(timezone.utc)
         })
 
         if metadata:
@@ -258,7 +257,7 @@ class SimulationRunner:
         """Get a signed URL for the simulation log."""
         bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(f"simulation_logs/{simulation_id}.log")
-        url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), 
+        url = blob.generate_signed_url(expiration=timedelta(minutes=15), 
                                        method="GET",
                                        version='v4',
                                        response_disposition='inline'
