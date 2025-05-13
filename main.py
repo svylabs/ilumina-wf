@@ -32,7 +32,7 @@ from google.protobuf import timestamp_pb2
 from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
-from app.simulation_runner import SimulationRunner
+from app.simulation_runner import SimulationRunner, SimulationRun
 from app.snapshot_generator import SnapshotGenerator
 
 # Ensure logs are written to stdout
@@ -712,7 +712,7 @@ def run_simulation(submission_id):
             return jsonify({"error": "Submission not found"}), 404
         
         data = request.get_json()
-        description = data.get("description", "Batch simulation run")
+        description = data.get("description", "")
         num_simulations = data.get("num_simulations", 1)
         batch_id = data.get("batch_id")
         batch = None
@@ -723,16 +723,20 @@ def run_simulation(submission_id):
         branch = data.get("branch", "main")
         if batch is not None:
             branch = batch.get("branch", "main")
-        
-        context = prepare_context(submission, optimize=False, contract_branch=branch)
-        
-        # Initialize SimulationRunner
-        runner = SimulationRunner(context, simulation_id=str(uuid.uuid4()), description=description, batch_id=batch_id)
 
-        # Start the simulation
-        runner.run()
-
-        return jsonify({"message": "Simulation started successfully", "simulation_id": runner.simulation_id}), 200
+        run_id = str(uuid.uuid4())
+        
+        run = SimulationRun(
+            run_id,
+            submission_id,
+            "scheduled",
+            "run",
+            description=description,
+            branch=branch
+        )
+        run.create()
+        
+        return jsonify({"message": "Simulation started successfully", "simulation_id": run_id}), 200
 
     except Exception as e:
         app.logger.error("Error in run_simulation endpoint", exc_info=e)
@@ -748,14 +752,9 @@ def get_simulation_runs_for_submission(submission_id):
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
 
-        # Prepare the context for the submission
-        context = prepare_context_lazy(submission)
-
-        # Initialize SimulationRunner
-        runner = SimulationRunner(context)
-
+        
         # Get all simulation runs for the submission
-        simulation_runs = runner.get_runs()
+        simulation_runs = SimulationRunner.get_runs(submission_id)
 
         return jsonify({"simulation_runs": simulation_runs}), 200
 
@@ -810,38 +809,33 @@ def run_simulation_batch(submission_id):
         branch = data.get("branch", "main")
 
         # Validate num_simulations
-        if num_simulations <= 1:
+        if num_simulations == 1:
             return jsonify({"error": "num_simulations must be greater than 1"}), 400
 
         # Create a new SimulationRun entity
-        simulation_run_id = str(uuid.uuid4())
-        key = datastore_client.key("SimulationRun", simulation_run_id)
-        # Check if the simulation run already exists
-        existing_run = datastore_client.get(key)
-        if existing_run:
-            return jsonify({"error": "Simulation run already exists"}), 400
-        simulation_run = datastore.Entity(key=key)
-        simulation_run.update({
-            "submission_id": submission_id,
-            "description": description,
-            "type": "batch",
-            "simulation_id": simulation_run_id,
-            "num_simulations": num_simulations,
-            "branch": branch,
-            "status": "in_progress",
-            "created_at": datetime.datetime.now(),
-            "updated_at": datetime.datetime.now()
-        })
-        datastore_client.put(simulation_run)
+        batch_id = str(uuid.uuid4())
+        batch = SimulationRun(
+            batch_id,
+            submission_id,
+            "created",
+            "batch",
+            description=description,
+            branch=branch,
+            num_simulations=num_simulations
+        )
+        batch.create()
+        for i in range(num_simulations):
+            run_id = str(uuid.uuid4())
+            run = SimulationRun(run_id, submission_id, "scheduled", "run", batch_id=batch_id)
+            run.create()
 
-        # Create a task for splitting the batch
-        create_split_and_monitor_task(submission_id, simulation_run_id)
+        batch.update_status("scheduled")
 
         # Return success response
         return jsonify({
             "message": "Batch simulation run created successfully",
-            "simulation_run_id": simulation_run_id,
-            "status": "in_progress"
+            "simulation_run_id": batch_id,
+            "status": "scheduled"
         }), 200
 
     except Exception as e:

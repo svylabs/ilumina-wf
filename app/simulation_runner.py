@@ -7,13 +7,65 @@ from .context import RunContext
 import os
 import traceback
 
-class SimulationRunner:
-    def __init__(self, context: RunContext, simulation_id=None, description="", batch_id=None):
-        self.context = context
-        self.simulation_id = simulation_id or str(uuid.uuid4())
-        self.description = description
+BUCKET_NAME = "ilumina-simulation-logs"
+
+class SimulationRun:
+    def __init__(self, simulation_id, submission_id, status, type="run", batch_id=None, description="", num_simulations=1, branch="main"):
+        self.simulation_id = simulation_id
+        self.submission_id = submission_id
+        self.status = status
         self.batch_id = batch_id
-        self.bucket_name = "ilumina-simulation-logs"  # Replace with your GCS bucket name
+        self.description = description
+        self.type = type
+        self.branch = branch
+        self.num_simulations = num_simulations
+        self.created_at = datetime.datetime.now()
+        self.updated_at = datetime.datetime.now()
+
+    def create(self):
+        """Create a new simulation run in the datastore."""
+        key = datastore_client.key("SimulationRun", self.simulation_id)
+        entity = datastore.Entity(key=key)
+        entity.update({
+            "simulation_id": self.simulation_id,
+            "submission_id": self.submission_id,
+            "status": self.status,
+            "type": self.type,
+            "batch_id": self.batch_id,
+            "description": self.description,
+            "branch": self.branch,
+            "num_simulations": self.num_simulations,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
+        })
+        datastore_client.put(entity)
+
+    def update_status(self, status, metadata=None):
+        """Update the status of the simulation run."""
+        key = datastore_client.key("SimulationRun", self.simulation_id)
+        entity = datastore_client.get(key)
+
+        if entity:
+            entity.update({
+                "status": status,
+                "updated_at": datetime.datetime.now()
+            })
+
+            if metadata:
+                for key, value in metadata.items():
+                    entity[key] = value
+                    if key not in entity.exclude_from_indexes:
+                        entity.exclude_from_indexes.add(key)
+
+            datastore_client.put(entity)
+        else:
+            raise ValueError(f"SimulationRun with ID {self.simulation_id} not found.")
+
+class SimulationRunner:
+    def __init__(self, context: RunContext, simulation):
+        self.context = context
+        self.simulation = simulation
+        self.simulation_id = simulation.simulation_id
 
     def run(self):
         """Start the simulation and track its status."""
@@ -23,7 +75,7 @@ class SimulationRunner:
 
         try:
             # Run the simulation script
-            result = subprocess.run(["/bin/bash", "scripts/run_simulation.sh", self.simulation_id, self.context.simulation_path()], 
+            result = subprocess.run(["/bin/bash", "scripts/run_simulation.sh", self.simulation.simulation_id, self.context.simulation_path()], 
                                     capture_output=True,
                                     check=True,
                                     text=True)
@@ -60,17 +112,7 @@ class SimulationRunner:
         key = datastore_client.key("SimulationRun", self.simulation_id)
         entity = datastore_client.get(key)
 
-        if not entity:
-            entity = datastore.Entity(key=key)
-            entity["created_at"] = datetime.datetime.now()
-            entity["description"] = self.description
-            entity["type"] = "run"
-            if self.batch_id:
-                entity["batch_id"] = self.batch_id
-
         entity.update({
-            "simulation_id": self.simulation_id,
-            "submission_id": self.context.submission_id,
             "status": status,
             "updated_at": datetime.datetime.now()
         })
@@ -90,10 +132,11 @@ class SimulationRunner:
         with open(log_file_path, 'rb') as log_file:
             blob.upload_from_file(log_file)
 
-    def get_runs(self):
+    @classmethod
+    def get_runs(cls, submission_id):
         """Fetch all simulation runs from the datastore."""
         query = datastore_client.query(kind="SimulationRun")
-        query.add_filter("submission_id", "=", self.context.submission_id)
+        query.add_filter("submission_id", "=", submission_id)
         query.add_filter("batch_id", "is", None)
         results = list(query.fetch())
         results = sorted(results, key=lambda x: x['created_at'], reverse=True)
@@ -102,10 +145,11 @@ class SimulationRunner:
             if "no_log" in result or ("type" in result and result["type"] == "batch"):
                 result["log_url"] = None
             else:
-                result["log_url"] = self.get_signed_simulation_log(simulation_id=result["simulation_id"])
+                result["log_url"] = cls.get_signed_simulation_log(result["simulation_id"])
         return results
 
-    def get_runs_by_batch(self, submission_id, batch_id):
+    @classmethod
+    def get_runs_by_batch(cls, submission_id, batch_id):
         """Fetch simulation runs by batch ID."""
         query = datastore_client.query(kind="SimulationRun")
         query.add_filter("submission_id", "=", submission_id)
@@ -116,14 +160,13 @@ class SimulationRunner:
             if "no_log" in result:
                 result["log_url"] = None
             else:
-                result["log_url"] = self.get_signed_simulation_log(simulation_id=result["simulation_id"])
+                result["log_url"] = cls.get_signed_simulation_log(result["simulation_id"])
         return results
     
-    def get_signed_simulation_log(self, simulation_id=None):
+    @classmethod
+    def get_signed_simulation_log(cls, simulation_id):
         """Get a signed URL for the simulation log."""
-        bucket = storage_client.bucket(self.bucket_name)
-        if simulation_id is None:
-            simulation_id = self.simulation_id
+        bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(f"simulation_logs/{simulation_id}.log")
         url = blob.generate_signed_url(expiration=datetime.timedelta(minutes=15), 
                                        method="GET",
