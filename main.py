@@ -852,7 +852,12 @@ def run_simulation_batch(submission_id):
             run = SimulationRun(run_id, submission_id, "scheduled", "run", batch_id=batch_id)
             run.create()
 
-        batch.update_status("scheduled")
+        batch.update_status("scheduled", metadata={
+            "total": num_simulations,
+            "scheduled": num_simulations,
+            "success": 0,
+            "failed": 0
+        })
 
         # Return success response
         return jsonify({
