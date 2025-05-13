@@ -8,9 +8,11 @@ import os
 import traceback
 
 class SimulationRunner:
-    def __init__(self, context: RunContext):
+    def __init__(self, context: RunContext, simulation_id=None, description="", batch_id=None):
         self.context = context
-        self.simulation_id = str(uuid.uuid4())
+        self.simulation_id = simulation_id or str(uuid.uuid4())
+        self.description = description
+        self.batch_id = batch_id
         self.bucket_name = "ilumina-simulation-logs"  # Replace with your GCS bucket name
 
     def run(self):
@@ -61,6 +63,10 @@ class SimulationRunner:
         if not entity:
             entity = datastore.Entity(key=key)
             entity["created_at"] = datetime.datetime.now()
+            entity["description"] = self.description
+            entity["type"] = "run"
+            if self.batch_id:
+                entity["batch_id"] = self.batch_id
 
         entity.update({
             "simulation_id": self.simulation_id,
@@ -88,6 +94,22 @@ class SimulationRunner:
         """Fetch all simulation runs from the datastore."""
         query = datastore_client.query(kind="SimulationRun")
         query.add_filter("submission_id", "=", self.context.submission_id)
+        query.add_filter("batch_id", "is", None)
+        results = list(query.fetch())
+        results = sorted(results, key=lambda x: x['created_at'], reverse=True)
+        
+        for result in results:
+            if "no_log" in result or ("type" in result and result["type"] == "batch"):
+                result["log_url"] = None
+            else:
+                result["log_url"] = self.get_signed_simulation_log(simulation_id=result["simulation_id"])
+        return results
+
+    def get_runs_by_batch(self, submission_id, batch_id):
+        """Fetch simulation runs by batch ID."""
+        query = datastore_client.query(kind="SimulationRun")
+        query.add_filter("submission_id", "=", submission_id)
+        query.add_filter("batch_id", "=", batch_id)
         results = list(query.fetch())
         results = sorted(results, key=lambda x: x['created_at'], reverse=True)
         for result in results:

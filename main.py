@@ -88,13 +88,34 @@ def inject_analysis_params(f):
 
     return decorated_function
 
-def create_run_simulation_task(submission_id):
+def create_split_and_monitor_task(submission_id, simulation_batch_id, begin_delay=5):
+    """Create a task to split and monitor simulation results"""
+    url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/batch/split"
+    scheduled_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=begin_delay)
+    timestamp = timestamp_pb2.Timestamp()
+    timestamp.FromDatetime(scheduled_time)
     task = {
         "http_request": {
             "http_method": "POST",
-            "url": TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/new",
+            "url": url,
             "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
-            "body": json.dumps({}).encode(),
+            "body": json.dumps({"batch_id": simulation_batch_id}).encode(),
+        },
+        "schedule_time": timestamp
+    }
+    return tasks_client.create_task(request={"parent": parent, "task": task}).name
+
+def create_run_simulation_task(submission_id, data):
+    num_simulations = data.get("num_simulations", 1) 
+    url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/new",
+    if num_simulations > 1:
+        url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/batch/new"
+    task = {
+        "http_request": {
+            "http_method": "POST",
+            "url": url,
+            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
+            "body": json.dumps(data).encode(),
         }
     }
     return tasks_client.create_task(request={"parent": parent, "task": task}).name
@@ -260,7 +281,14 @@ def analyze():
             create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
         elif next_step == "run_simulation":
-            create_run_simulation_task(submission_id)
+            description = data.get("description")
+            branch = data.get("branch")
+            num_simulations = data.get("num_simulations", 1)
+            create_run_simulation_task(submission_id, {
+                "description": description,
+                "branch": branch,
+                "num_simulations": num_simulations
+            })
             return jsonify({"message": "Created a task to run simulation."}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
@@ -673,6 +701,7 @@ def debug_deploy_script(submission, request_context, user_prompt):
         app.logger.error("Error in debug endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/api/submission/<submission_id>/simulations/new', methods=['POST'])
 @authenticate
 def run_simulation(submission_id):
@@ -682,10 +711,23 @@ def run_simulation(submission_id):
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
         
-        context = prepare_context(submission, optimize=False)
+        data = request.get_json()
+        description = data.get("description", "Batch simulation run")
+        num_simulations = data.get("num_simulations", 1)
+        batch_id = data.get("batch_id")
+        batch = None
+        if batch_id:
+            batch = datastore_client.get(datastore_client.key("SimulationRun", batch_id))
+            if not batch:
+                return jsonify({"error": "Batch simulation run not found"}), 404
+        branch = data.get("branch", "main")
+        if batch is not None:
+            branch = batch.get("branch", "main")
+        
+        context = prepare_context(submission, optimize=False, contract_branch=branch)
         
         # Initialize SimulationRunner
-        runner = SimulationRunner(context)
+        runner = SimulationRunner(context, simulation_id=str(uuid.uuid4()), description=description, batch_id=batch_id)
 
         # Start the simulation
         runner.run()
@@ -749,6 +791,135 @@ def get_simulation_run_log(simulation_id):
 
     except Exception as e:
         app.logger.error("Error in get_simulation_run_log endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/submission/<submission_id>/simulations/batch/new', methods=['POST'])
+@authenticate
+def run_simulation_batch(submission_id):
+    """Run a batch of simulations and track their status."""
+    try:
+        # Fetch the submission from the datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        # Parse request data
+        data = request.get_json()
+        description = data.get("description", "Batch simulation run")
+        num_simulations = data.get("num_simulations", 1)
+        branch = data.get("branch", "main")
+
+        # Validate num_simulations
+        if num_simulations <= 1:
+            return jsonify({"error": "num_simulations must be greater than 1"}), 400
+
+        # Create a new SimulationRun entity
+        simulation_run_id = str(uuid.uuid4())
+        key = datastore_client.key("SimulationRun", simulation_run_id)
+        # Check if the simulation run already exists
+        existing_run = datastore_client.get(key)
+        if existing_run:
+            return jsonify({"error": "Simulation run already exists"}), 400
+        simulation_run = datastore.Entity(key=key)
+        simulation_run.update({
+            "submission_id": submission_id,
+            "description": description,
+            "type": "batch",
+            "simulation_id": simulation_run_id,
+            "num_simulations": num_simulations,
+            "branch": branch,
+            "status": "in_progress",
+            "created_at": datetime.datetime.now(),
+            "updated_at": datetime.datetime.now()
+        })
+        datastore_client.put(simulation_run)
+
+        # Create a task for splitting the batch
+        create_split_and_monitor_task(submission_id, simulation_run_id)
+
+        # Return success response
+        return jsonify({
+            "message": "Batch simulation run created successfully",
+            "simulation_run_id": simulation_run_id,
+            "status": "in_progress"
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error in run_simulation_batch endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/submission/<submission_id>/simulations/batch/split', methods=['POST'])
+@authenticate
+def split_simulation_batch(submission_id):
+    """Split a batch of simulations and create tasks for each."""
+    try:
+        # Fetch the submission from the datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        
+        # Parse request data
+        data = request.get_json()
+        batch_id = data.get("batch_id")
+        batch = datastore_client.get(datastore_client.key("SimulationRun", batch_id))
+        if not batch:
+            return jsonify({"error": "Batch not found"}), 200
+        
+        num_simulations = batch.get("num_simulations", 1)
+        branch = batch.get("branch", "main")
+
+        # Validate num_simulations
+        if num_simulations <= 1:
+            return jsonify({"error": "num_simulations must be greater than 1"}), 400
+        
+        in_progress_runs = datastore_client.query(kind="SimulationRun")
+        in_progress_runs.add_filter("submission_id", "=", submission_id)
+        in_progress_runs.add_filter("status", "=", "in_progress")
+        in_progress_runs.add_filter("batch_id", "=", batch_id)
+        in_progress_runs = list(in_progress_runs.fetch())
+
+        total_runs = datastore_client.query(kind="SimulationRun")
+        total_runs.add_filter("submission_id", "=", submission_id)
+        total_runs.add_filter("batch_id", "=", batch_id)
+        total_runs = list(total_runs.fetch())
+
+        MAX_SIMULTANEOUS_RUNS = 5
+        
+        if len(in_progress_runs) >= MAX_SIMULTANEOUS_RUNS:
+            # max simutaneous simulation runs reached, will try to create runs again later.
+            create_split_and_monitor_task(submission_id, batch_id, begin_delay=120)
+            return jsonify({
+                "message": "Max simultaneous simulation runs reached. Will try again later.",
+                "simulation_run_id": batch_id,
+                "status": "in_progress"
+            }), 200
+        
+        max_to_create = MAX_SIMULTANEOUS_RUNS - len(in_progress_runs)
+        
+        if max_to_create + len(total_runs) > num_simulations:
+            max_to_create = num_simulations - len(total_runs)
+        if max_to_create <= 0:
+            return jsonify({
+                "message": "No new simulation runs can be created at this time.",
+                "batch_id": batch_id,
+                "status": "in_progress"
+            }), 200
+        else:
+            for i in range(max_to_create):
+                create_run_simulation_task(submission_id, {
+                    "batch_id": batch_id,
+                    "branch": branch
+                })
+            create_split_and_monitor_task(submission_id, batch_id, begin_delay=120)
+        return jsonify({
+            "message": f"Created {max_to_create} simulation runs.",
+            "batch_id": batch_id,
+            "status": "in_progress"
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error in split_simulation_batch endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
