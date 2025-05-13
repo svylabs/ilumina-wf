@@ -17,3 +17,16 @@ gcloud run deploy ilumina-wf \
   --allow-unauthenticated \
   --memory 2Gi \
   --timeout 600
+
+
+gcloud builds submit --tag gcr.io/my-project/my-image \
+    --build-arg ENVIRONMENT=production \
+    --build-arg LOG_LEVEL=debug
+
+
+gcloud run deploy
+
+gcloud run jobs create simulation-executor-test-revision-2 --set-env-vars "MODE=runner" --image=us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf
+
+
+gcloud run jobs execute  simulation-executor-test-revision-2 --region us-central1 --update-env-vars "MODE=runner,SIMULATION_ID=86c99c6c-0b7c-44f7-9847-65ba0532b479" --tasks 1

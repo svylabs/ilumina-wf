@@ -28,7 +28,6 @@ def compile_contracts(context):
     if not os.path.exists(contract_path):
         raise FileNotFoundError(f"Contract directory not found at {contract_path}")
     
-
     hardhat_config_path = os.path.join(contract_path, "hardhat.config.js")
     hardhat_config_path_ts = os.path.join(contract_path, "hardhat.config.ts")
     simulation_config = "hardhat.config.simulation.js"
@@ -54,7 +53,7 @@ def compile_contracts(context):
 
         
 
-def prepare_context(data, optimize=True):
+def prepare_context(data, optimize=True, contract_branch="main"):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
@@ -69,7 +68,7 @@ def prepare_context(data, optimize=True):
     ensure_directory_exists(project_dir)
 
     # Clone the main repository
-    clone_repo(repo, context.cws())
+    clone_repo(repo, context.cws(), branch=contract_branch)
 
     # Install dependencies for MAIN project
     try:
@@ -109,9 +108,9 @@ def prepare_context(data, optimize=True):
     github_repo_url = f"git@github.com:{github_username}/{repo_name}.git"
     already_exists = create_github_repo(github_token, github_username, repo_name)
     if already_exists:
-        clone_repo(github_repo_url, simulation_repo_path)
+        clone_repo(github_repo_url, simulation_repo_path, branch="main")
     else:
-        clone_repo(simulation_template_repo, simulation_repo_path)
+        clone_repo(simulation_template_repo, simulation_repo_path, branch="main")
 
     # Install dependencies for SIMULATION project
     try:
@@ -256,6 +255,9 @@ class RunContext:
     
     def deployment_instructions_path(self):
         return self.simulation_path() + "/deployment_instructions.json"
+    
+    def simulation_log_path(self, simulation_id):
+        return os.path.join(self.simulation_path(), "logs", f"{simulation_id}.log")
     
     def commit(self, message):
         simulation_path = self.simulation_path()
