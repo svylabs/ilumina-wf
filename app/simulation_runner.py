@@ -201,8 +201,9 @@ class SimulationRunner:
         """Fetch all simulation runs from the datastore."""
         query = datastore_client.query(kind="SimulationRun")
         query.add_filter("submission_id", "=", submission_id)
-        query.add_filter("batch_id", "=", None)
+        #query.add_filter("batch_id", "=", None)
         results = list(query.fetch())
+        results = [result for result in results if 'batch_id' not in result or result["batch_id"] is None]
         results = sorted(results, key=lambda x: x['created_at'], reverse=True)
         
         for result in results:
