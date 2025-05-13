@@ -1,6 +1,7 @@
 from google.cloud import datastore
 from .clients import datastore_client
 import datetime
+from datetime import timezone
 import hashlib
 import uuid
 import json
@@ -14,8 +15,8 @@ def store_analysis_metadata(data):
         "run_id": data["run_id"],
         "step": "begin_analysis",
         "status": "completed",
-        "created_at": datetime.datetime.now(),
-        "updated_at": datetime.datetime.now()
+        "created_at": datetime.datetime.now(timezone.utc),
+        "updated_at": datetime.datetime.now(timezone.utc)
     })
     datastore_client.put(entity)
 
@@ -34,7 +35,7 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
         updates = {
             "step": step,
             "status": status,
-            "updated_at": datetime.datetime.now()
+            "updated_at": datetime.datetime.now(timezone.utc)
         }
         if (metadata):
             for key, value in metadata.items():
@@ -46,11 +47,11 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
         found = False
         for completed_step in entity["completed_steps"]:
             if completed_step["step"] == step:
-                completed_step["updated_at"] = datetime.datetime.now()
+                completed_step["updated_at"] = datetime.datetime.now(timezone.utc)
                 completed_step["status"] = status
                 found = True
         if not found:
-            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now(), "status": status})
+            entity["completed_steps"].append({"step": step, "updated_at": datetime.datetime.now(timezone.utc), "status": status})
         if (step_metadata):
             entity[step] = json.dumps(step_metadata)
             entity.exclude_from_indexes.add(step)
@@ -80,7 +81,7 @@ class UserPromptManager:
             "step": step,
             "user_prompt": user_prompt,
             "prompt_hash": prompt_hash,
-            "timestamp": datetime.datetime.now()
+            "timestamp": datetime.datetime.now(timezone.utc)
         })
         self.datastore_client.put(entity)
 
@@ -105,7 +106,7 @@ class UserPromptManager:
             "step": step,
             "user_prompt": user_prompt,
             "prompt_hash": prompt_hash,
-            "timestamp": datetime.datetime.now()
+            "timestamp": datetime.datetime.now(timezone.utc)
         })
         self.datastore_client.put(entity)
 

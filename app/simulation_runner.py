@@ -8,7 +8,7 @@ import os
 import traceback
 from google.cloud import run_v2
 from google.protobuf import duration_pb2
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 
 BUCKET_NAME = "ilumina-simulation-logs"
 CONTAINER_IMAGE = os.getenv("CONTAINER_IMAGE", "us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf:latest")
@@ -23,8 +23,8 @@ class SimulationRun:
         self.type = type
         self.branch = branch
         self.num_simulations = num_simulations
-        self.created_at = datetime.datetime.now()
-        self.updated_at = datetime.datetime.now()
+        self.created_at = datetime.datetime.now(timezone.utc)
+        self.updated_at = datetime.datetime.now(timezone.utc)
 
     def create(self):
         """Create a new simulation run in the datastore."""
@@ -52,7 +52,7 @@ class SimulationRun:
         if entity:
             entity.update({
                 "status": status,
-                "updated_at": datetime.datetime.now()
+                "updated_at": datetime.datetime.now(timezone.utc)
             })
 
             if metadata:
@@ -201,7 +201,7 @@ class SimulationRunner:
 
         entity.update({
             "status": status,
-            "updated_at": datetime.datetime.now()
+            "updated_at": datetime.datetime.now(timezone.utc)
         })
 
         if metadata:
