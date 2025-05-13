@@ -1,13 +1,13 @@
 import os
 import json
 import dotenv
+dotenv.load_dotenv()
 import logging
 import sys
 from app.simulation_runner import SimulationRunner, SimulationRun
 from app.context import prepare_context
 from app.clients import datastore_client
 
-dotenv.load_dotenv()
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 SIMULATION_ID = os.getenv("SIMULATION_ID")
@@ -21,8 +21,10 @@ def main():
 
     key = datastore_client.key("Submission", simulation.submission_id)
     submission = datastore_client.get(key)
+    #print(f"Submission: {submission}")
+    #print(f"Simulation: {simulation}")
 
-    context = prepare_context(submission.submission_id, optimize=False, contract_branch=simulation.branch or "main")
+    context = prepare_context(submission, optimize=False, contract_branch=simulation.branch or "main")
 
     if simulation.type == "run":
         runner = SimulationRunner(context, simulation)

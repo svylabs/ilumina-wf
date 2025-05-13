@@ -68,7 +68,7 @@ class SimulationRun:
         entity = datastore_client.get(key)
 
         if entity:
-            return cls(
+            return SimulationRun(
                 simulation_id=entity["simulation_id"],
                 submission_id=entity["submission_id"],
                 status=entity["status"],
@@ -80,6 +80,10 @@ class SimulationRun:
             )
         else:
             raise ValueError(f"SimulationRun with ID {simulation_id} not found.")
+        
+    
+    def __str__(self):
+        return f"SimulationRun(simulation_id={self.simulation_id}, submission_id={self.submission_id}, status={self.status}, type={self.type}, batch_id={self.batch_id}, description={self.description}, num_simulations={self.num_simulations}, branch={self.branch})"
 
 
 class SimulationRunner:
