@@ -107,9 +107,10 @@ def create_split_and_monitor_task(submission_id, simulation_batch_id, begin_dela
 
 def create_run_simulation_task(submission_id, data):
     num_simulations = data.get("num_simulations", 1) 
-    url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/new",
+    url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/new"
     if num_simulations > 1:
         url = TASK_HANDLER_URL + "/submission/" + submission_id + "/simulations/batch/new"
+    print(url, data)
     task = {
         "http_request": {
             "http_method": "POST",
@@ -761,6 +762,28 @@ def get_simulation_runs_for_submission(submission_id):
     except Exception as e:
         app.logger.error("Error in get_simulation_runs_for_submission endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route('/api/submission/<submission_id>/simulations/batch/<batch_id>/list', methods=['GET'])
+@authenticate
+def get_simulation_runs_for_batch(submission_id, batch_id):
+    """Fetch all simulation runs for a specific submission ID."""
+    try:
+        # Fetch the submission from the datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+
+        
+        # Get all simulation runs for the submission
+        simulation_runs = SimulationRunner.get_runs_by_batch(submission_id, batch_id)
+
+        return jsonify({"simulation_runs": simulation_runs}), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_simulation_runs_for_submission endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/simulation_runs/<simulation_id>/log', methods=['GET'])
 @authenticate
