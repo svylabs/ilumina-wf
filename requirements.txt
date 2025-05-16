@@ -10,3 +10,4 @@ google-cloud-storage
 protobuf
 google-genai
 google-cloud-run
+jinja2

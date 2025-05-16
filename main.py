@@ -11,7 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.actions import AllActionGenerator
+from app.actions import Scaffolder
 from app.action import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
@@ -385,20 +385,20 @@ def analyze_actors(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/create_actions', methods=['POST'])
+@app.route('/api/scaffold', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def create_actions(submission, request_context, user_prompt):
     """Generate action files for identified actors"""
     try:
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
 
         # Initialize AllActionGenerator
-        action_generator = AllActionGenerator(context)
+        scaffolder = Scaffolder(context)
 
         # Generate all actions
-        action_generator.generate_all_actions()
+        scaffolder.scaffold()
 
         return jsonify({"message": "Action files generated successfully"}), 200
 
