@@ -10,6 +10,7 @@ from .three_stage_llm_call import ThreeStageAnalyzer
 from .models import ActionInstruction
 from .compiler import Compiler
 from jinja2 import FileSystemLoader, Environment
+from .models import Actors
 
 scaffold_templates = FileSystemLoader('scaffold')
 env = Environment(loader=scaffold_templates)
@@ -19,11 +20,8 @@ class Scaffolder:
         self.context = context
         self.actions_dir = os.path.join(context.simulation_path(), "simulation", "actions")
         os.makedirs(self.actions_dir, exist_ok=True)
-        self.compiler = Compiler(context)
         
-        # Ensure context has a prng attribute
-        if not hasattr(context, "prng"):
-            context.prng = random.Random()  # Add a default PRNG if missing
+        self.actors = self.context.actor_summary()
 
     def scaffold(self):
         # setupActions
@@ -34,6 +32,7 @@ class Scaffolder:
         self.setupSnapshotProvider()
 
     def setupActors(self):
+        
         pass
 
     def setupSnapshotProvider(self):
@@ -43,17 +42,11 @@ class Scaffolder:
         """Generate action files for all actors and actions"""
         # First compile contracts to get ABIs
         #self.compiler.compile()
-
-        with open(os.path.join(self.context.simulation_path(), "actor_summary.json"), "r") as f:
-            actors = json.load(f)["actors"]
         
-        for actor in actors:
+        for actor in self.actors:
             for action in actor["actions"]:
                 self._generate_action_file(
-                    action["name"],
-                    action["contract_name"],
-                    action["function_name"],
-                    action["summary"]
+                    action["name"]
                 )
 
     def _solidity_to_ts_type(self, solidity_type: str) -> str:
@@ -141,8 +134,7 @@ class Scaffolder:
         imports.sort()
         return '\n'.join(imports + other_lines)
 
-    def _generate_action_file(self, action_name: str, contract_name: str, 
-                            function_name: str, summary: str):
+    def _generate_action_file(self, action_name):
         filename = f"{self._sanitize_for_filename(action_name)}.ts"
         filepath = os.path.join(self.actions_dir, filename)
         
