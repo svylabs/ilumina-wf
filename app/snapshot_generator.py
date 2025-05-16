@@ -93,20 +93,34 @@ class SnapshotGenerator:
         """Save all generated snapshots to a file"""
         snapshots = self.generate_all_snapshots()
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        with open(output_path, 'w') as f:
-            # Write header and imports
-            f.write("""import { SnapshotProvider } from "@svylabs/ilumina";
-import { ethers, BigNumber } from 'ethers';
 
-""")
-            
+        # Collect all unique import lines from generated code
+        unique_imports = set()
+        snapshot_blocks = []
+        for contract_name, snapshot_types in snapshots.items():
+            for snapshot_type, snapshot in snapshot_types.items():
+                code_lines = snapshot.code.splitlines()
+                for line in code_lines:
+                    if line.strip().startswith("import "):
+                        unique_imports.add(line.strip())
+                # Remove all import lines from the code block
+                filtered_lines = [line for line in code_lines if not line.strip().startswith("import ")]
+                filtered_code = "\n".join(filtered_lines)
+                snapshot_blocks.append((contract_name, snapshot_type, filtered_code))
+
+        with open(output_path, 'w') as f:
+            # Write header and always-required imports
+            f.write("import { SnapshotProvider } from \"@svylabs/ilumina\";\n")
+            # Write all unique imports (sorted for consistency)
+            for import_line in sorted(unique_imports):
+                f.write(import_line + "\n")
+            f.write("\n")
+
             # Write all snapshot implementations
-            for contract_name, snapshot_types in snapshots.items():
-                for snapshot_type, snapshot in snapshot_types.items():
-                    f.write(f"// {snapshot_type.capitalize()} Snapshot for {contract_name}\n")
-                    f.write(snapshot.code + "\n\n")
-            
+            for contract_name, snapshot_type, filtered_code in snapshot_blocks:
+                f.write(f"// {snapshot_type.capitalize()} Snapshot for {contract_name}\n")
+                f.write(filtered_code + "\n\n")
+
             # Generate provider class
             f.write("""
 interface ContractSnapshotResult {
@@ -128,12 +142,10 @@ export class ContractSnapshotProvider implements SnapshotProvider {
     constructor(contracts: Record<string, ethers.Contract>) {
         this.contracts = contracts;
 """)
-            
             # Add initialization code
             for contract_name in snapshots.keys():
                 f.write(f"        this.contractSnapshots['{contract_name}'] = new {contract_name}ContractSnapshot();\n")
                 f.write(f"        this.userSnapshots['{contract_name}'] = new {contract_name}UserSnapshot();\n")
-            
             # Complete provider implementation
             f.write("""
     }
