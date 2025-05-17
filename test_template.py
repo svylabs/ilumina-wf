@@ -26,3 +26,41 @@ print(actor.render(
         ]
     }
 ))
+
+actors = env.get_template('actors.ts.j2')
+print(actors.render(
+    actors=[
+        {
+            "name": "Borrower",
+            "file_name": "borrower.ts",
+            "actions": [
+                {
+                    "name": "Borrow",
+                    "file_name": "borrow.ts",
+                    "probability": 0.7
+                },
+                {
+                    "name": "Repay",
+                    "file_name": "repay.ts",
+                    "probability": 0.3
+                }
+            ]
+        },
+        {
+            "name": "Lender",
+            "file_name": "lender.ts",
+            "actions": [
+                {
+                    "name": "Lend",
+                    "file_name": "lend.ts",
+                    "probability": 0.5
+                },
+                {
+                    "name": "Withdraw",
+                    "file_name": "withdraw.ts",
+                    "probability": 0.5
+                }
+            ]
+        }
+    ]
+))

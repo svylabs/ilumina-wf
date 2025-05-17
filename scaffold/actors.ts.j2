@@ -4,7 +4,7 @@ import { Snapshot } from "@svylabs/ilumina";
 import { Contract} from "ethers";
 
 {% for actor in actors %}
-import { create{{actor.name}}Actor } from "./{{actor.file_name}}.ts";
+import { create{{actor.name}}Actor } from "./{{actor.file_name}}";
 {% endfor %}
 
 export function setupActors(config: any, accounts: Account[], contracts: Record<string, Contract>): Actor[] {
@@ -12,16 +12,16 @@ export function setupActors(config: any, accounts: Account[], contracts: Record<
    const actors: Actor[] = [];
 
    {% for actor in actors %}
-      for (let i = 0; i < config.{{actor.name}}; i++) {
-          const account: Account = {
-                address: addrs[idx].address,
-                type: "key",
-                value: addrs[idx]
-          };
-          idx++;
-          const actor = create{{ actor.name }}Actor(account, contracts);
-          actors.push(actor);
-      }
+    for (let i = 0; i < config.actors.{{actor.name}}; i++) {
+        const account: Account = {
+            address: addrs[idx].address,
+            type: "key",
+            value: addrs[idx]
+        };
+        idx++;
+        const actor = create{{ actor.name }}Actor(account, contracts);
+        actors.push(actor);
+    }
    {% endfor %}
    return actors;
 }
