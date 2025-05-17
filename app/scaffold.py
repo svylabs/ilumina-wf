@@ -32,8 +32,10 @@ class Scaffolder:
         self.setupSnapshotProvider()
 
     def setupActors(self):
-        
-        pass
+        for actor in self.actors.actors:
+            # for each actor, create a typescript file, where a new actor is initialized
+            # 
+            pass
 
     def setupSnapshotProvider(self):
         pass
@@ -43,7 +45,7 @@ class Scaffolder:
         # First compile contracts to get ABIs
         #self.compiler.compile()
         
-        for actor in self.actors:
+        for actor in self.actors.actors:
             for action in actor["actions"]:
                 self._generate_action_file(
                     action["name"]
