@@ -7,7 +7,7 @@ import { Contract} from "ethers";
 import { {{action.name}}Action } from "./{{action.file_name}}.ts";
 {% endfor %}
 
-export function create{{actor.name}}Actor(actorType: string, account: Account, contracts: Record<string, Contract>): Actor {
+export function create{{actor.name}}Actor(account: Account, contracts: Record<string, Contract>): Actor {
     const actor = new Actor("{{Actor}}");
     const actions: Action[] = [];
     let action;
@@ -16,7 +16,7 @@ export function create{{actor.name}}Actor(actorType: string, account: Account, c
        actions.push({action: action, probability: {{action.probability}}});
     {% endfor %}
     actor = new Actor(
-        actorType,
+        "{{actor.name}}",
         account,
         contracts,
         actions,

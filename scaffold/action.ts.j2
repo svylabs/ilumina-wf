@@ -9,7 +9,7 @@ export class {{ActionName}}Action extends Action {
     }
 
     async initialize(context: RunContext, actor: Actor, currentSnapshot: Snapshot): Promise<[any, Record<string, any>]> {
-        actor.log("Generating execution parameters for borrow action...");
+        actor.log("Generating execution parameters for {{ActionName}} action..");
         // Here you can generate any parameters needed for the action
         const params = { }; // Example parameter
         return [params, {}]; // Return parameters and an empty object for additional data
