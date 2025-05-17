@@ -12,20 +12,16 @@ export function setupActors(config: any, accounts: Account[], contracts: Record<
    const actors: Actor[] = [];
 
    {% for actor in actors %}
-      for (let i = 0; i < config.{{actor}}; i++) {
+      for (let i = 0; i < config.{{actor.name}}; i++) {
           const account: Account = {
                 address: addrs[idx].address,
                 type: "key",
                 value: addrs[idx]
           };
           idx++;
-          const actor = create{{ actor }}Actor(account, contracts);
+          const actor = create{{ actor.name }}Actor(account, contracts);
           actors.push(actor);
       }
    {% endfor %}
-   for (const [actorType, count] of Object.entries(config.actors)) {
-        for (let i = 0; i < count; i++) {
-            
-        }
-    }
+   return actors;
 }
