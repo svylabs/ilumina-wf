@@ -3,17 +3,17 @@ import type { RunContext } from "@svylabs/ilumina";
 import { Snapshot } from "@svylabs/ilumina";
 import { Contract} from "ethers";
 
-{% for action in actions %}
-import { {{action.name}}Action } from "./{{action.file_name}}.ts";
+{% for action in actor.actions %}
+import { {{action.name}}Action } from "./{{action.file_name}}";
 {% endfor %}
 
 export function create{{actor.name}}Actor(account: Account, contracts: Record<string, Contract>): Actor {
-    const actor = new Actor("{{Actor}}");
+    let actor;
     const actions: Action[] = [];
     let action;
-    {% for action in actions %}
-       action = new {{action.name}}Action(contracts.{{action.contract_name}});
-       actions.push({action: action, probability: {{action.probability}}});
+    {% for action in actor.actions %}
+    action = new {{action.name}}Action(contracts.{{action.contract_name}});
+    actions.push({action: action, probability: {{action.probability}}});
     {% endfor %}
     actor = new Actor(
         "{{actor.name}}",
