@@ -418,17 +418,11 @@ class DeploymentAnalyzer:
         """Parse contract addresses from deployment output"""
         addresses = {}
         for line in output.split('\n'):
-            if 'deployed to:' in line:
-                parts = line.split('deployed to:')
+            if 'DeployedContract:' in line:
+                parts = line.split('DeployedContract:')
                 if len(parts) == 2:
-                    name = parts[0].strip()
-                    address = parts[1].strip()
-                    addresses[name] = address
-            elif ':' in line and '===' not in line:  # Address summary lines
-                parts = line.split(':')
-                if len(parts) >= 2:
-                    name = parts[0].strip()
-                    address = ':'.join(parts[1:]).strip()
+                    name = parts[1].split(":")[0].strip()
+                    address = parts[1].split(":")[1].strip()
                     addresses[name] = address
         return addresses
 

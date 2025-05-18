@@ -10,7 +10,7 @@ from .three_stage_llm_call import ThreeStageAnalyzer
 from .models import ActionInstruction
 from .compiler import Compiler
 from jinja2 import FileSystemLoader, Environment
-from .models import Actors
+from .models import Actors, DeploymentInstruction
 
 scaffold_templates = FileSystemLoader('scaffold')
 env = Environment(loader=scaffold_templates)
@@ -35,7 +35,32 @@ class Scaffolder:
         for actor in self.actors.actors:
             # for each actor, create a typescript file, where a new actor is initialized
             # 
-            pass
+            actor_template = env.get_template("actor.ts.j2")
+            actor_name = self._sanitize_for_classname(actor["name"])
+            file_name = self._sanitize_for_filename = self._sanitize_for_filename(actor["name"])
+            actions = []
+            deployed_contracts = self.context.deployed_contracts()
+            deployment_instruction = self.context.deployment_instructions()
+
+            for action in actor.actions:
+                action_name = self._sanitize_for_classname(action.name)
+                deployed_contract = self._get_deployed_contract(action.contract_name, deployed_contracts, deployment_instruction)
+                actions.append({
+                    "name": action_name,
+                    "file_name": self._sanitize_for_filename(action.name),
+                    "contract": deployed_contract,
+                    "probability": action.get("probability", 1.0)
+                })
+            actor_dict = {
+                "name": actor_name,
+                "file_name": file_name,
+                "actions": actions
+            }
+            actor_content = actor_template.render(
+                actors= actor_dict,
+            )
+            with open(os.path.join(self.context.actors_directory(), f"{file_name}.ts"), "w") as f:
+                f.write(actor_content)
 
     def setupSnapshotProvider(self):
         pass
@@ -50,6 +75,12 @@ class Scaffolder:
                 self._generate_action_file(
                     action["name"]
                 )
+
+    def _get_deployed_contract(self, contract_name: str, deployed_contracts: Dict[str, str], deployment_instruction: DeploymentInstruction) -> Optional[str]:
+        for instruction in deployment_instruction.sequence:
+            if instruction.type == "deploy" and instruction.contract == contract_name and deployed_contracts.get(instruction.ref_name):
+                return instruction.ref_name
+        return contract_name
 
     def _solidity_to_ts_type(self, solidity_type: str) -> str:
         """Convert Solidity type to TypeScript type"""
@@ -138,7 +169,7 @@ class Scaffolder:
 
     def _generate_action_file(self, action_name):
         filename = f"{self._sanitize_for_filename(action_name)}.ts"
-        filepath = os.path.join(self.actions_dir, filename)
+        filepath = os.path.join(self.context.actions_directory(), filename)
         
         if os.path.exists(filepath):
             return
