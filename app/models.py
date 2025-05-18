@@ -385,6 +385,14 @@ class DeploymentInstruction(IluminaOpenAIResponseModel):
     @classmethod
     def load(cls, data):
         return cls(**data)
+    
+    @classmethod
+    def load_summary(cls, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                return DeploymentInstruction.load(content)
+        return None
 
     @staticmethod
     def build_dependency_tree(contracts: List[Contract]) -> Dict[str, List[str]]:

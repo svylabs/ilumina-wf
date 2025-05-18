@@ -11,7 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.actions import Scaffolder
+from app.scaffold import Scaffolder
 from app.action import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
@@ -391,11 +391,12 @@ def analyze_actors(submission, request_context, user_prompt):
 def create_actions(submission, request_context, user_prompt):
     """Generate action files for identified actors"""
     try:
+        request_data = request.get_json()
         # Get the current context using prepare_context
         context = prepare_context(submission, optimize=False)
 
         # Initialize AllActionGenerator
-        scaffolder = Scaffolder(context)
+        scaffolder = Scaffolder(context, force=request_data.get("force", False))
 
         # Generate all actions
         scaffolder.scaffold()
@@ -403,6 +404,7 @@ def create_actions(submission, request_context, user_prompt):
         return jsonify({"message": "Action files generated successfully"}), 200
 
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     
 @app.route('/api/implement_action', methods=['POST'])

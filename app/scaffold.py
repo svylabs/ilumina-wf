@@ -16,10 +16,11 @@ scaffold_templates = FileSystemLoader('scaffold')
 env = Environment(loader=scaffold_templates)
 
 class Scaffolder:
-    def __init__(self, context: RunContext):
+    def __init__(self, context: RunContext, force=False):
         self.context = context
         self.actions_dir = os.path.join(context.simulation_path(), "simulation", "actions")
         os.makedirs(self.actions_dir, exist_ok=True)
+        self.force = force
         
         self.actors = self.context.actor_summary()
 
@@ -38,7 +39,7 @@ class Scaffolder:
         actors_list = []
         for actor in self.actors.actors:
             actor_name = self._sanitize_for_classname(actor.name)
-            file_name = self._sanitize_for_filename(actor.name)
+            file_name = self._sanitize_for_filename_actor(actor.name)
 
             actors_list.append({
                 "name": actor_name,
@@ -55,8 +56,8 @@ class Scaffolder:
         # for each actor, create a typescript file, where a new actor is initialized
         # 
         actor_template = env.get_template("actor.ts.j2")
-        actor_name = self._sanitize_for_classname(actor["name"])
-        file_name = self._sanitize_for_filename(actor["name"])
+        actor_name = self._sanitize_for_classname(actor.name)
+        file_name = self._sanitize_for_filename_actor(actor.name)
         actions = []
         deployed_contracts = self.context.deployed_contracts()
         deployment_instruction = self.context.deployment_instructions()
@@ -66,9 +67,9 @@ class Scaffolder:
             deployed_contract = self._get_deployed_contract(action.contract_name, deployed_contracts, deployment_instruction)
             actions.append({
                 "name": action_name,
-                "file_name": self._sanitize_for_filename(action.name),
+                "file_name": self._sanitize_for_filename(action.contract_name, action.name),
                 "contract": deployed_contract,
-                "probability": action.get("probability", 1.0)
+                "probability": action.probability
             })
         actor_dict = {
             "name": actor_name,
@@ -76,7 +77,7 @@ class Scaffolder:
             "actions": actions
         }
         actor_content = actor_template.render(
-            actors= actor_dict,
+            actor=actor_dict,
         )
         with open(os.path.join(self.context.actors_directory(), f"{file_name}.ts"), "w") as f:
             f.write(actor_content)
@@ -90,14 +91,16 @@ class Scaffolder:
         #self.compiler.compile()
         
         for actor in self.actors.actors:
-            for action in actor["actions"]:
+            for action in actor.actions:
                 self._generate_action_file(
-                    action["name"]
+                    action.name,
+                    action.contract_name
                 )
 
     def _get_deployed_contract(self, contract_name: str, deployed_contracts: Dict[str, str], deployment_instruction: DeploymentInstruction) -> Optional[str]:
         for instruction in deployment_instruction.sequence:
-            if instruction.type == "deploy" and instruction.contract == contract_name and deployed_contracts.get(instruction.ref_name):
+            if instruction.type == "deploy" and instruction.contract == contract_name:
+                #print ("Deployed: ", deployed_contracts.get(instruction.ref_name), instruction.ref_name)
                 return instruction.ref_name
         return contract_name
 
@@ -118,9 +121,16 @@ class Scaffolder:
             
         return "any"
 
-    def _sanitize_for_filename(self, name: str) -> str:
+    def _sanitize_for_filename_actor(self, name: str) -> str:
         """Sanitize name for safe filename: lowercase, underscore-separated."""
         cleaned = re.sub(r'[^\w\s]', '', name)  # Remove non-alphanum (keep spaces)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize whitespace
+        return cleaned.lower().replace(' ', '_')
+    
+    def _sanitize_for_filename(self, contract_name: str, name: str) -> str:
+        """Sanitize name for safe filename: lowercase, underscore-separated."""
+        file_name = f"{contract_name}_{name}"
+        cleaned = re.sub(r'[^\w\s]', '', file_name)  # Remove non-alphanum (keep spaces)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize whitespace
         return cleaned.lower().replace(' ', '_')
     
@@ -186,11 +196,11 @@ class Scaffolder:
         imports.sort()
         return '\n'.join(imports + other_lines)
 
-    def _generate_action_file(self, action_name):
-        filename = f"{self._sanitize_for_filename(action_name)}.ts"
+    def _generate_action_file(self, action_name, contract_name):
+        filename = f"{self._sanitize_for_filename(contract_name, action_name)}.ts"
         filepath = os.path.join(self.context.actions_directory(), filename)
         
-        if os.path.exists(filepath):
+        if self.force == False and os.path.exists(filepath):
             return
             
         sanitized_class_name = self._sanitize_for_classname(action_name)

@@ -420,6 +420,7 @@ class DeploymentAnalyzer:
         for line in output.split('\n'):
             if 'DeployedContract:' in line:
                 parts = line.split('DeployedContract:')
+                #print(f"Parsing line: {line.strip()}")
                 if len(parts) == 2:
                     name = parts[1].split(":")[0].strip()
                     address = parts[1].split(":")[1].strip()

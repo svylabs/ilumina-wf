@@ -295,7 +295,7 @@ class RunContext:
         return Actors.load_summary(self.actor_summary_path())
     
     def deployment_instructions(self):
-        return DeploymentInstruction.load(self.deployment_instructions_path())
+        return DeploymentInstruction.load_summary(self.deployment_instructions_path())
     
     def deployed_contracts(self):
         submission = None
