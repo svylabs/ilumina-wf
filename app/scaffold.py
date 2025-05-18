@@ -49,6 +49,8 @@ class Scaffolder:
         with open(os.path.join(self.context.actors_directory(), "index.ts"), "w") as f:
             f.write(actors_content)
 
+        self.context.commit("Scaffolded actors")
+
     def setupActor(self, actor):
         # for each actor, create a typescript file, where a new actor is initialized
         # 
