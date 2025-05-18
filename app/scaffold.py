@@ -33,34 +33,51 @@ class Scaffolder:
 
     def setupActors(self):
         for actor in self.actors.actors:
-            # for each actor, create a typescript file, where a new actor is initialized
-            # 
-            actor_template = env.get_template("actor.ts.j2")
-            actor_name = self._sanitize_for_classname(actor["name"])
-            file_name = self._sanitize_for_filename = self._sanitize_for_filename(actor["name"])
-            actions = []
-            deployed_contracts = self.context.deployed_contracts()
-            deployment_instruction = self.context.deployment_instructions()
+            self.setupActor(actor)
+        actors_template = env.get_template("actors.ts.j2")
+        actors_list = []
+        for actor in self.actors.actors:
+            actor_name = self._sanitize_for_classname(actor.name)
+            file_name = self._sanitize_for_filename(actor.name)
 
-            for action in actor.actions:
-                action_name = self._sanitize_for_classname(action.name)
-                deployed_contract = self._get_deployed_contract(action.contract_name, deployed_contracts, deployment_instruction)
-                actions.append({
-                    "name": action_name,
-                    "file_name": self._sanitize_for_filename(action.name),
-                    "contract": deployed_contract,
-                    "probability": action.get("probability", 1.0)
-                })
-            actor_dict = {
+            actors_list.append({
                 "name": actor_name,
-                "file_name": file_name,
-                "actions": actions
-            }
-            actor_content = actor_template.render(
-                actors= actor_dict,
-            )
-            with open(os.path.join(self.context.actors_directory(), f"{file_name}.ts"), "w") as f:
-                f.write(actor_content)
+                "file_name": file_name
+            })
+            # Render actor content
+        actors_content = actors_template.render(actors= actors_list)
+        with open(os.path.join(self.context.actors_directory(), "index.ts"), "w") as f:
+            f.write(actors_content)
+
+    def setupActor(self, actor):
+        # for each actor, create a typescript file, where a new actor is initialized
+        # 
+        actor_template = env.get_template("actor.ts.j2")
+        actor_name = self._sanitize_for_classname(actor["name"])
+        file_name = self._sanitize_for_filename(actor["name"])
+        actions = []
+        deployed_contracts = self.context.deployed_contracts()
+        deployment_instruction = self.context.deployment_instructions()
+
+        for action in actor.actions:
+            action_name = self._sanitize_for_classname(action.name)
+            deployed_contract = self._get_deployed_contract(action.contract_name, deployed_contracts, deployment_instruction)
+            actions.append({
+                "name": action_name,
+                "file_name": self._sanitize_for_filename(action.name),
+                "contract": deployed_contract,
+                "probability": action.get("probability", 1.0)
+            })
+        actor_dict = {
+            "name": actor_name,
+            "file_name": file_name,
+            "actions": actions
+        }
+        actor_content = actor_template.render(
+            actors= actor_dict,
+        )
+        with open(os.path.join(self.context.actors_directory(), f"{file_name}.ts"), "w") as f:
+            f.write(actor_content)
 
     def setupSnapshotProvider(self):
         pass
