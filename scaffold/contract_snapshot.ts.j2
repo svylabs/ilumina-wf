@@ -1,10 +1,15 @@
-import { Snapshot } from "@svylabs/ilumina";
+import { SnapshotProvider } from "@svylabs/ilumina";
+import type { RunContext } from "@svylabs/ilumina";
 import { Contract } from "ethers";
 
-export async function snapshot{{contract_name}}(contract: Contract): Promise<Snapshot> {
-    // TODO: Implement snapshot logic for {{contract_name}}
-    return {
-        contract: "{{contract_name}}",
-        data: {}
-    };
+export class {{contract_name}}SnapshotProvider implements SnapshotProvider {
+    constructor(private contract: Contract) {}
+
+    async takeSnapshot(context: RunContext): Promise<any> {
+        // Implement snapshot logic for {{contract_name}}
+        return {
+            contract: "{{contract_name}}",
+            data: {} // Add relevant contract data here
+        };
+    }
 }

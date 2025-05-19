@@ -83,40 +83,50 @@ class Scaffolder:
             f.write(actor_content)
 
     def setupSnapshotProvider(self):
-        """Scaffold snapshot providers for each contract and generate an index file."""
-        deployment_instruction = self.context.deployment_instructions()
-        if not deployment_instruction:
-            print("No deployment instructions found. Skipping snapshot provider scaffolding.")
+        """Generate snapshot provider files for all deployed contracts"""
+        deployed_contracts = self.context.deployed_contracts()
+        if not deployed_contracts:
+            print("No deployed contracts found. Skipping snapshot provider scaffolding.")
             return
 
-        # Collect all unique contract names from deployment sequence
-        contract_names = set()
-        for step in deployment_instruction.sequence:
-            if hasattr(step, 'contract') and step.contract:
-                contract_names.add(step.contract)
-        contract_names = sorted(contract_names)
-
-        # Directory for snapshot providers
-        snapshots_dir = os.path.join(self.context.simulation_path(), "simulation", "snapshots")
+        # Create snapshots directory
+        snapshots_dir = self.context.snapshots_directory()
         os.makedirs(snapshots_dir, exist_ok=True)
 
-        # Generate a snapshot provider file for each contract
-        snapshot_template = env.get_template("contract_snapshot.ts.j2")
-        for contract in contract_names:
-            sanitized_contract = self._sanitize_for_classname(contract)
-            filename = f"{contract.lower()}_snapshot.ts"
-            filepath = os.path.join(snapshots_dir, filename)
-            content = snapshot_template.render(contract_name=sanitized_contract)
-            with open(filepath, "w") as f:
-                f.write(content)
+        # Generate individual snapshot provider files
+        for contract_name in deployed_contracts.keys():
+            self._generate_snapshot_provider_file(contract_name)
 
-        # Generate the index file that aggregates all snapshot providers
-        index_template = env.get_template("snapshots_index.ts.j2")
-        index_content = index_template.render(contracts=[self._sanitize_for_classname(c) for c in contract_names])
-        with open(os.path.join(snapshots_dir, "index.ts"), "w") as f:
-            f.write(index_content)
+        # Generate the index file
+        self._generate_snapshots_index_file(list(deployed_contracts.keys()))
 
-        self.context.commit("Scaffolded snapshot providers for contracts")
+        self.context.commit("Scaffolded snapshot providers")
+
+    def _generate_snapshot_provider_file(self, contract_name: str):
+        """Generate a snapshot provider file for a single contract"""
+        filename = f"{contract_name.lower()}_snapshot.ts"
+        filepath = os.path.join(self.context.snapshots_directory(), filename)
+        
+        if not self.force and os.path.exists(filepath):
+            return
+            
+        template = env.get_template("contract_snapshot.ts.j2")
+        content = template.render(
+            contract_name=self._sanitize_for_classname(contract_name)
+        )
+        
+        with open(filepath, "w") as f:
+            f.write(content)
+
+    def _generate_snapshots_index_file(self, contracts: List[str]):
+        """Generate the main snapshots index file"""
+        template = env.get_template("snapshots_index.ts.j2")
+        content = template.render(
+            contracts=[self._sanitize_for_classname(c) for c in contracts]
+        )
+        
+        with open(os.path.join(self.context.snapshots_directory(), "index.ts"), "w") as f:
+            f.write(content)
 
     def setupActions(self):
         """Generate action files for all actors and actions"""

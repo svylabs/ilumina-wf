@@ -309,7 +309,9 @@ class RunContext:
         if len(log) > 2:
             return log[1]
 
-
+    def snapshots_directory(self):
+        """Get the path to the snapshots directory"""
+        return os.path.join(self.simulation_path(), "simulation", "snapshots")
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),
