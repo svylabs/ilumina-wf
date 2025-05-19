@@ -1,0 +1,7 @@
+{% for contract in contracts %}
+import { snapshot{{contract}} } from "./{{contract|lower}}_snapshot";
+{% endfor %}
+
+export const contractSnapshotProviders = [
+    {% for contract in contracts %}snapshot{{contract}},{% endfor %}
+];
