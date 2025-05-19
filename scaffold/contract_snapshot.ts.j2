@@ -1,15 +1,40 @@
-import { SnapshotProvider } from "@svylabs/ilumina";
-import type { RunContext } from "@svylabs/ilumina";
+import { Snapshot } from "@svylabs/ilumina";
 import { Contract } from "ethers";
 
-export class {{contract_name}}SnapshotProvider implements SnapshotProvider {
-    constructor(private contract: Contract) {}
+export class ContractSnapshotProvider implements SnapshotProvider {
+    private contracts: Record<string, Contract>;
+    private snapshotHandlers: Record<string, (contract: Contract) => Promise<any>>;
 
-    async takeSnapshot(context: RunContext): Promise<any> {
-        // Implement snapshot logic for {{contract_name}}
+    constructor(contracts: Record<string, Contract>) {
+        this.contracts = contracts;
+        this.snapshotHandlers = {
+            {% for contract in contracts %}
+            "{{contract}}": this._defaultSnapshotHandler,
+            {% endfor %}
+        };
+    }
+
+    async snapshot(): Promise<Snapshot> {
+        const contractSnapshot: Record<string, any> = {};
+        const actorSnapshot: Record<string, any> = {};
+
+        await Promise.all(
+            Object.entries(this.contracts).map(async ([name, contract]) => {
+                if (this.snapshotHandlers[name]) {
+                    contractSnapshot[name] = await this.snapshotHandlers[name](contract);
+                }
+            })
+        );
+
+        return { contractSnapshot, actorSnapshot };
+    }
+
+    private async _defaultSnapshotHandler(contract: Contract): Promise<any> {
+        // Base snapshot implementation for all contracts
         return {
-            contract: "{{contract_name}}",
-            data: {} // Add relevant contract data here
+            timestamp: Math.floor(Date.now() / 1000),
+            address: await contract.getAddress(),
+            // Add common contract state here
         };
     }
 }

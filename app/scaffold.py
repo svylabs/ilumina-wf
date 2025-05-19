@@ -83,50 +83,36 @@ class Scaffolder:
             f.write(actor_content)
 
     def setupSnapshotProvider(self):
-        """Generate snapshot provider files for all deployed contracts"""
-        deployed_contracts = self.context.deployed_contracts()
-        if not deployed_contracts:
-            print("No deployed contracts found. Skipping snapshot provider scaffolding.")
-            return
-
-        # Create snapshots directory
+        """Generate dynamic snapshot provider"""
+        deployed_contracts = self.context.deployed_contracts() or {}
+        
         snapshots_dir = self.context.snapshots_directory()
         os.makedirs(snapshots_dir, exist_ok=True)
 
-        # Generate individual snapshot provider files
-        for contract_name in deployed_contracts.keys():
-            self._generate_snapshot_provider_file(contract_name)
+        provider_path = os.path.join(snapshots_dir, "contract_snapshot_provider.ts")
+        if self.force or not os.path.exists(provider_path):
+            template = env.get_template("contract_snapshot_provider.ts.j2")
+            content = template.render(
+                contracts=list(deployed_contracts.keys())  # Just pass raw names
+            )
+            with open(provider_path, "w") as f:
+                f.write(content)
 
-        # Generate the index file
-        self._generate_snapshots_index_file(list(deployed_contracts.keys()))
+        # Generate minimal index.ts
+        with open(os.path.join(snapshots_dir, "index.ts"), "w") as f:
+            f.write("""export { ContractSnapshotProvider } from \"./contract_snapshot_provider\";\n"""
+                    """export { setupSnapshotProvider } from \"./setup\";\n""")
 
-        self.context.commit("Scaffolded snapshot providers")
+        # Generate setup.ts for initialization
+        with open(os.path.join(snapshots_dir, "setup.ts"), "w") as f:
+            f.write("""import { Contract } from \"ethers\";\n"""
+                    """import { ContractSnapshotProvider } from \"./contract_snapshot_provider\";\n"""
+                    """import type { SnapshotProvider } from \"@svylabs/ilumina\";\n\n"""
+                    """export function setupSnapshotProvider(contracts: Record<string, Contract>): SnapshotProvider {\n"""
+                    """    return new ContractSnapshotProvider(contracts);\n"""
+                    """}\n""")
 
-    def _generate_snapshot_provider_file(self, contract_name: str):
-        """Generate a snapshot provider file for a single contract"""
-        filename = f"{contract_name.lower()}_snapshot.ts"
-        filepath = os.path.join(self.context.snapshots_directory(), filename)
-        
-        if not self.force and os.path.exists(filepath):
-            return
-            
-        template = env.get_template("contract_snapshot.ts.j2")
-        content = template.render(
-            contract_name=self._sanitize_for_classname(contract_name)
-        )
-        
-        with open(filepath, "w") as f:
-            f.write(content)
-
-    def _generate_snapshots_index_file(self, contracts: List[str]):
-        """Generate the main snapshots index file"""
-        template = env.get_template("snapshots_index.ts.j2")
-        content = template.render(
-            contracts=[self._sanitize_for_classname(c) for c in contracts]
-        )
-        
-        with open(os.path.join(self.context.snapshots_directory(), "index.ts"), "w") as f:
-            f.write(content)
+        self.context.commit("Generated dynamic snapshot provider")
 
     def setupActions(self):
         """Generate action files for all actors and actions"""
