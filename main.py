@@ -394,6 +394,7 @@ def create_actions(submission, request_context, user_prompt):
         request_data = request.get_json()
         # Get the current context using prepare_context
         context = prepare_context(submission, optimize=False)
+        update_analysis_status(submission["submission_id"], "scaffold", "in_progress")
 
         # Initialize AllActionGenerator
         scaffolder = Scaffolder(context, force=request_data.get("force", False))
@@ -401,11 +402,15 @@ def create_actions(submission, request_context, user_prompt):
         # Generate all actions
         scaffolder.scaffold()
 
+        update_analysis_status(submission["submission_id"], "scaffold", "success")
+
         return jsonify({"message": "Action files generated successfully"}), 200
 
     except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        update_analysis_status(submission["submission_id"], "scaffold", "error", metadata={"message": str(e)}, step_metadata={
+            "log": traceback.format_exc()
+        })
+        return jsonify({"error": str(e)}), 200
     
 @app.route('/api/implement_action', methods=['POST'])
 @authenticate
