@@ -262,8 +262,10 @@ def analyze():
                 if status is not None and status == "success":
                     next_step = "verify_deployment_script"
             elif step == "verify_deployment_script":
-                if status is not None and status == "success":
-                    next_step = "None"
+                if status is not None and status == "error":
+                    next_step = "debug_deploy_script"
+                elif status is not None and status == "success":
+                    next_step = "scaffold"
         
         if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
@@ -281,6 +283,12 @@ def analyze():
         elif next_step == "verify_deployment_script":
             create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
+        elif next_step == "debug_deploy_script":
+            create_task({"submission_id": submission_id, "step": "debug_deploy_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: debug_deploy_script"}), 200
+        elif next_step == "scaffold":
+            create_task({"submission_id": submission_id, "step": "scaffold"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: scaffold"}), 200
         elif next_step == "run_simulation":
             description = data.get("description")
             branch = data.get("branch")
@@ -540,6 +548,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "implement_deployment_script",
             "success"
         )
+        create_task({"submission_id": submission["submission_id"]})
         return jsonify({
             "message": "Deployment script implemented successfully",
             "log": "Deployment script implemented successfully"
@@ -636,6 +645,7 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # stderr or error message
                 }
             )
+            create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": False,
                 "log": list(result)  # stdout
@@ -960,6 +970,34 @@ def split_simulation_batch(submission_id):
 
     except Exception as e:
         app.logger.error("Error in split_simulation_batch endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/submission/<submission_id>/history', methods=['GET'])
+@authenticate
+def get_submission_history(submission_id):
+    """Fetch the history of all actions on a submission ID."""
+    try:
+        # Query SubmissionLog for the given submission_id
+        query = datastore_client.query(kind="SubmissionLog")
+        query.add_filter("submission_id", "=", submission_id)
+        query.order = ["-created_at"]
+
+        logs = list(query.fetch())
+
+        # Extract only the required fields
+        history = [
+            {
+                "step": log.get("step"),
+                "status": log.get("status"),
+                "executed_at": log.get("created_at")
+            }
+            for log in logs
+        ]
+
+        return jsonify({"history": history}), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_submission_history endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
