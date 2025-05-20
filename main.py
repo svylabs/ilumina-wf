@@ -682,7 +682,7 @@ def debug_deploy_script(submission, request_context, user_prompt):
             "in_progress"
         )
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         step_data = submission.get("verify_deployment_script")
