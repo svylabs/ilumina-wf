@@ -410,7 +410,7 @@ def create_actions(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "scaffold", "error", metadata={"message": str(e)}, step_metadata={
             "log": traceback.format_exc()
         })
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 200
     
 @app.route('/api/implement_action', methods=['POST'])
 @authenticate
