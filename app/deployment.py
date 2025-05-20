@@ -209,6 +209,7 @@ class DeploymentAnalyzer:
 
         The function should be implemented to deploy the contracts in the order specified in the deployment instructions.
         Additionally, the instructions also includes function calls to be made after deployment to setup the contracts correctly.
+        The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code.
 
         The module should also using the correct artifact import paths for the contracts from
         the mapping provided below. The import paths are relative to the deploy.ts file.
@@ -230,6 +231,7 @@ class DeploymentAnalyzer:
             "3. Use waitForDeployment() for all contract deployments.",
             "4. use contract.target instead of contract.address to get all contract addresses."
             "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
+            "6. The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code."
         ]
 
         llm = ThreeStageAnalyzer(Code)
@@ -405,6 +407,7 @@ class DeploymentAnalyzer:
                 "4. use contract.target instead of contract.address to get all contract addresses.",
                 "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
                 "6. As much as possible, keep the code same as the original code and change only the parts that are necessary to fix the error."
+                "7. The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code."
             ]
             print(guidelines)
             print(self.get_artifact_imports())
@@ -455,8 +458,8 @@ class DeploymentAnalyzer:
         """Parse contract addresses from deployment output"""
         addresses = {}
         for line in output.split('\n'):
-            if 'DeployedContract:' in line:
-                parts = line.split('DeployedContract:')
+            if 'DeployedContract-' in line:
+                parts = line.split('DeployedContract-')
                 #print(f"Parsing line: {line.strip()}")
                 if len(parts) == 2:
                     name = parts[1].split(":")[0].strip()
