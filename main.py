@@ -267,7 +267,7 @@ def analyze():
                 elif status is not None and status == "success":
                     next_step = "scaffold"
             elif step == "debug_deployment_script":
-                if status is not None and status == "success":
+                if status is not None and status != "success":
                     next_step = "verify_deployment_script"
         
         if next_step == "analyze_project":
@@ -635,6 +635,7 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # contract addresses
                 }
             )
+            create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": True,
                 "log": list(result)  # stdout
