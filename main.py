@@ -980,9 +980,10 @@ def get_submission_history(submission_id):
         # Query SubmissionLog for the given submission_id
         query = datastore_client.query(kind="SubmissionLog")
         query.add_filter("submission_id", "=", submission_id)
-        query.order = ["-created_at"]
+        #query.order = ["-created_at"]
 
         logs = list(query.fetch())
+        logs = sorted(logs, key=lambda x: x["updated_at"], reverse=True)
 
         # Extract only the required fields
         history = [
@@ -990,7 +991,7 @@ def get_submission_history(submission_id):
                 "step": log.get("step"),
                 "status": log.get("status"),
                 "user_prompt": log.get("user_prompt", ""),
-                "executed_at": log.get("created_at"),
+                "executed_at": log.get("updated_at"),
                 "step_metadata": _get_step_metadata(log)
             }
             for log in logs
@@ -1007,19 +1008,19 @@ def _get_step_metadata(log):
     step = log.get("step")
     match step:
         case "analyze_project":
-            return log.get("metadata", {}).get("summary_version", "")
+            return log.get("summary_version", "")
         case "analyze_actors":
-            return log.get("metadata", {}).get("actor_version", "")
+            return log.get("actor_version", "")
         case "analyze_deployment":
-            return log.get("metadata", {}).get("deployment_instruction_version", "")
+            return log.get("deployment_instruction_version", "")
         case "implement_deployment_script":
-            return log.get("step_metadata", {}).get("log", "")
+            return log.get("implement_deployment_script", "")
         case "verify_deployment_script":
-            return log.get("step_metadata", {}).get("log", "")
-        case "debug_deploy_script":
-            return log.get("step_metadata", {}).get("log", "")
+            return log.get("verify_deployment_script", "")
+        case "debug_deployment_script":
+            return log.get("debug_deployment_script", "")
         case "scaffold":
-            return log.get("step_metadata", {}).get("log", "")
+            return log.get("scaffold", "")
         case _:
             return "" 
 
