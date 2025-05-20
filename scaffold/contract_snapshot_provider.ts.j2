@@ -1,40 +1,20 @@
 import { Snapshot } from "@svylabs/ilumina";
 import { Contract } from "ethers";
+import { Actor } from "@svylabs/ilumina";
 
 export class ContractSnapshotProvider implements SnapshotProvider {
     private contracts: Record<string, Contract>;
-    private snapshotHandlers: Record<string, (contract: Contract) => Promise<any>>;
+    private actors: Actor[];
 
-    constructor(contracts: Record<string, Contract>) {
+    constructor(contracts: Record<string, Contract>, actors: Actor[]) {
         this.contracts = contracts;
-        this.snapshotHandlers = {
-            {% for contract in contracts %}
-            "{{contract}}": this._defaultSnapshotHandler,
-            {% endfor %}
-        };
+        this.actors = actors;
     }
 
     async snapshot(): Promise<Snapshot> {
-        const contractSnapshot: Record<string, any> = {};
-        const actorSnapshot: Record<string, any> = {};
-
-        await Promise.all(
-            Object.entries(this.contracts).map(async ([name, contract]) => {
-                if (this.snapshotHandlers[name]) {
-                    contractSnapshot[name] = await this.snapshotHandlers[name](contract);
-                }
-            })
-        );
-
-        return { contractSnapshot, actorSnapshot };
-    }
-
-    private async _defaultSnapshotHandler(contract: Contract): Promise<any> {
-        // Base snapshot implementation for all contracts
         return {
-            timestamp: Math.floor(Date.now() / 1000),
-            address: await contract.getAddress(),
-            // Add common contract state here
+            contractSnapshot: {},
+            actorSnapshot: {}
         };
     }
 }
