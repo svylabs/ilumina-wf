@@ -317,7 +317,7 @@ def analyze_project(submission, request_context, user_prompt):
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        project_summary = analyzer.summarize()
+        project_summary = analyzer.summarize(user_prompt=user_prompt)
         
         version, path = context.new_gcs_summary_path()
 
@@ -361,7 +361,7 @@ def analyze_actors(submission, request_context, user_prompt):
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        actors = analyzer.identify_actors()
+        actors = analyzer.identify_actors(user_prompt=user_prompt)
 
         version, path = context.new_gcs_actor_summary_path()
 
