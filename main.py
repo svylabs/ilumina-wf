@@ -266,6 +266,9 @@ def analyze():
                     next_step = "debug_deploy_script"
                 elif status is not None and status == "success":
                     next_step = "scaffold"
+            elif step == "debug_deployment_script":
+                if status is not None and status == "success":
+                    next_step = "verify_deployment_script"
         
         if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
@@ -645,7 +648,8 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # stderr or error message
                 }
             )
-            create_task({"submission_id": submission["submission_id"]})
+            if request_context == "bg":
+                create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": False,
                 "log": list(result)  # stdout
@@ -700,6 +704,8 @@ def debug_deploy_script(submission, request_context, user_prompt):
                 "log": new_code.change_summary
             }
         )
+        if (request_context == "bg"):
+            create_task({"submission_id": submission["submission_id"]})
 
         return jsonify({
             "success": True,
