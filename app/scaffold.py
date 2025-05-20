@@ -85,7 +85,6 @@ class Scaffolder:
     def setupSnapshotProvider(self):
         """Generate dynamic snapshot provider"""
         deployed_contracts = self.context.deployed_contracts() or {}
-        
         snapshots_dir = self.context.snapshots_directory()
         os.makedirs(snapshots_dir, exist_ok=True)
 
@@ -93,24 +92,14 @@ class Scaffolder:
         if self.force or not os.path.exists(provider_path):
             template = env.get_template("contract_snapshot_provider.ts.j2")
             content = template.render(
-                contracts=list(deployed_contracts.keys())  # Just pass raw names
+                contracts=list(deployed_contracts.keys())
             )
             with open(provider_path, "w") as f:
                 f.write(content)
 
         # Generate minimal index.ts
         with open(os.path.join(snapshots_dir, "index.ts"), "w") as f:
-            f.write("""export { ContractSnapshotProvider } from \"./contract_snapshot_provider\";\n"""
-                    """export { setupSnapshotProvider } from \"./setup\";\n""")
-
-        # Generate setup.ts for initialization
-        with open(os.path.join(snapshots_dir, "setup.ts"), "w") as f:
-            f.write("""import { Contract } from \"ethers\";\n"""
-                    """import { ContractSnapshotProvider } from \"./contract_snapshot_provider\";\n"""
-                    """import type { SnapshotProvider } from \"@svylabs/ilumina\";\n\n"""
-                    """export function setupSnapshotProvider(contracts: Record<string, Contract>): SnapshotProvider {\n"""
-                    """    return new ContractSnapshotProvider(contracts);\n"""
-                    """}\n""")
+            f.write("export { ContractSnapshotProvider } from \"./contract_snapshot_provider\";\n")
 
         self.context.commit("Generated dynamic snapshot provider")
 

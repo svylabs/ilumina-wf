@@ -74,3 +74,6 @@ with open("test_contract_snapshot_provider.ts", "w") as f:
     f.write(output)
 
 print("Generated test_contract_snapshot_provider.ts from contract_snapshot_provider.ts.j2 with contracts:", contracts)
+print("\n--- Preview of generated file ---\n")
+with open("test_contract_snapshot_provider.ts") as f:
+    print(f.read())
