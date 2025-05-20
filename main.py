@@ -313,7 +313,7 @@ def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
         # Update status to in_progress
-        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
+        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress", user_prompt=user_prompt)
 
         # Store user prompt if available
         if (user_prompt):
@@ -989,7 +989,9 @@ def get_submission_history(submission_id):
             {
                 "step": log.get("step"),
                 "status": log.get("status"),
-                "executed_at": log.get("created_at")
+                "user_prompt": log.get("user_prompt", ""),
+                "executed_at": log.get("created_at"),
+                "step_metadata": _get_step_metadata(log)
             }
             for log in logs
         ]
@@ -999,6 +1001,27 @@ def get_submission_history(submission_id):
     except Exception as e:
         app.logger.error("Error in get_submission_history endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    
+def _get_step_metadata(log):
+    """Extract step metadata from the log."""
+    step = log.get("step")
+    match step:
+        case "analyze_project":
+            return log.get("metadata", {}).get("summary_version", "")
+        case "analyze_actors":
+            return log.get("metadata", {}).get("actor_version", "")
+        case "analyze_deployment":
+            return log.get("metadata", {}).get("deployment_instruction_version", "")
+        case "implement_deployment_script":
+            return log.get("step_metadata", {}).get("log", "")
+        case "verify_deployment_script":
+            return log.get("step_metadata", {}).get("log", "")
+        case "debug_deploy_script":
+            return log.get("step_metadata", {}).get("log", "")
+        case "scaffold":
+            return log.get("step_metadata", {}).get("log", "")
+        case _:
+            return "" 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
