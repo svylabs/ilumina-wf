@@ -64,3 +64,13 @@ print(actors.render(
         }
     ]
 ))
+
+# Test the contract_snapshot_provider.ts.j2 template
+contract_snapshot_provider = env.get_template('contract_snapshot_provider.ts.j2')
+contracts = ["Token", "LendingPool"]
+output = contract_snapshot_provider.render(contracts=contracts)
+
+with open("test_contract_snapshot_provider.ts", "w") as f:
+    f.write(output)
+
+print("Generated test_contract_snapshot_provider.ts from contract_snapshot_provider.ts.j2 with contracts:", contracts)
