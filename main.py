@@ -427,7 +427,7 @@ def implement_action(submission, request_context, user_prompt):
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
         
         # Initialize ActionGenerator
         action_generator = ActionGenerator(context)
