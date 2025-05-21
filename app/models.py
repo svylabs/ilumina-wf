@@ -253,13 +253,16 @@ class Project(IluminaOpenAIResponseModel):
 class Identifier(IluminaOpenAIResponseModel):
     name: str
     type: Literal["address", "random", "structured_internal", "structured_external"]
-    max_identifier_limit_per_address: int = 1
+    has_max_identifier_limit_per_address: bool = False
+    max_identifier_limit_per_address: int
     description: str
     
 class ActionDetail(IluminaOpenAIResponseModel):
     needs_new_identifiers: bool
     new_identifiers: list[Identifier]
     pre_execution_parameter_generation_rules: list[str]
+    on_execution_state_updates_made: list[str]
+    # Validation rules in terms of function calls to make to validate the state
     post_execution_contract_state_validation_rules: list[str]
     
     
