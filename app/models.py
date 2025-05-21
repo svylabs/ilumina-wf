@@ -250,6 +250,19 @@ class Project(IluminaOpenAIResponseModel):
                 return Project.load(content)
         return None
     
+class Identifier(IluminaOpenAIResponseModel):
+    name: str
+    type: Literal["address", "random", "structured_internal", "structured_external"]
+    max_identifier_limit_per_address: int = 1
+    description: str
+    
+class ActionDetail(IluminaOpenAIResponseModel):
+    needs_new_identifiers: bool
+    new_identifiers: list[Identifier]
+    pre_execution_parameter_generation_rules: list[str]
+    post_execution_state_validation_rules: list[str]
+    
+    
 class Action(IluminaOpenAIResponseModel):
     name: str
     summary: str
