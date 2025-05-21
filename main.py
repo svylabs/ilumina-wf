@@ -296,10 +296,12 @@ def analyze():
             description = data.get("description")
             branch = data.get("branch")
             num_simulations = data.get("num_simulations", 1)
+            actor_config = data.get("actor_config")
             create_run_simulation_task(submission_id, {
                 "description": description,
                 "branch": branch,
-                "num_simulations": num_simulations
+                "num_simulations": num_simulations,
+                "actor_config": actor_config
             })
             return jsonify({"message": "Created a task to run simulation."}), 200
         else:
@@ -749,6 +751,12 @@ def run_simulation(submission_id):
         if batch is not None:
             branch = batch.get("branch", "main")
 
+        actor_config = data.get("actor_config")
+        # Update submission with actor_config if provided
+        if actor_config:
+            submission["actor_config"] = actor_config
+            datastore_client.put(submission)
+
         run_id = str(uuid.uuid4())
         
         run = SimulationRun(
@@ -757,7 +765,8 @@ def run_simulation(submission_id):
             "created",
             "run",
             description=description,
-            branch=branch
+            branch=branch,
+            actor_config=actor_config or submission.get("actor_config", {})
         )
         run.create()
 
@@ -859,6 +868,12 @@ def run_simulation_batch(submission_id):
         description = data.get("description", "Batch simulation run")
         num_simulations = data.get("num_simulations", 1)
         branch = data.get("branch", "main")
+        actor_config = data.get("actor_config")
+        
+        # Update submission with actor_config if provided
+        if actor_config:
+            submission["actor_config"] = actor_config
+            datastore_client.put(submission)
 
         # Validate num_simulations
         if num_simulations == 1:
@@ -873,12 +888,13 @@ def run_simulation_batch(submission_id):
             "batch",
             description=description,
             branch=branch,
-            num_simulations=num_simulations
+            num_simulations=num_simulations,
+            actor_config=actor_config or submission.get("actor_config", {})
         )
         batch.create()
         for i in range(num_simulations):
             run_id = str(uuid.uuid4())
-            run = SimulationRun(run_id, submission_id, "scheduled", "run", batch_id=batch_id)
+            run = SimulationRun(run_id, submission_id, "scheduled", "run", batch_id=batch_id, actor_config=actor_config or submission.get("actor_config", {}))
             run.create()
 
         batch.update_status("created", metadata={
@@ -889,7 +905,6 @@ def run_simulation_batch(submission_id):
         })
 
         context = prepare_context_lazy(submission)
-
         runner = SimulationRunner(context, batch)
         job = runner.create_and_execute_cloud_run_job()
 
@@ -966,7 +981,8 @@ def split_simulation_batch(submission_id):
             for i in range(max_to_create):
                 create_run_simulation_task(submission_id, {
                     "batch_id": batch_id,
-                    "branch": branch
+                    "branch": branch,
+                    "actor_config": batch.get("actor_config")
                 })
             create_split_and_monitor_task(submission_id, batch_id, begin_delay=120)
         return jsonify({
