@@ -4,8 +4,9 @@ import uuid
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
-from .models import Project, Actors
+from .models import Project, Actors, DeploymentInstruction
 from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
+import json
 
 APP_VERSION = "v1"
 
@@ -281,13 +282,36 @@ class RunContext:
         except Exception as e:
             raise Exception(f"Failed to commit changes to the simulation repo: {e}")
         
+    def actions_directory(self):
+        return os.path.join(self.simulation_path(), "simulation", "actions")
+    
+    def actors_directory(self):
+        return os.path.join(self.simulation_path(), "simulation", "actors")
 
     def project_summary(self):
         return Project.load_summary(self.summary_path())
         
     def actor_summary(self):
         return Actors.load_summary(self.actor_summary_path())
+    
+    def deployment_instructions(self):
+        return DeploymentInstruction.load_summary(self.deployment_instructions_path())
+    
+    def deployed_contracts(self):
+        submission = None
+        if self.submission != None:
+            submission = self.submission
+        else:
+            submission = self.get_submission()
+        verify_deployment_metadata = submission.get("verify_deployment_script", {})
+        metadata = json.loads(verify_deployment_metadata)
+        log = metadata.get("log", [])
+        if len(log) > 2:
+            return log[1]
 
+    def snapshots_directory(self):
+        """Get the path to the snapshots directory"""
+        return os.path.join(self.simulation_path(), "simulation", "snapshots")
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),

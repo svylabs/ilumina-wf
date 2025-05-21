@@ -1,0 +1,25 @@
+import { Action, Actor, Account } from "@svylabs/ilumina";
+import type { RunContext } from "@svylabs/ilumina";
+import { Snapshot } from "@svylabs/ilumina";
+import { Contract} from "ethers";
+
+{% for action in actor.actions %}
+import { {{action.name}}Action } from "../actions/{{action.file_name}}";
+{% endfor %}
+
+export function create{{actor.name}}Actor(account: Account, contracts: Record<string, Contract>): Actor {
+    let actor;
+    const actions: Action[] = [];
+    let action;
+    {% for action in actor.actions %}
+    action = new {{action.name}}Action(contracts.{{action.contract}});
+    actions.push({action: action, probability: {{action.probability}}});
+    {% endfor %}
+    actor = new Actor(
+        "{{actor.name}}",
+        account,
+        contracts,
+        actions,
+    );
+    return actor;
+}

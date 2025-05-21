@@ -53,11 +53,22 @@ class DeploymentAnalyzer:
         with open(deployment_path, 'w') as f:
             json.dump(instructions.to_dict(), f, indent=2)
 
-    def analyze(self, user_prompt=None):
-        #deployable_contracts = self.identify_deployable_contracts()
-        project_summary = self.context.project_summary()
-        
-        prompt = f"""
+    def get_prompt_for_refinement(self, project_summary, existing_instructions, user_prompt=None):
+        return f"""
+        Here is the summary of the smart contract project:
+        {json.dumps(project_summary.to_dict())}  
+
+        -----
+
+        Here is the existing deployment instructions in json format:
+        {json.dumps(existing_instructions.to_dict())}
+
+        We need to refine the existing deployment instructions based on the user instructions below:
+        {user_prompt if user_prompt else "None"}
+        """
+    
+    def get_prompt_for_generating_deployment_instructions(self, project_summary, user_prompt=None):
+        return f"""
         Here is the summary of the smart contract project:
         {json.dumps(project_summary.to_dict())}  
 
@@ -71,11 +82,37 @@ class DeploymentAnalyzer:
         5: Repeat step 3-4 for each contract identified in step 1.
         6. Generate the deployment instructions.
 
-        Instructions from user:
+        Additional Instructions from user:
         {user_prompt if user_prompt else "None"}
         """
 
-        print(f"{user_prompt}")
+
+    def analyze(self, user_prompt=None):
+        #deployable_contracts = self.identify_deployable_contracts()
+        project_summary = self.context.project_summary()
+
+        self.context.deployment_instructions_path()
+        existing_instructions = None
+        refine = False
+        if os.path.exists(self.context.deployment_instructions_path()):
+            with open(self.context.deployment_instructions_path(), "r") as f:
+                content = json.loads(f.read())
+                existing_instructions = DeploymentInstruction.load(content)
+                refine = True
+
+        prompt = None
+        if refine:
+            prompt = self.get_prompt_for_refinement(
+                project_summary=project_summary,
+                existing_instructions=existing_instructions,
+                user_prompt=user_prompt)
+        else:
+            prompt = self.get_prompt_for_generating_deployment_instructions(
+                project_summary=project_summary,
+                user_prompt=user_prompt
+            )
+
+        #print(f"{prompt}")
 
         try:
             analyzer = ThreeStageAnalyzer(DeploymentInstruction)
@@ -172,6 +209,7 @@ class DeploymentAnalyzer:
 
         The function should be implemented to deploy the contracts in the order specified in the deployment instructions.
         Additionally, the instructions also includes function calls to be made after deployment to setup the contracts correctly.
+        The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code.
 
         The module should also using the correct artifact import paths for the contracts from
         the mapping provided below. The import paths are relative to the deploy.ts file.
@@ -193,6 +231,7 @@ class DeploymentAnalyzer:
             "3. Use waitForDeployment() for all contract deployments.",
             "4. use contract.target instead of contract.address to get all contract addresses."
             "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
+            "6. The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code."
         ]
 
         llm = ThreeStageAnalyzer(Code)
@@ -368,6 +407,7 @@ class DeploymentAnalyzer:
                 "4. use contract.target instead of contract.address to get all contract addresses.",
                 "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
                 "6. As much as possible, keep the code same as the original code and change only the parts that are necessary to fix the error."
+                "7. The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code."
             ]
             print(guidelines)
             print(self.get_artifact_imports())
@@ -418,17 +458,12 @@ class DeploymentAnalyzer:
         """Parse contract addresses from deployment output"""
         addresses = {}
         for line in output.split('\n'):
-            if 'deployed to:' in line:
-                parts = line.split('deployed to:')
+            if 'DeployedContract-' in line:
+                parts = line.split('DeployedContract-')
+                #print(f"Parsing line: {line.strip()}")
                 if len(parts) == 2:
-                    name = parts[0].strip()
-                    address = parts[1].strip()
-                    addresses[name] = address
-            elif ':' in line and '===' not in line:  # Address summary lines
-                parts = line.split(':')
-                if len(parts) >= 2:
-                    name = parts[0].strip()
-                    address = ':'.join(parts[1:]).strip()
+                    name = parts[1].split(":")[0].strip()
+                    address = parts[1].split(":")[1].strip()
                     addresses[name] = address
         return addresses
 

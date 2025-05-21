@@ -10,3 +10,4 @@ tests
 ilumina-451416-5398e50c6628.json
 id_ed25519
 id_ed25519.pub
+test_contract_snapshot_provider.ts

@@ -21,12 +21,16 @@ def store_analysis_metadata(data):
 
     create_submission_log(entity.copy(), entity.exclude_from_indexes)
 
-def create_submission_log(data, exclude_from_indexes):
+def create_submission_log(data, exclude_from_indexes, user_prompt=None):
+    exclude_from_indexes = list(exclude_from_indexes)
+    exclude_from_indexes.append("user_prompt")
     submission_log = datastore.Entity(key=datastore_client.key("SubmissionLog", str(uuid.uuid4())), exclude_from_indexes=list(exclude_from_indexes))
     submission_log.update(data)
+    if user_prompt:
+        submission_log["user_prompt"] = user_prompt
     datastore_client.put(submission_log)
 
-def update_analysis_status(submission_id, step, status, metadata=None, step_metadata=None):
+def update_analysis_status(submission_id, step, status, metadata=None, step_metadata=None, user_prompt=None):
     """Update analysis status in Datastore"""
     key = datastore_client.key("Submission", submission_id)
     entity = datastore_client.get(key)
@@ -58,7 +62,7 @@ def update_analysis_status(submission_id, step, status, metadata=None, step_meta
 
         datastore_client.put(entity)
         
-        create_submission_log(entity.copy(), entity.exclude_from_indexes)
+        create_submission_log(entity.copy(), entity.exclude_from_indexes, user_prompt=user_prompt)
         
 
 

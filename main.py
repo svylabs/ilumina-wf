@@ -11,7 +11,7 @@ import datetime
 import logging
 import sys
 from app.analyse import Analyzer
-from app.actions import AllActionGenerator
+from app.scaffold import Scaffolder
 from app.action import ActionGenerator
 from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
@@ -262,8 +262,13 @@ def analyze():
                 if status is not None and status == "success":
                     next_step = "verify_deployment_script"
             elif step == "verify_deployment_script":
-                if status is not None and status == "success":
-                    next_step = "None"
+                if status is not None and status == "error":
+                    next_step = "debug_deploy_script"
+                elif status is not None and status == "success":
+                    next_step = "scaffold"
+            elif step == "debug_deployment_script":
+                if status is not None and status != "success":
+                    next_step = "verify_deployment_script"
         
         if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
@@ -281,6 +286,12 @@ def analyze():
         elif next_step == "verify_deployment_script":
             create_task({"submission_id": submission_id, "step": "verify_deployment_script"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: verify_deployment_script"}), 200
+        elif next_step == "debug_deploy_script":
+            create_task({"submission_id": submission_id, "step": "debug_deploy_script"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: debug_deploy_script"}), 200
+        elif next_step == "scaffold":
+            create_task({"submission_id": submission_id, "step": "scaffold"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: scaffold"}), 200
         elif next_step == "run_simulation":
             description = data.get("description")
             branch = data.get("branch")
@@ -305,7 +316,7 @@ def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
     try:
         # Update status to in_progress
-        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress")
+        update_analysis_status(submission["submission_id"], "analyze_project", "in_progress", user_prompt=user_prompt)
 
         # Store user prompt if available
         if (user_prompt):
@@ -317,7 +328,7 @@ def analyze_project(submission, request_context, user_prompt):
 
         # Perform the project analysis
         analyzer = Analyzer(context)
-        project_summary = analyzer.summarize()
+        project_summary = analyzer.summarize(user_prompt=user_prompt)
         
         version, path = context.new_gcs_summary_path()
 
@@ -361,7 +372,7 @@ def analyze_actors(submission, request_context, user_prompt):
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
-        actors = analyzer.identify_actors()
+        actors = analyzer.identify_actors(user_prompt=user_prompt)
 
         version, path = context.new_gcs_actor_summary_path()
 
@@ -385,25 +396,32 @@ def analyze_actors(submission, request_context, user_prompt):
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/create_actions', methods=['POST'])
+@app.route('/api/scaffold', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def create_actions(submission, request_context, user_prompt):
     """Generate action files for identified actors"""
     try:
+        request_data = request.get_json()
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
+        update_analysis_status(submission["submission_id"], "scaffold", "in_progress")
 
         # Initialize AllActionGenerator
-        action_generator = AllActionGenerator(context)
+        scaffolder = Scaffolder(context, force=request_data.get("force", False))
 
         # Generate all actions
-        action_generator.generate_all_actions()
+        scaffolder.scaffold()
+
+        update_analysis_status(submission["submission_id"], "scaffold", "success")
 
         return jsonify({"message": "Action files generated successfully"}), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        update_analysis_status(submission["submission_id"], "scaffold", "error", metadata={"message": str(e)}, step_metadata={
+            "log": traceback.format_exc()
+        })
+        return jsonify({"error": str(e)}), 200
     
 @app.route('/api/implement_action', methods=['POST'])
 @authenticate
@@ -420,7 +438,7 @@ def implement_action(submission, request_context, user_prompt):
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
         
         # Initialize ActionGenerator
         action_generator = ActionGenerator(context)
@@ -533,6 +551,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "implement_deployment_script",
             "success"
         )
+        create_task({"submission_id": submission["submission_id"]})
         return jsonify({
             "message": "Deployment script implemented successfully",
             "log": "Deployment script implemented successfully"
@@ -616,6 +635,7 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # contract addresses
                 }
             )
+            create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": True,
                 "log": list(result)  # stdout
@@ -629,6 +649,8 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # stderr or error message
                 }
             )
+            if request_context == "bg":
+                create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": False,
                 "log": list(result)  # stdout
@@ -661,7 +683,7 @@ def debug_deploy_script(submission, request_context, user_prompt):
             "in_progress"
         )
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         step_data = submission.get("verify_deployment_script")
@@ -683,6 +705,8 @@ def debug_deploy_script(submission, request_context, user_prompt):
                 "log": new_code.change_summary
             }
         )
+        if (request_context == "bg"):
+            create_task({"submission_id": submission["submission_id"]})
 
         return jsonify({
             "success": True,
@@ -954,6 +978,58 @@ def split_simulation_batch(submission_id):
     except Exception as e:
         app.logger.error("Error in split_simulation_batch endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/submission/<submission_id>/history', methods=['GET'])
+@authenticate
+def get_submission_history(submission_id):
+    """Fetch the history of all actions on a submission ID."""
+    try:
+        # Query SubmissionLog for the given submission_id
+        query = datastore_client.query(kind="SubmissionLog")
+        query.add_filter("submission_id", "=", submission_id)
+        #query.order = ["-created_at"]
+
+        logs = list(query.fetch())
+        logs = sorted(logs, key=lambda x: x["updated_at"], reverse=True)
+
+        # Extract only the required fields
+        history = [
+            {
+                "step": log.get("step"),
+                "status": log.get("status"),
+                "user_prompt": log.get("user_prompt", ""),
+                "executed_at": log.get("updated_at"),
+                "step_metadata": _get_step_metadata(log)
+            }
+            for log in logs
+        ]
+
+        return jsonify({"history": history}), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_submission_history endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+    
+def _get_step_metadata(log):
+    """Extract step metadata from the log."""
+    step = log.get("step")
+    match step:
+        case "analyze_project":
+            return log.get("summary_version", "")
+        case "analyze_actors":
+            return log.get("actor_version", "")
+        case "analyze_deployment":
+            return log.get("deployment_instruction_version", "")
+        case "implement_deployment_script":
+            return log.get("implement_deployment_script", "")
+        case "verify_deployment_script":
+            return log.get("verify_deployment_script", "")
+        case "debug_deployment_script":
+            return log.get("debug_deployment_script", "")
+        case "scaffold":
+            return log.get("scaffold", "")
+        case _:
+            return "" 
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
