@@ -260,7 +260,7 @@ class ActionDetail(IluminaOpenAIResponseModel):
     needs_new_identifiers: bool
     new_identifiers: list[Identifier]
     pre_execution_parameter_generation_rules: list[str]
-    post_execution_state_validation_rules: list[str]
+    post_execution_contract_state_validation_rules: list[str]
     
     
 class Action(IluminaOpenAIResponseModel):
