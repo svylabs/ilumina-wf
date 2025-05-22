@@ -96,16 +96,19 @@ class ProjectSummarizer:
         summary = analyzer.ask_llm(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty")
         return summary
 
-    def summarize(self, user_prompt=None):
-        '''
-        if (self.summary_exists()):
-            print("Summary already exists")
-            self.project_summary = self.load_summary()
-            return self.project_summary
-        '''
-        self.prepare()
-        print("Analyzing the contracts")
-        project_from_readme = None
+    def get_prompt_for_refinement(self, existing_summary, user_prompt=None):
+        return f"""
+        Here is the existing project summary:
+        {json.dumps(existing_summary.to_dict())}
+
+        we need to refine this summary based on:
+        1. Any new information from the contracts
+        2. Additional user requirements below:
+
+        {user_prompt if user_prompt else "None"}
+        """
+
+    def get_prompt_for_generation(self, user_prompt=None):
         base_prompt = f"""
         Analyze this smart contract project, dev_tool: {self.dev_tool}
 
@@ -115,12 +118,25 @@ class ProjectSummarizer:
         3. Key functionality
 
         Do not add anything to the contract list yet.
-
         """
-        prompt = base_prompt
         if user_prompt:
-            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
-        
+            base_prompt += f"\n\nAdditional user requirements:\n{user_prompt}"
+        return base_prompt
+
+    def summarize(self, user_prompt=None):
+        self.prepare()
+        print("Analyzing the contracts")
+        if self.summary_exists():
+            existing_summary = self.load_summary()
+            prompt = self.get_prompt_for_refinement(existing_summary, user_prompt)
+            analyzer = ThreeStageAnalyzer(Project)
+            project_summary = analyzer.ask_llm(prompt)
+            self.project_summary = project_summary
+            self.save()
+            return self.project_summary
+        project_from_readme = None
+        base_prompt = self.get_prompt_for_generation(user_prompt)
+        prompt = base_prompt
         if (self.readme != ""):
             prompt_with_readme = prompt + f"\n\n Project Readme:\n\n {self.readme}"
             # Add user prompt if provided

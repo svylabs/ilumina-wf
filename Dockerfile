@@ -23,6 +23,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g npm
 
+RUN pip install solc-select
+RUN solc-select install 0.8.20
+RUN solc-select use 0.8.20
+RUN solc --version
+
 # Install Hardhat globally
 # RUN npm install -g hardhat
 

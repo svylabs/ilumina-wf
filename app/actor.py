@@ -14,21 +14,55 @@ class ActorAnalyzer:
         self.project_summary = summary
         self.actors = []
 
-    def identify_actors(self, user_prompt=None):
-        base_prompt = f"""
+    def get_prompt_for_refinement(self, project_summary, existing_actors, user_prompt=None):
+        return f"""
+        Here is the project summary:
+        {json.dumps(project_summary.to_dict())}
+
+        Here are the existing actor definitions:
+        {json.dumps(existing_actors.to_dict())}
+
+        We need to refine the actor definitions based on:
+        1. Any changes in the project summary
+        2. Additional user requirements below:
+        
+        {user_prompt if user_prompt else "None"}
+        """
+
+    def get_prompt_for_generating_actors(self, project_summary, user_prompt=None):
+        return f"""
         Analyze this smart contract project:
-        {json.dumps(self.project_summary.to_dict())}
+        {json.dumps(project_summary.to_dict())}
         
         Identify:
         1. All market participants (actors) in the project
         2. Actions each actor can perform
         3. Probability of each action being executed
+
+        Additional user requirements:
+        {user_prompt if user_prompt else "None"}
         """
-        
-        # Add user prompt if provided
-        prompt = base_prompt
-        if user_prompt:
-            prompt = f"{base_prompt}\n\nAdditional user requirements:\n{user_prompt}"
+
+    def identify_actors(self, user_prompt=None):
+        existing_actors = None
+        refine = False
+        if os.path.exists(self.context.actor_summary_path()):
+            with open(self.context.actor_summary_path(), "r") as f:
+                content = json.loads(f.read())
+                existing_actors = Actors.load(content)
+                refine = True
+
+        if refine:
+            prompt = self.get_prompt_for_refinement(
+                project_summary=self.project_summary,
+                existing_actors=existing_actors,
+                user_prompt=user_prompt
+            )
+        else:
+            prompt = self.get_prompt_for_generating_actors(
+                project_summary=self.project_summary,
+                user_prompt=user_prompt
+            )
 
         analyzer = ThreeStageAnalyzer(Actors)
         actors = analyzer.ask_llm(prompt)
@@ -40,15 +74,6 @@ class ActorAnalyzer:
         pass
 
     def analyze(self, user_prompt=None):
-        '''
-        if (os.path.exists(self.context.actor_summary_path())):
-            print("Actor summary exists")
-            with open(self.context.actor_summary_path(), "r") as f:
-                content = json.loads(f.read())
-                self.actors = Actors.load(content)
-                return self.actors
-        print("Analyzing actors for the contracts")
-        '''
         self.identify_actors(user_prompt=user_prompt)
         self.save()
         return self.actors

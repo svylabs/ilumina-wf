@@ -250,6 +250,41 @@ class Project(IluminaOpenAIResponseModel):
                 return Project.load(content)
         return None
     
+class Identifier(IluminaOpenAIResponseModel):
+    name: str
+    type: Literal["address", "random_id", "structured_id_internal", "structured_id_external"]
+    has_max_identifier_limit_per_address: bool = False
+    max_identifier_limit_per_address: int
+    description: str
+    
+class ActionDetail(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    function_name: str
+    pre_execution_parameter_generation_rules: list[str]
+    on_execution_state_updates_made: list[str]
+    # Validation rules in terms of function calls to make to validate the state
+    post_execution_contract_state_validation_rules: list[str]
+
+class StateUpdate(IluminaOpenAIResponseModel):
+    name: str
+    type: str
+    summary_of_update: str
+    conditional_update: bool
+    conditions: list[str]
+
+class ContractStateUpdate(IluminaOpenAIResponseModel):
+    contract_name: str
+    state_updated: list[StateUpdate]
+
+class ActionExecution(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    function_name: str
+    does_register_new_identifier: bool
+    new_identifiers: list[Identifier]
+    all_state_updates: list[ContractStateUpdate]
+    
 class Action(IluminaOpenAIResponseModel):
     name: str
     summary: str
