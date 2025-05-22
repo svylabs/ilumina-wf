@@ -286,18 +286,18 @@ class ActionDetail(IluminaOpenAIResponseModel):
         }
 
 class StateUpdate(IluminaOpenAIResponseModel):
-    name: str
+    state_variable_name: str
     type: str
     summary_of_update: str
-    conditional_update: bool
+    has_conditional_updates: bool
     conditions: list[str]
 
     def to_dict(self):
         return {
-            "name": self.name,
+            "state_variable_name": self.state_variable_name,
             "type": self.type,
             "summary_of_update": self.summary_of_update,
-            "conditional_update": self.conditional_update,
+            "has_conditional_updates": self.has_conditional_updates,
             "conditions": self.conditions
         }
 

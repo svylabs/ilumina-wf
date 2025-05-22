@@ -8,7 +8,7 @@ from slither.slithir.operations import InternalCall, HighLevelCall
 from app.compiler import Compiler
 from app.three_stage_llm_call import ThreeStageAnalyzer
 from app.models import ActionExecution, ActionDetail  
-from app.context import example_contexts
+from app.context import example_contexts, prepare_context_lazy
 
 def extract_local_function_tree(project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
     slither = Slither(project_path)
@@ -151,7 +151,8 @@ class ActionAnalyzer:
         
         # Step 4: Generate detailed action description
         detail_prompt = self._generate_detail_prompt(action_execution)
-        action_detail = analyzer.ask_llm(detail_prompt)
+        detail_analyzer = ThreeStageAnalyzer(ActionDetail)
+        action_detail = detail_analyzer.ask_llm(detail_prompt)
         
         return {
             "execution": action_execution,
@@ -253,20 +254,25 @@ if __name__ == "__main__":
     from app.models import Action
     
     test_action = Action(
-        name="openSafe",
-        summary="Open a new safe position",
+        name="borrow",
+        summary="Borrow from the protocol",
         contract_name="StableBaseCDP",
-        function_name="openSafe(uint256,uint256)",
+        function_name="borrow(uint256,uint256,uint256,uint256,uint256)",
         probability=1.0
     )
     
     # context = MockContext()
-    context = example_contexts[1]
+    #context = example_contexts[1]
+    context = prepare_context_lazy({
+        "run_id": "1746304145",
+        "submission_id": "de71c43b-9ae9-462c-a97e-3b5c46498193",
+        "github_repository_url": "https://github.com/svylabs/stablebase"
+    })
     analyzer = ActionAnalyzer(test_action, context)
     
     # Test 1: Call tree extraction
     print("Testing call tree extraction...")
-    call_tree = analyzer._get_function_call_tree("StableBaseCDP", "openSafe(uint256,uint256)")
+    call_tree = analyzer._get_function_call_tree("StableBaseCDP", "borrow(uint256,uint256,uint256,uint256,uint256)")
     print(f"Found {len(call_tree)} functions in call tree")
     
     # Test 2: Full analysis
