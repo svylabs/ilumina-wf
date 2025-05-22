@@ -1,11 +1,13 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import json
 from slither.slither import Slither
 from slither.core.declarations import Function
 from slither.slithir.operations import InternalCall, HighLevelCall
-from .compiler import Compiler
-from .three_stage_llm_call import ThreeStageAnalyzer
-from .models import ActionExecution, ActionDetail  
+from app.compiler import Compiler
+from app.three_stage_llm_call import ThreeStageAnalyzer
+from app.models import ActionExecution, ActionDetail  
 
 def extract_local_function_tree(project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
     slither = Slither(project_path)
@@ -26,6 +28,9 @@ def extract_local_function_tree(project_path: str, contract_name: str, entry_fun
                 funcs_by_name.setdefault(func.name, []).append(func)
 
     if entry_func_full_name not in all_funcs:
+        print("Available function full names detected by Slither:")
+        for fname in all_funcs.keys():
+            print(f"  - {fname}")
         raise ValueError(f"Function '{entry_func_full_name}' not found in local project.")
 
     visited = set()
@@ -250,9 +255,11 @@ Output should be a JSON object matching the ActionDetail schema.
 
 if __name__ == "__main__":
     # Example usage
-    project_path = "/tmp/workspaces/de71c43b-9ae9-462c-a97e-3b5c46498193/stablebase"
+    # project_path = "/tmp/workspaces/de71c43b-9ae9-462c-a97e-3b5c46498193/stablebase"
+    project_path = "/tmp/workspaces/s2/stablebase"
     contract_name = "StableBaseCDP.sol"
-    entry_func_full_name = "liquidate()"
+    # entry_func_full_name = "liquidate()"
+    entry_func_full_name = "openSafe(uint256,uint256)"
     os.environ["SOLC_ARGS"] = "--allow-paths .,node_modules"
     local_function_tree = extract_local_function_tree(project_path, contract_name, entry_func_full_name)
     for func_name, code in local_function_tree.items():
