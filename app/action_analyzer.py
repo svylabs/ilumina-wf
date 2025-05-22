@@ -8,6 +8,7 @@ from slither.slithir.operations import InternalCall, HighLevelCall
 from app.compiler import Compiler
 from app.three_stage_llm_call import ThreeStageAnalyzer
 from app.models import ActionExecution, ActionDetail  
+from app.context import example_contexts
 
 def extract_local_function_tree(project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
     slither = Slither(project_path)
@@ -40,7 +41,8 @@ def extract_local_function_tree(project_path: str, contract_name: str, entry_fun
         if func.full_name in visited:
             return
         visited.add(func.full_name)
-        result[func.full_name] = func.source_mapping.content
+        # result[func.full_name] = func.source_mapping.content
+        result[func.full_name] = func
 
         for node in func.nodes:
             for ir in node.irs:
@@ -75,17 +77,18 @@ class ActionAnalyzer:
 
     def _get_contract_code(self, contract_name: str) -> str:
         """Get full source code for a contract"""
-        contract_path = os.path.join(self.context.project_path(), f"{contract_name}.sol")
+        contract_path = os.path.join(self.context.cws(), f"{contract_name}.sol")
         with open(contract_path, "r") as f:
             return f.read()
     
     def _get_function_call_tree(self, contract_name: str, entry_function: str) -> dict:
         """Get all functions called by the entry function"""
-        project_path = self.context.project_path()
+        project_path = self.context.cws()
         return extract_local_function_tree(
             project_path,
             contract_name,
-            f"{entry_function}()"
+            # f"{entry_function}()"
+            entry_function 
         )
     
     def _build_action_context(self, action) -> dict:
@@ -98,15 +101,29 @@ class ActionAnalyzer:
         
         # Get context for each contract
         contracts = set()
-        for func_name in call_tree.keys():
-            contracts.add(func_name.split('.')[0])
+        contract_code = {}
+        for func_name, func in call_tree.items():
+            contracts.add(func.contract.name)
+            if func.contract.name not in contract_code:
+                contract_code[func.contract.name] =func.source_mapping.content
+
+            else:
+                contract_code[func.contract.name] += "\n" + func.source_mapping.content
         
+        print(f"Contracts involved: {contracts}")
+
         contract_contexts = []
-        for contract_name in contracts:
+        for contract_name in contract_code.keys():
+            print(f"Contract: {contract_name}")
+            if contract_name == "ERC721Utils": continue
+            abi = ""
+            with open(self.context.contract_artifact_path(contract_name), "r") as f:
+                abi = json.load(f)["abi"]
+
             contract_contexts.append({
                 "name": contract_name,
-                "code": self._get_contract_code(contract_name),
-                "abi": self.compiler.get_contract_abi(contract_name),
+                "code": contract_code[contract_name],
+                "abi": abi,
                 "is_main": contract_name == action.contract_name
             })
         
@@ -117,8 +134,7 @@ class ActionAnalyzer:
                 "contract": action.contract_name,
                 "function": action.function_name
             },
-            "contracts": contract_contexts,
-            "call_tree": call_tree
+            "contracts": contract_contexts
         }
     
     def analyze(self, action):
@@ -162,9 +178,6 @@ Main Function: {context['action']['function']}
 
 Contracts Involved:
 {contracts_text}
-
-Call Tree:
-{json.dumps(context['call_tree'], indent=2)}
 
 Please analyze:
 1. Which state variables are modified
@@ -220,14 +233,55 @@ Return in JSON matching ActionDetail schema.
 
         # pass
 
+# if __name__ == "__main__":
+#     # Example usage
+#     # project_path = "/tmp/workspaces/de71c43b-9ae9-462c-a97e-3b5c46498193/stablebase"
+#     project_path = "/tmp/workspaces/s2/stablebase"
+#     contract_name = "StableBaseCDP.sol"
+#     # entry_func_full_name = "liquidate()"
+#     entry_func_full_name = "openSafe(uint256,uint256)"
+#     os.environ["SOLC_ARGS"] = "--allow-paths .,node_modules"
+#     local_function_tree = extract_local_function_tree(project_path, contract_name, entry_func_full_name)
+#     for func_name, code in local_function_tree.items():
+#         print(f"Function: {func_name}\nCode:\n{code}\n")
+
 if __name__ == "__main__":
-    # Example usage
-    # project_path = "/tmp/workspaces/de71c43b-9ae9-462c-a97e-3b5c46498193/stablebase"
-    project_path = "/tmp/workspaces/s2/stablebase"
-    contract_name = "StableBaseCDP.sol"
-    # entry_func_full_name = "liquidate()"
-    entry_func_full_name = "openSafe(uint256,uint256)"
-    os.environ["SOLC_ARGS"] = "--allow-paths .,node_modules"
-    local_function_tree = extract_local_function_tree(project_path, contract_name, entry_func_full_name)
-    for func_name, code in local_function_tree.items():
-        print(f"Function: {func_name}\nCode:\n{code}\n")
+    # Setup test environment
+    def cws(self):
+            return "/tmp/workspaces/s2/stablebase"
+    
+    from app.models import Action
+    
+    test_action = Action(
+        name="openSafe",
+        summary="Open a new safe position",
+        contract_name="StableBaseCDP",
+        function_name="openSafe(uint256,uint256)",
+        probability=1.0
+    )
+    
+    # context = MockContext()
+    context = example_contexts[1]
+    analyzer = ActionAnalyzer(test_action, context)
+    
+    # Test 1: Call tree extraction
+    print("Testing call tree extraction...")
+    call_tree = analyzer._get_function_call_tree("StableBaseCDP", "openSafe(uint256,uint256)")
+    print(f"Found {len(call_tree)} functions in call tree")
+    
+    # Test 2: Full analysis
+    print("\nRunning full analysis...")
+    result = analyzer.analyze(test_action)
+    
+    print("\nAnalysis Results:")
+    print(result)
+    
+    
+    # Save results for inspection
+    with open("action_analysis.json", "w") as f:
+        json.dump({
+            "execution": result["execution"].dict(),
+            "detail": result["detail"].dict()
+        }, f, indent=2)
+    
+    print("\nSaved results to action_analysis.json")

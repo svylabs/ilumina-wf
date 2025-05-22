@@ -181,13 +181,13 @@ class RunContext:
         with open(os.path.join(self.simulation_path(), code_path)) as f:
             return f.read()
     
-    def artifact_path(self):
-        os.path.join(self.cws(), "artifacts")        
+    def artifact_path(self):  
+        return os.path.join(self.cws(), "artifacts")     
     
     def abi(self, contract_name):
         """Returns path to ABI file"""
         # Differentiate between hardhat and foundry
-        return os.path.join(self.artifact_path(), "contracts", contract_name, f"{contract_name}.json")
+        return os.path.join(self.artifact_path(), "contracts", f"{contract_name}.sol", f"{contract_name}.json")
     
     def ctx_path(self):
         return self.cwd() + "/context.json"

@@ -256,6 +256,15 @@ class Identifier(IluminaOpenAIResponseModel):
     has_max_identifier_limit_per_address: bool = False
     max_identifier_limit_per_address: int
     description: str
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "type": self.type,
+            "has_max_identifier_limit_per_address": self.has_max_identifier_limit_per_address,
+            "max_identifier_limit_per_address": self.max_identifier_limit_per_address,
+            "description": self.description
+        }
     
 class ActionDetail(IluminaOpenAIResponseModel):
     action_name: str
@@ -266,6 +275,16 @@ class ActionDetail(IluminaOpenAIResponseModel):
     # Validation rules in terms of function calls to make to validate the state
     post_execution_contract_state_validation_rules: list[str]
 
+    def to_dict(self):
+        return {
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "pre_execution_parameter_generation_rules": self.pre_execution_parameter_generation_rules,
+            "on_execution_state_updates_made": self.on_execution_state_updates_made,
+            "post_execution_contract_state_validation_rules": self.post_execution_contract_state_validation_rules
+        }
+
 class StateUpdate(IluminaOpenAIResponseModel):
     name: str
     type: str
@@ -273,9 +292,24 @@ class StateUpdate(IluminaOpenAIResponseModel):
     conditional_update: bool
     conditions: list[str]
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "type": self.type,
+            "summary_of_update": self.summary_of_update,
+            "conditional_update": self.conditional_update,
+            "conditions": self.conditions
+        }
+
 class ContractStateUpdate(IluminaOpenAIResponseModel):
     contract_name: str
     state_updated: list[StateUpdate]
+
+    def to_dict(self):
+        return {
+            "contract_name": self.contract_name,
+            "state_updated": [state_update.to_dict() for state_update in self.state_updated]
+        }
 
 class ActionExecution(IluminaOpenAIResponseModel):
     action_name: str
@@ -284,6 +318,16 @@ class ActionExecution(IluminaOpenAIResponseModel):
     does_register_new_identifier: bool
     new_identifiers: list[Identifier]
     all_state_updates: list[ContractStateUpdate]
+
+    def to_dict(self):
+        return {
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "does_register_new_identifier": self.does_register_new_identifier,
+            "new_identifiers": [identifier.to_dict() for identifier in self.new_identifiers],
+            "all_state_updates": [state_update.to_dict() for state_update in self.all_state_updates]
+        }
     
 class Action(IluminaOpenAIResponseModel):
     name: str

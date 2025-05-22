@@ -1,0 +1,382 @@
+{
+  "execution": {
+    "action_name": "openSafe",
+    "contract_name": "StableBaseCDP",
+    "function_name": "openSafe",
+    "does_register_new_identifier": true,
+    "new_identifiers": [
+      {
+        "name": "_safeId",
+        "type": "structured_id_internal",
+        "has_max_identifier_limit_per_address": false,
+        "max_identifier_limit_per_address": 0,
+        "description": "A unique identifier for the safe, linked to the caller via NFT ownership."
+      }
+    ],
+    "all_state_updates": [
+      {
+        "contract_name": "StableBaseCDP",
+        "state_updated": [
+          {
+            "name": "ERC721InvalidReceiver",
+            "type": "revert",
+            "summary_of_update": "If to is address(0), reverts with ERC721InvalidReceiver(address(0))",
+            "conditional_update": true,
+            "conditions": [
+              "to == address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InvalidSender",
+            "type": "revert",
+            "summary_of_update": "If previousOwner is not address(0), reverts with ERC721InvalidSender(address(0)).",
+            "conditional_update": true,
+            "conditions": [
+              "previousOwner != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InsufficientApproval",
+            "type": "revert",
+            "summary_of_update": "If auth is not address(0) and the auth is not authorized, it reverts.",
+            "conditional_update": true,
+            "conditions": [
+              "auth != address(0)",
+              "!_isAuthorized(from, auth, tokenId)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721NonexistentToken",
+            "type": "revert",
+            "summary_of_update": "If the owner is the zero address, reverts with ERC721NonexistentToken(tokenId).",
+            "conditional_update": true,
+            "conditions": [
+              "auth != address(0)",
+              "!_isAuthorized(from, auth, tokenId)",
+              "owner == address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "safes[_safeId]",
+            "type": "update",
+            "summary_of_update": "Initializes a new Safe struct with collateralAmount set to _amount, borrowedAmount, weight, totalBorrowedAmount and feePaid set to 0.  This struct is stored in the safes mapping at the key _safeId.",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "liquidationSnapshots[_safeId]",
+            "type": "update",
+            "summary_of_update": "Initializes a new LiquidationSnapshot struct with debtPerCollateralSnapshot set to cumulativeDebtPerUnitCollateral and collateralPerCollateralSnapshot set to cumulativeCollateralPerUnitCollateral.  This struct is stored in the liquidationSnapshots mapping at the key _safeId.",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "totalCollateral",
+            "type": "addition",
+            "summary_of_update": "Increases the totalCollateral by the amount of collateral deposited (_amount).",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_balances[from]",
+            "type": "decrement",
+            "summary_of_update": "If the from address is not zero, the balance of the previous owner is decreased by 1.",
+            "conditional_update": true,
+            "conditions": [
+              "from != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_balances[to]",
+            "type": "increment",
+            "summary_of_update": "If the to address is not zero, the balance of the new owner is increased by 1.",
+            "conditional_update": true,
+            "conditions": [
+              "to != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_owners[tokenId]",
+            "type": "update",
+            "summary_of_update": "The owner of the token ID is set to the to address.",
+            "conditional_update": false,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InvalidApprover",
+            "type": "revert",
+            "summary_of_update": "If the approver is not the owner and is not approved for all, it reverts.",
+            "conditional_update": true,
+            "conditions": [
+              "emitEvent || auth != address(0)",
+              "owner != auth",
+              "!isApprovedForAll(owner, auth)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_tokenApprovals[tokenId]",
+            "type": "update",
+            "summary_of_update": "The token approval for the given token ID is set to the to address.",
+            "conditional_update": false,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "detail": {
+    "action_name": "openSafe",
+    "contract_name": "StableBaseCDP",
+    "function_name": "openSafe",
+    "does_register_new_identifier": true,
+    "new_identifiers": [
+      {
+        "name": "_safeId",
+        "type": "structured_id_internal",
+        "has_max_identifier_limit_per_address": false,
+        "max_identifier_limit_per_address": 0,
+        "description": "A unique identifier for the safe, linked to the caller via NFT ownership."
+      }
+    ],
+    "all_state_updates": [
+      {
+        "contract_name": "StableBaseCDP",
+        "state_updated": [
+          {
+            "name": "ERC721InvalidReceiver",
+            "type": "revert",
+            "summary_of_update": "If to is address(0), reverts with ERC721InvalidReceiver(address(0))",
+            "conditional_update": true,
+            "conditions": [
+              "to == address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InvalidSender",
+            "type": "revert",
+            "summary_of_update": "If previousOwner is not address(0), reverts with ERC721InvalidSender(address(0)).",
+            "conditional_update": true,
+            "conditions": [
+              "previousOwner != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InsufficientApproval",
+            "type": "revert",
+            "summary_of_update": "If auth is not address(0) and the auth is not authorized, it reverts.",
+            "conditional_update": true,
+            "conditions": [
+              "auth != address(0)",
+              "!_isAuthorized(from, auth, tokenId)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721NonexistentToken",
+            "type": "revert",
+            "summary_of_update": "If the owner is the zero address, reverts with ERC721NonexistentToken(tokenId).",
+            "conditional_update": true,
+            "conditions": [
+              "auth != address(0)",
+              "!_isAuthorized(from, auth, tokenId)",
+              "owner == address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "safes[_safeId]",
+            "type": "update",
+            "summary_of_update": "Initializes a new Safe struct with collateralAmount set to _amount, borrowedAmount, weight, totalBorrowedAmount and feePaid set to 0. This struct is stored in the safes mapping at the key _safeId.",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "liquidationSnapshots[_safeId]",
+            "type": "update",
+            "summary_of_update": "Initializes a new LiquidationSnapshot struct with debtPerCollateralSnapshot set to cumulativeDebtPerUnitCollateral and collateralPerCollateralSnapshot set to cumulativeCollateralPerUnitCollateral. This struct is stored in the liquidationSnapshots mapping at the key _safeId.",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "totalCollateral",
+            "type": "addition",
+            "summary_of_update": "Increases the totalCollateral by the amount of collateral deposited (_amount).",
+            "conditional_update": true,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_balances[from]",
+            "type": "decrement",
+            "summary_of_update": "If the from address is not zero, the balance of the previous owner is decreased by 1.",
+            "conditional_update": true,
+            "conditions": [
+              "from != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_balances[to]",
+            "type": "increment",
+            "summary_of_update": "If the to address is not zero, the balance of the new owner is increased by 1.",
+            "conditional_update": true,
+            "conditions": [
+              "to != address(0)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_owners[tokenId]",
+            "type": "update",
+            "summary_of_update": "The owner of the token ID is set to the to address.",
+            "conditional_update": false,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "ERC721InvalidApprover",
+            "type": "revert",
+            "summary_of_update": "If the approver is not the owner and is not approved for all, it reverts.",
+            "conditional_update": true,
+            "conditions": [
+              "emitEvent || auth != address(0)",
+              "owner != auth",
+              "!isApprovedForAll(owner, auth)",
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          },
+          {
+            "name": "_tokenApprovals[tokenId]",
+            "type": "update",
+            "summary_of_update": "The token approval for the given token ID is set to the to address.",
+            "conditional_update": false,
+            "conditions": [
+              "_amount > 0",
+              "msg.value == _amount",
+              "_safeId > 0",
+              "safes[_safeId].collateralAmount == 0",
+              "_ownerOf(_safeId) == address(0)"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
