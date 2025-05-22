@@ -72,156 +72,123 @@ class ActionAnalyzer:
     def __init__(self, action, context):
         self.action = action
         self.context = context
-        self.contract_abi_cache = {}  # Cache for contract ABIs
 
-    def _get_contract_abi(self, contract_name):
-        """Get ABI for a contract, with caching"""
-        if contract_name not in self.contract_abi_cache:
-            compiler = Compiler(self.context)
-            self.contract_abi_cache[contract_name] = compiler.get_contract_abi(contract_name)
-        return self.contract_abi_cache[contract_name]
+    def _get_contract_code(self, contract_name: str) -> str:
+        """Get full source code for a contract"""
+        contract_path = os.path.join(self.context.project_path(), f"{contract_name}.sol")
+        with open(contract_path, "r") as f:
+            return f.read()
     
-    def _extract_affected_contracts(self):
-        """
-        Identify all contracts affected by this action by analyzing the function call tree
-        Returns list of contract names
-        """
-        # Use the existing extract_local_function_tree to get the call graph
+    def _get_function_call_tree(self, contract_name: str, entry_function: str) -> dict:
+        """Get all functions called by the entry function"""
         project_path = self.context.project_path()
-        function_tree = extract_local_function_tree(
+        return extract_local_function_tree(
             project_path,
-            self.action.contract_name,
-            f"{self.action.function_name}()"
+            contract_name,
+            f"{entry_function}()"
         )
-
-        # Extract unique contract names from the function full names
+    
+    def _build_action_context(self, action) -> dict:
+        """Build complete context for action analysis"""
+        # Get all contracts/functions involved
+        call_tree = self._get_function_call_tree(
+            action.contract_name,
+            action.function_name
+        )
+        
+        # Get context for each contract
         contracts = set()
-        for func_name in function_tree.keys():
-            # Function full name format: ContractName.functionName(...)
-            contract_name = func_name.split('.')[0]
-            contracts.add(contract_name)
-
-        return list(contracts)
-    
-    def _build_contract_context(self, contract_name):
-        """
-        Build comprehensive context for a contract including:
-        - Source code
-        - ABI
-        - State variables
-        - Function signatures
-        """
-        # Get contract source code
-        slither = Slither(os.path.join(self.context.project_path(), f"{contract_name}.sol"))
-        contract = slither.get_contract_from_name(contract_name)[0]
+        for func_name in call_tree.keys():
+            contracts.add(func_name.split('.')[0])
         
-        # Get ABI
-        abi = self._get_contract_abi(contract_name)
-
-        # Get state variables
-        state_vars = [{
-            "name": var.name,
-            "type": str(var.type),
-            "visibility": var.visibility
-        } for var in contract.state_variables]
-
+        contract_contexts = []
+        for contract_name in contracts:
+            contract_contexts.append({
+                "name": contract_name,
+                "code": self._get_contract_code(contract_name),
+                "abi": self.compiler.get_contract_abi(contract_name),
+                "is_main": contract_name == action.contract_name
+            })
+        
         return {
-            "contract_name": contract_name,
-            "source_code": contract.source_mapping.content,
-            "abi": abi,
-            "state_variables": state_vars,
-            "entry_function": self.action.function_name if contract_name == self.action.contract_name else None
+            "action": {
+                "name": action.name,
+                "summary": action.summary,
+                "contract": action.contract_name,
+                "function": action.function_name
+            },
+            "contracts": contract_contexts,
+            "call_tree": call_tree
         }
     
-    def _generate_llm_prompt_for_state_updates(self, contract_contexts):
-        """
-        Generate a comprehensive LLM prompt to analyze state updates
-        """
-        prompt = """
-        Analyze the following smart contracts and action to determine state changes. For each contract:
-
-        1. Identify which state variables are modified when executing the action
-        2. Describe the nature of each state change
-        3. Note any conditions that affect the state changes
-        4. Identify if new identifiers are created
-
-        Action: {action_name}
-        Description: {action_summary}
-        Primary Contract: {primary_contract}
-        Primary Function: {primary_function}
-
-        Contract Contexts:
-        """.format(
-            action_name=self.action.name,
-            action_summary=self.action.summary,
-            primary_contract=self.action.contract_name,
-            primary_function=self.action.function_name
-        )
-
-        for ctx in contract_contexts:
-            prompt += f"""
-            === Contract: {ctx['contract_name']} ===
-            Source Code:
-            {ctx['source_code']}
-
-            ABI:
-            {json.dumps(ctx['abi'], indent=2)}
-
-            State Variables:
-            {json.dumps(ctx['state_variables'], indent=2)}
-            """
-
-        prompt += """
-        Output format should be JSON matching the models.ActionExecution schema, including:
-        - List of ContractStateUpdate objects detailing state changes per contract
-        - Any new identifiers that may be created
-        """
-
-        return prompt
-    
-    def analyze(self):
-        # Step 1: Identify all contracts affected by this action
-        affected_contracts = self._extract_affected_contracts()
+    def analyze(self, action):
+        """Main analysis workflow"""
+        # Step 1: Build complete context
+        context = self._build_action_context(action)
         
-        # Step 2: Build comprehensive context for each contract
-        contract_contexts = [self._build_contract_context(name) for name in affected_contracts]
+        # Step 2: Generate LLM prompt for state changes
+        prompt = self._generate_state_change_prompt(context)
         
-        # Step 3: Generate LLM prompt to analyze state changes
-        llm_prompt = self._generate_llm_prompt_for_state_updates(contract_contexts)
-        
-        # Step 4: Call LLM to get state change analysis
+        # Step 3: Get state change analysis from LLM
         analyzer = ThreeStageAnalyzer(ActionExecution)
-        action_execution = analyzer.ask_llm(llm_prompt)
+        action_execution = analyzer.ask_llm(prompt)
         
-        # Step 5: Generate final ActionDetail with additional LLM call
-        action_detail_prompt = self._generate_action_detail_prompt(action_execution)
-        action_detail = analyzer.ask_llm(action_detail_prompt)
-
+        # Step 4: Generate detailed action description
+        detail_prompt = self._generate_detail_prompt(action_execution)
+        action_detail = analyzer.ask_llm(detail_prompt)
+        
         return {
-            "action_execution": action_execution,
-            "action_detail": action_detail
+            "execution": action_execution,
+            "detail": action_detail,
+            "context": context
         }
     
-    def _generate_action_detail_prompt(self, action_execution):
-        """Generate prompt to create detailed action description"""
+    def _generate_state_change_prompt(self, context) -> str:
+        """Generate prompt for state change analysis"""
+        contracts_text = "\n\n".join(
+            f"Contract: {c['name']}\n"
+            f"Code:\n{c['code']}\n"
+            f"ABI:\n{json.dumps(c['abi'], indent=2)}"
+            for c in context['contracts']
+        )
+        
         return f"""
-Based on the following action execution analysis, create a detailed ActionDetail object:
+Analyze the state changes for this action:
 
-Action: {self.action.name}
-Contract: {self.action.contract_name}
-Function: {self.action.function_name}
+Action: {context['action']['name']}
+Description: {context['action']['summary']}
+Main Contract: {context['action']['contract']}
+Main Function: {context['action']['function']}
 
-State Changes:
+Contracts Involved:
+{contracts_text}
+
+Call Tree:
+{json.dumps(context['call_tree'], indent=2)}
+
+Please analyze:
+1. Which state variables are modified
+2. When they are modified (conditions/timing)
+3. What new identifiers are created
+
+Return analysis in JSON matching ActionExecution schema.
+"""
+    
+    def _generate_detail_prompt(self, action_execution) -> str:
+        """Generate prompt for detailed action description"""
+        return f"""
+Based on this state change analysis, create detailed action instructions:
+
 {json.dumps(action_execution.dict(), indent=2)}
 
 Generate:
-1. Pre-execution parameter generation rules
-2. Description of state updates made during execution
-3. Post-execution validation rules
+1. Parameter generation rules
+2. State update descriptions  
+3. Validation rules
 
-Output should be a JSON object matching the ActionDetail schema.
+Return in JSON matching ActionDetail schema.
 """
-        
+    
     # def analyze(self):
         # Understand what the action is about, any new identifiers it needs.
         # We need to get relevant code snippets from the project and pass that to LLM.
