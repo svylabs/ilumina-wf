@@ -264,7 +264,25 @@ class ActionDetail(IluminaOpenAIResponseModel):
     on_execution_state_updates_made: list[str]
     # Validation rules in terms of function calls to make to validate the state
     post_execution_contract_state_validation_rules: list[str]
-    
+
+class VariableUpdate(IluminaOpenAIResponseModel):
+    name: str
+    type: str
+    summary_of_update: str
+
+class ContractStateUpdate(IluminaOpenAIResponseModel):
+    contract_name: str
+    variables_updated: list[VariableUpdate]
+
+class ConditionalFlow(IluminaOpenAIResponseModel):
+    condition: str
+    state_updates: list[ContractStateUpdate]
+
+class ActionExecution(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    function_name: str
+    conditional_flow: list[ConditionalFlow]
     
 class Action(IluminaOpenAIResponseModel):
     name: str

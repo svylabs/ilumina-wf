@@ -59,8 +59,6 @@ def extract_local_function_tree(project_path: str, contract_name: str, entry_fun
     visit(all_funcs[entry_func_full_name])
     return result
 
-
-
 class ActionAnalyzer:
     def __init__(self, action, context):
         self.action = action
@@ -69,6 +67,19 @@ class ActionAnalyzer:
     def analyze(self):
         # Understand what the action is about, any new identifiers it needs.
         # We need to get relevant code snippets from the project pass that to LLM.
+
+        # 1. Understand state variables that are updated by an action
+        # 2. Understand if the action needs any identifiers.
+
+        # For one action-
+        # 1. Get the code snippet for the action(this may encompass multiple functions, multiple contract calls)
+        # 2. Identify the contracts affected by the action
+        # 3. Identify the code snippets for each contracts separately
+        # 4. For each contract: build a code snippet and identify the ABIs for the contract
+        # call llm to get the models.ContractStateUpdate
+
+
+
         pass
 
 if __name__ == "__main__":
