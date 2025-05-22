@@ -66,17 +66,32 @@ class ActionAnalyzer:
     
     def analyze(self):
         # Understand what the action is about, any new identifiers it needs.
-        # We need to get relevant code snippets from the project pass that to LLM.
+        # We need to get relevant code snippets from the project and pass that to LLM.
 
         # 1. Understand state variables that are updated by an action
         # 2. Understand if the action needs any identifiers.
 
-        # For one action-
+        # For one action provided by the user, we need to build models.ActionExecution instance
+        #Steps 1:
         # 1. Get the code snippet for the action(this may encompass multiple functions, multiple contract calls)
         # 2. Identify the contracts affected by the action
         # 3. Identify the code snippets for each contracts separately
-        # 4. For each contract: build a code snippet and identify the ABIs for the contract
-        # call llm to get the models.ContractStateUpdate
+        # 4. For each contract affected by the action: build a code snippet and identify the ABI for the contract
+        # Call LLM to build a list of (models.ContractStateUpdate)
+            # LLM should be given the following
+            # 1. The code snippet from the contract
+            # ABI for the contract
+            # Function entry point for the contract
+            # It should produce list[ContractStateUpdate] as output
+
+
+        # Step 2:
+        # We should also understand if the action needs any new identifiers or not.
+        # and capture that as list[models.Identifier]
+        
+        # Once these two steps are done, we need to build a models.ActionExecution instance.
+        # From models.ActionExecution instance, we need to build models.ActionDetail instance with LLM.
+
 
 
 
