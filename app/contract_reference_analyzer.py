@@ -5,6 +5,11 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Union
 import os
 import tempfile
+from typing import List, Dict
+from slither.slither import Slither
+from slither.core.declarations import Function, Contract
+from slither.core.variables.state_variable import StateVariable
+#from app.context import prepare_context_lazy
 
 # Data Models
 @dataclass
@@ -102,8 +107,8 @@ class ContractReferenceAnalyzer:
         """Heuristic: Is this type likely a contract reference?"""
         return (
             var_type[0].isupper()  # Uppercase (Solidity naming convention)
-            and var_type not in ["uint256", "address", "string", "bool"]  # Not a primitive
-            and not var_type.startswith(("mapping", "array"))  # Not a complex type
+            and var_type not in ["uint256", "string", "bool"]  # Not a primitive
+            and not var_type.startswith(("mapping", "array", "uint", "int"))  # Not a complex type
         )
 
     # Step 2: Deployment Initialization Matching
@@ -227,31 +232,175 @@ class ContractReferenceAnalyzer:
     # Slither Integration
     def _run_slither(self, project_path: str, contract_name: str) -> List[Dict]:
         """Run Slither directly via Python API and extract state variables for a contract."""
-        from slither.slither import Slither
         slither = Slither(project_path)
         for contract in slither.contracts:
             if contract.name == contract_name:
                 return [
                     {
                         "name": var.name,
-                        "type": var.type,
+                        "type": str(var.type),
                         "visibility": var.visibility,
-                        "src": var.source_mapping.content
+                        #"src": var.source_mapping.content,
+                        "expression": var.expression
                     }
                     for var in contract.state_variables
                 ]
         return []
+    
+    def resolve_assignment_expression(self, func, value_name: str, depth=0, visited=None) -> str:
+        if visited is None:
+            visited = set()
+        if value_name in visited or depth > 5:
+            return value_name  # avoid infinite loops
+        visited.add(value_name)
+
+        for node in func.nodes:
+            for ir in node.irs:
+                # Match the IR instruction where the temp var is defined
+                if hasattr(ir, 'lvalue') and str(ir.lvalue) == value_name:
+                    # Try to resolve known forms of RHS
+                    if hasattr(ir, 'rvalue') and ir.rvalue:
+                        rvalue = ir.rvalue
+                        rvalue_str = str(rvalue)
+                        if rvalue_str.startswith("TMP_"):
+                            return self.resolve_assignment_expression(func, rvalue_str, depth + 1, visited)
+                        return rvalue_str
+                    elif hasattr(ir, 'expression'):
+                        return str(ir.expression)
+                    elif hasattr(ir, 'value'):
+                        return str(ir.value)
+                    else:
+                        return str(ir)  # fallback
+
+        return value_name  # unresolved
+
+
+
+    def find_contract_references(self, project_path: str, contract_name: str) -> List[Dict]:
+        slither = Slither(project_path)
+        result = []
+
+        for contract in slither.contracts:
+            if contract.name != contract_name:
+                continue
+
+            # All contract-type state variables
+            state_vars = {
+                var.name: var
+                for var in contract.state_variables
+                if hasattr(var.type, "type") and isinstance(var.type.type, Contract)
+            }
+
+            # Case 1: Declaration-time assignments (e.g., new ConcreteContract())
+            for var in state_vars.values():
+                if var.initialized and var.expression:
+                    expr_str = str(var.expression)
+                    if "new " in expr_str:
+                        # Try to extract contract name (e.g., new ChainlinkOracle(...) → ChainlinkOracle)
+                        contract_name = expr_str.split("new ")[1].split("(")[0].strip()
+                        result.append({
+                            "variable": var.name,
+                            "contract_type": var.type.name,
+                            "assignment_type": "declaration_new",
+                            "implementation": contract_name,
+                            "line": var.source_mapping.start_line
+                        })
+
+            # Case 2: Assignments to state vars (in constructor or functions)
+            for function in contract.functions:
+                for node in function.nodes:
+                    for ir in node.irs:
+                        # check if the LHS is a state variable
+                        if hasattr(ir, "lvalue") and isinstance(ir.lvalue, StateVariable):
+                            #print(f"Found state variable assignment in {function.full_name}: {ir.lvalue}")
+                            var_name = ir.lvalue.name
+                            if var_name not in state_vars:
+                                continue
+
+                            raw_expr = str(getattr(ir, "rvalue", "unknown"))
+                            assignment_expression = (
+                                self.resolve_assignment_expression(function, raw_expr)
+                                if raw_expr.startswith("TMP_")
+                                else raw_expr
+                            )
+
+                            assignment = {
+                                "variable": var_name,
+                                "contract_type": state_vars[var_name].type.type.name,
+                                "assigned_in": function.full_name,
+                                "assignment_expression": assignment_expression,
+                                "line": getattr(node.source_mapping, "start", -1)
+                            }
+                            result.append(assignment)
+
+
+            # Case 3: Inline casts in external calls (e.g., IOracle(addr).fetchPrice())
+            for func in contract.functions:
+                for node in func.nodes:
+                    for ir in node.irs:
+                        if hasattr(ir, "destination"):
+                            dest = ir.destination
+                            if hasattr(dest, "type") and hasattr(dest.type, "type") and isinstance(dest.type.type, Contract):
+                                cast_from = self.find_original_cast_source(func, ir.destination)
+                                result.append({
+                                    "variable": dest.name,
+                                    "inline_call_cast": True,
+                                    "cast_to": dest.type.type.name,
+                                    "used_in_function": func.full_name,
+                                    "line": node.source_mapping.start,
+                                    "cast_from": cast_from
+                                })
+
+        return result
+
+    def find_original_cast_source(self, func, tmp_var):
+        """
+        Trace TMP variable back to its cast source expression like stableBaseCDP
+        from IRewardSender(stableBaseCDP)
+        """
+        for node in func.nodes:
+            for ir in node.irs:
+                if hasattr(ir, 'lvalue') and str(ir.lvalue) == str(tmp_var):
+                    expr = None
+
+                    if hasattr(ir, 'expression'):
+                        expr = str(ir.expression)
+                    elif hasattr(ir, 'value'):
+                        expr = str(ir.value)
+                    else:
+                        expr = str(ir)
+
+                    # Strip the cast wrapper like: IInterface(x) → x
+                    if "(" in expr and ")" in expr:
+                        try:
+                            inner = expr.split("(", 1)[1].rsplit(")", 1)[0]
+                            return inner.strip()
+                        except IndexError:
+                            return expr  # fallback: return full
+
+                    return expr
+
+        return None
+
+
+
+
 
 # Example Usage
 if __name__ == "__main__":
-    project_path = "/tmp/workspaces/s2/stablebase"
-    contract_name = "StableBaseCDP"
+    project_path = "/tmp/workspaces/b2467fc4-e77a-4529-bcea-09c31cb2e8fe/stablebase"
+    contract_name = "DFIREStaking"
+    """context = prepare_context_lazy({
+        "run_id": "1746304145",
+        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        "github_repository_url": "https://github.com/svylabs/stablebase"
+    })"""
     analyzer = ContractReferenceAnalyzer(use_slither=True, llm_fallback=True)
     print(f"Extracting contract references for contract: {contract_name} in {project_path}")
     state_vars = analyzer._run_slither(project_path, contract_name)
     print("State Variables:")
     for var in state_vars:
-        print(f"- {var['name']} ({var['type']}, {var['visibility']})")
+        print(f"- {var['name']} ({var['type']}, {var['visibility']}), {var['expression']})")
 
     references = [
         ContractReference(state_variable_name=var['name'], interface_type=var['type'])
@@ -260,3 +409,9 @@ if __name__ == "__main__":
     print("\nContract References:")
     for ref in references:
         print(f"- {ref.state_variable_name}: {ref.interface_type}")
+    
+
+    result = analyzer.find_contract_references(project_path, contract_name)
+    print("\nContract References from Slither:")
+    for ref in result:
+        print(f"- {ref}")

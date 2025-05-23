@@ -553,7 +553,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "implement_deployment_script",
             "success"
         )
-        create_task({"submission_id": submission["submission_id"]})
+        if (request_context == "bg"):
+            create_task({"submission_id": submission["submission_id"]})
         return jsonify({
             "message": "Deployment script implemented successfully",
             "log": "Deployment script implemented successfully"
@@ -637,7 +638,8 @@ def verify_deploy_script(submission, request_context, user_prompt):
                     "log": list(result)  # contract addresses
                 }
             )
-            create_task({"submission_id": submission["submission_id"]})
+            if request_context == "bg":
+                create_task({"submission_id": submission["submission_id"]})
             return jsonify({
                 "success": True,
                 "log": list(result)  # stdout
