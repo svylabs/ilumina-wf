@@ -285,6 +285,19 @@ class ActionDetail(IluminaOpenAIResponseModel):
             "post_execution_contract_state_validation_rules": self.post_execution_contract_state_validation_rules
         }
 
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    @classmethod
+    def load_summary(cls, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionDetail.load(content)
+        return None
+
 class StateUpdate(IluminaOpenAIResponseModel):
     state_variable_name: str
     type: str
@@ -329,6 +342,19 @@ class ActionExecution(IluminaOpenAIResponseModel):
             "all_state_updates": [state_update.to_dict() for state_update in self.all_state_updates]
         }
     
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    @classmethod
+    def load_summary(self, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionExecution.load(content)
+        return None
+    
 class Action(IluminaOpenAIResponseModel):
     name: str
     summary: str
@@ -345,6 +371,28 @@ class Action(IluminaOpenAIResponseModel):
             "function_name": self.function_name,
             "probability": self.probability
         }
+    
+class ContractReference(IluminaOpenAIResponseModel):
+    state_variable_name: str
+    contract_name: str
+
+    def to_dict(self):
+        return {
+            "state_variable_name": self.state_variable_name,
+            "contract_name": self.contract_name
+        }
+    
+class ContractReferences(IluminaOpenAIResponseModel):
+    references: list[ContractReference]
+
+    def to_dict(self):
+        return {
+            "references": [reference.to_dict() for reference in self.references]
+        }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
     
 
 class Actor(IluminaOpenAIResponseModel):
