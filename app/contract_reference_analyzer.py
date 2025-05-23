@@ -244,52 +244,19 @@ class ContractReferenceAnalyzer:
 
 # Example Usage
 if __name__ == "__main__":
-    # Example Contract
-    contract_code = """
-    pragma solidity ^0.8.0;
-    interface IStabilityPool {}
-    interface IDFireToken {}
-    contract StableBaseCDP {
-        IStabilityPool public stabilityPool;
-        IDFireToken public dfireToken;
-        address public owner;
-        constructor(IStabilityPool _stabilityPool) {
-            stabilityPool = _stabilityPool;
-        }
-    }
-    """
-    
-    # Example Deployment Script
-    deployment_code = """
-    // Deploy mocks
-    MockStabilityPool stabilityPool = new MockStabilityPool();
-    DFireToken dfireToken = new DFireToken();
-    // Initialize StableBaseCDP
-    StableBaseCDP cdp = new StableBaseCDP(stabilityPool);
-    cdp.setDFireToken(dfireToken);
-    """
-    
-    analyzer = ContractReferenceAnalyzer(use_slither=False, llm_fallback=True)
-    result = analyzer.analyze(contract_code, deployment_code, "StableBaseCDP")
-    
-    print("===== Analysis Result =====")
-    print(f"Contract: {result.contract_name}")
-    for ref in result.references:
-        print(f"\nState Variable: {ref.state_variable_name}")
-        print(f"  - Interface: {ref.interface_type}")
-        print(f"  - Implementation: {ref.concrete_implementation}")
-        if ref.initialization:
-            print(f"  - Initialized via: {ref.initialization['method']}")
-            print(f"  - Code: {ref.initialization['code_snippet']}")
-    
-    # Example usage with real project data (like in action_analyzer)
-    # Set your real project path and contract name here
-    project_path = "/tmp/workspaces/s2/stablebase"  # Example path
+    project_path = "/tmp/workspaces/s2/stablebase"
     contract_name = "StableBaseCDP"
     analyzer = ContractReferenceAnalyzer(use_slither=True, llm_fallback=True)
-    print(f"Extracting state variables for contract: {contract_name} in {project_path}")
+    print(f"Extracting contract references for contract: {contract_name} in {project_path}")
     state_vars = analyzer._run_slither(project_path, contract_name)
     print("State Variables:")
     for var in state_vars:
         print(f"- {var['name']} ({var['type']}, {var['visibility']})")
-        # Optionally print source code: print(var['src'])
+
+    references = [
+        ContractReference(state_variable_name=var['name'], interface_type=var['type'])
+        for var in state_vars if analyzer._is_contract_reference(var['type'])
+    ]
+    print("\nContract References:")
+    for ref in references:
+        print(f"- {ref.state_variable_name}: {ref.interface_type}")
