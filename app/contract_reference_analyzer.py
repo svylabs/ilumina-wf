@@ -381,6 +381,42 @@ class ContractReferenceAnalyzer:
                     return expr
 
         return None
+    
+    def extract_address_assignments(self, project_path: str, contract_name: str, target_vars: List[str]) -> List[Dict]:
+        slither = Slither(project_path)
+        results = []
+
+        for contract in slither.contracts:
+            if contract.name != contract_name:
+                continue
+
+            for func in contract.functions:
+                for node in func.nodes:
+                    for ir in node.irs:
+                        if hasattr(ir, "lvalue"):
+                            var_name = str(ir.lvalue)
+
+                            if var_name in target_vars:
+                                var_type = getattr(ir.lvalue, "type", None)
+                                if not var_type or "address" not in str(var_type):
+                                    continue  # skip non-address types
+
+                                # Get the RHS (rvalue)
+                                rhs = (
+                                    str(getattr(ir, "rvalue", None)) or
+                                    str(getattr(ir, "expression", None)) or
+                                    str(getattr(ir, "value", None)) or
+                                    "unknown"
+                                )
+
+                                results.append({
+                                    "variable": var_name,
+                                    "assigned_in": func.full_name,
+                                    "assignment_expression": rhs,
+                                    "line": getattr(node.source_mapping, "start", -1)
+                                })
+
+        return results
 
 
 
@@ -389,7 +425,7 @@ class ContractReferenceAnalyzer:
 # Example Usage
 if __name__ == "__main__":
     project_path = "/tmp/workspaces/b2467fc4-e77a-4529-bcea-09c31cb2e8fe/stablebase"
-    contract_name = "DFIREStaking"
+    contract_name = "StabilityPool"
     """context = prepare_context_lazy({
         "run_id": "1746304145",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
@@ -413,5 +449,10 @@ if __name__ == "__main__":
 
     result = analyzer.find_contract_references(project_path, contract_name)
     print("\nContract References from Slither:")
+    for ref in result:
+        print(f"- {ref}")
+
+    result = analyzer.extract_address_assignments(project_path, contract_name, ["stableBaseCDP"])
+    print("\nCasts from Address Variables:")
     for ref in result:
         print(f"- {ref}")
