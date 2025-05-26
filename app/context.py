@@ -52,8 +52,6 @@ def compile_contracts(context):
     if compile_process.returncode != 0:
         raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
 
-        
-
 def prepare_context(data, optimize=True, contract_branch="main"):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
@@ -200,6 +198,7 @@ class RunContext:
         self.workspace = workspace
         self.name = repo.split("/")[-1]
         self.submission = submission if submission else {}
+        self._project_type = None
         if (os.path.exists(self.cwd()) == False):
             os.makedirs(self.cwd())
 
@@ -319,7 +318,8 @@ class RunContext:
         raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def relative_path_prefix_artifacts(self, file):
-        artifact_path = os.path.join(self.cws(), "artifacts")
+        """Get relative path to artifacts directory"""
+        artifact_path = self.artifact_path()
         relative_path = os.path.relpath(artifact_path, os.path.dirname(file))
         return relative_path.replace("\\", "/")  # Normalize path for GCS
     
