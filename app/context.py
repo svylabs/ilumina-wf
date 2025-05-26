@@ -316,5 +316,6 @@ class RunContext:
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces"),
     RunContext("s2", "2", "https://github.com/svylabs/stablebase", "/tmp/workspaces"),
-    RunContext("s3", "3", "https://github.com/svylabs-com/sample-hardhat-project", "/tmp/workspaces")
+    RunContext("s3", "3", "https://github.com/svylabs-com/sample-hardhat-project", "/tmp/workspaces"),
+    RunContext("s4", "4", "https://github.com/svylabs-com/sample-foundry-project", "/tmp/workspaces")
 ]
