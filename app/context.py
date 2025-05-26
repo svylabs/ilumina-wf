@@ -71,26 +71,68 @@ def prepare_context(data, optimize=True, contract_branch="main"):
     # Clone the main repository
     clone_repo(repo, context.cws(), branch=contract_branch)
 
-    # Install dependencies for MAIN project
-    try:
-        # First clean install from lockfile if exists
-        if os.path.exists(os.path.join(context.cws(), 'package-lock.json')):
-            subprocess.run(["npm", "ci", "--legacy-peer-deps"],
+    # Install dependencies based on project type
+    project_type = context.project_type()
+
+    if project_type == 'hardhat':
+        try:
+            # First clean install from lockfile if exists
+            if os.path.exists(os.path.join(context.cws(), 'package-lock.json')):
+                subprocess.run(["npm", "ci", "--legacy-peer-deps"],
+                             cwd=context.cws(),
+                             check=True,
+                             capture_output=True,
+                             text=True)
+            else:
+                # Full install with explicit required packages
+                subprocess.run(
+                    ["npm", "install", "--legacy-peer-deps"],
+                    cwd=context.cws(),
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"Main project dependency installation failed:\n{e.stderr}")
+        
+    else:  # foundry
+        try:
+            # Check if foundry is installed
+            subprocess.run(["forge", "--version"],
                          cwd=context.cws(),
                          check=True,
                          capture_output=True,
                          text=True)
-        else:
-            # Full install with explicit required packages
-            subprocess.run(
-                ["npm", "install", "--legacy-peer-deps"],
-                cwd=context.cws(),
-                check=True,
-                capture_output=True,
-                text=True
-            )
-    except subprocess.CalledProcessError as e:
-        raise Exception(f"Main project dependency installation failed:\n{e.stderr}")
+            print("Foundry is already installed")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Install foundry if not present
+            print("Installing Foundry...")
+            try:
+                subprocess.run("curl -L https://foundry.paradigm.xyz | bash",
+                             shell=True,
+                             cwd=context.cws(),
+                             check=True,
+                             capture_output=True,
+                             text=True)
+                subprocess.run(["foundryup"],
+                             cwd=context.cws(),
+                             check=True,
+                             capture_output=True,
+                             text=True)
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"Foundry installation failed:\n{e.stderr}")
+            
+        # Install dependencies if foundry.toml exists
+        foundry_toml_path = os.path.join(context.cws(), 'foundry.toml')
+        if os.path.exists(foundry_toml_path):
+            try:
+                subprocess.run(["forge", "install"],
+                             cwd=context.cws(),
+                             check=True,
+                             capture_output=True,
+                             text=True)
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"Foundry dependency installation failed:\n{e.stderr}")
 
     # Clone the simulation repo into the project directory if not already cloned
     simulation_repo_name = f"{context.name}-simulation-" + run_id
@@ -113,7 +155,7 @@ def prepare_context(data, optimize=True, contract_branch="main"):
     else:
         clone_repo(simulation_template_repo, simulation_repo_path, branch="main")
 
-    # Install dependencies for SIMULATION project
+    # Install dependencies for SIMULATION project (always uses Hardhat)
     try:
         # First try clean install
         subprocess.run(["npm", "ci", "--legacy-peer-deps"],
@@ -180,14 +222,53 @@ class RunContext:
         """Returns path to simulation code"""
         with open(os.path.join(self.simulation_path(), code_path)) as f:
             return f.read()
+        
+    def project_type(self):
+        """Detect whether project uses Hardhat or Foundry
+        Returns:
+            str: 'hardhat' or 'foundry'
+        """
+        if self._project_type is not None:
+            return self._project_type 
+        
+        project_path = self.cws()
+
+        # Check for Hardhat (priority if both exist)
+        if (os.path.exists(os.path.join(project_path, 'hardhat.config.js')) or \
+            os.path.exists(os.path.join(project_path, 'hardhat.config.ts'))):
+            self._project_type = 'hardhat'
+            return self._project_type
+        
+        # Check for Foundry
+        if os.path.exists(os.path.join(project_path, 'foundry.toml')):
+            self._project_type = 'foundry'
+            return self._project_type
+        
+        # Check for secondary Foundry indicators
+        if (os.path.exists(os.path.join(project_path, 'lib', 'forge-std')) or \
+            os.path.exists(os.path.join(project_path, 'src')) or \
+            os.path.exists(os.path.join(project_path, 'test'))):
+            self._project_type = 'foundry'
+            return self._project_type
+        
+        raise Exception(
+            f"Could not determine project type (Hardhat or Foundry) in {project_path}. "
+            "Expected either hardhat.config.js/ts or foundry.toml"
+        )
     
     def artifact_path(self):
-        os.path.join(self.cws(), "artifacts")        
-    
+        """Returns path to artifacts directory based on project type"""
+        if self.project_type() == 'hardhat':
+            return os.path.join(self.cws(), "artifacts")
+        else:  # foundry
+            return os.path.join(self.cws(), "out")    
+
     def abi(self, contract_name):
-        """Returns path to ABI file"""
-        # Differentiate between hardhat and foundry
-        return os.path.join(self.artifact_path(), "contracts", contract_name, f"{contract_name}.json")
+        """Returns path to ABI file based on project type"""
+        if self.project_type() == 'hardhat':
+            return os.path.join(self.artifact_path(), "contracts", contract_name, f"{contract_name}.json")
+        else:  # foundry
+            return os.path.join(self.artifact_path(), f"{contract_name}.sol", f"{contract_name}.json")   
     
     def ctx_path(self):
         return self.cwd() + "/context.json"
@@ -200,31 +281,47 @@ class RunContext:
     
     def compiled_contracts_path(self):
         """Returns path to compiled contracts JSON file"""
-        return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
+        if self.project_type() == 'hardhat':
+            return os.path.join(self.cws(), "artifacts/compiled_contracts.json")
+        else:  # foundry
+            return os.path.join(self.cws(), "out/compiled_contracts.json")
+        
+    def contract_artifact_path(self, contract_name):
+        """Search for contract artifacts based on project type"""
+        if self.project_type() == 'hardhat':
+            artifacts_root = os.path.join(self.cws(), "artifacts/contracts")
+            if not os.path.exists(artifacts_root):
+                raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
+            
+        # Search for JSON files containing the contract name
+        for root, _, files in os.walk(artifacts_root):
+            for file in files:
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
+                    file_path = os.path.join(root, file)
+                    if file == f"{contract_name}.json":
+                        return file_path
+                    
+        else:  # foundry
+            artifacts_root = os.path.join(self.cws(), "out")
+            if not os.path.exists(artifacts_root):
+                raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
+            
+            # Foundry artifacts are in out/{ContractName}.sol/{ContractName}.json
+            contract_path = os.path.join(artifacts_root, f"{contract_name}.sol", f"{contract_name}.json")
+            if os.path.exists(contract_path):
+                return contract_path
+            
+            # Also check for .abi.json files in Foundry
+            abi_path = os.path.join(artifacts_root, f"{contract_name}.sol", f"{contract_name}.abi.json")
+            if os.path.exists(abi_path):
+                return abi_path
+            
+        raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def relative_path_prefix_artifacts(self, file):
         artifact_path = os.path.join(self.cws(), "artifacts")
         relative_path = os.path.relpath(artifact_path, os.path.dirname(file))
         return relative_path.replace("\\", "/")  # Normalize path for GCS
-        
-    
-    def contract_artifact_path(self, contract_name):
-        """Search for any JSON file containing the contract name in artifacts/contracts."""
-        artifacts_root = os.path.join(self.cws(), "artifacts/contracts")
-        if not os.path.exists(artifacts_root):
-            raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
-
-        # Search for JSON files containing the contract name
-        for root, _, files in os.walk(artifacts_root):
-            for file in files:
-                # if file.endswith(".json"):
-                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
-                    file_path = os.path.join(root, file)
-                    # print(f"Found JSON file in context: {file_path}")  # Print the JSON file path
-                    if file == f"{contract_name}.json":
-                        return file_path
-
-        raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def deployment_code(self):
         with open(self.deployment_instructions_path()) as f:
