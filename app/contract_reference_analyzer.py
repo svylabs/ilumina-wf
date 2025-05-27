@@ -1,6 +1,8 @@
 import re
 import json
 import subprocess
+import dotenv
+dotenv.load_dotenv()
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Union
 import os
@@ -9,40 +11,30 @@ from typing import List, Dict
 from slither.slither import Slither
 from slither.core.declarations import Function, Contract
 from slither.core.variables.state_variable import StateVariable
+from .context import RunContext, prepare_context_lazy
+from .models import DeploymentInstruction, ContractReference, ContractReferences
+from .three_stage_llm_call import ThreeStageAnalyzer
 #from app.context import prepare_context_lazy
 
-# Data Models
-@dataclass
-class ContractReference:
-    state_variable_name: str
-    interface_type: str  # Interface (e.g., IStabilityPool)
-    concrete_implementation: Optional[str] = None  # Actual deployed contract (e.g., MockStabilityPool)
-    initialization: Optional[Dict] = None  # {method: str, params: List[str], code_snippet: str}
-
-@dataclass
-class ContractAnalysisResult:
-    contract_name: str
-    references: List[ContractReference]
-    deployment_matches: Dict[str, str]  # var_name -> deployment_code_snippet
 
 # Core Analyzer
 class ContractReferenceAnalyzer:
     def __init__(
         self,
-        use_slither: bool = True,
-        llm_fallback: bool = True,
-        solc_version: Optional[str] = None
+        context: RunContext,
+        slither=None
     ):
-        self.use_slither = use_slither
-        self.llm_fallback = llm_fallback
-        self.solc_version = solc_version
+        self.context = context
+        if slither is None:
+            self.slither = Slither(context.cws())
+        else:
+            self.slither = slither
 
     def analyze(
         self,
-        contract_code: str,
-        deployment_instructions: Union[str, Dict],
+        deployment_instructions: DeploymentInstruction,
         contract_name: str
-    ) -> ContractAnalysisResult:
+    ) -> ContractReferences:
         """
         Full Analysis:
         1. Extract contract references from state variables.
@@ -50,203 +42,87 @@ class ContractReferenceAnalyzer:
         3. Use LLM fallback for unresolved cases.
         """
         # Step 1: Extract references (Slither -> Regex fallback)
-        references = self._extract_references_static(contract_code, contract_name)
-        
-        # Step 2: Parse deployment instructions (supports scripts/JSON)
-        deployment_code = self._normalize_deployment_instructions(deployment_instructions)
-        
-        # Step 3: Match initializations
-        result = self._match_deployment_initializers(references, deployment_code, contract_name)
-        
-        # Step 4: LLM fallback for unresolved references
-        if self.llm_fallback and self._needs_llm_fallback(result):
-            llm_result = self._analyze_with_llm(contract_code, deployment_code, contract_name)
-            if llm_result:
-                return llm_result
-        
-        return result
+        references = self.find_contract_references(contract_name)
+        direct_initializations = references[0]
+        initialization_with_constructors_functions = references[1]
+        inline_casts = references[2]
 
-    # Step 1: Static Reference Extraction
-    def _extract_references_static(self, code: str, contract_name: str) -> List[ContractReference]:
-        """Extract contract references using Slither (with regex fallback)."""
-        references = []
-        
-        # Option 1: Slither (accurate)
-        if self.use_slither:
-            try:
-                slither_vars = self._run_slither(code, contract_name)
-                for var in slither_vars:
-                    if self._is_contract_reference(var["type"]):
-                        references.append(
-                            ContractReference(
-                                state_variable_name=var["name"],
-                                interface_type=var["type"]
-                            )
-                        )
-                return references
-            except Exception as e:
-                print(f"Slither failed, falling back to regex: {e}")
-        
-        # Option 2: Regex fallback
-        # Matches: `IStabilityPool public stabilityPool;` or `StabilityPool stabilityPool;`
-        pattern = r"(I?[A-Z][a-zA-Z0-9]*)\s+(?:public|private|internal)?\s*([a-zA-Z0-9_]+)\s*;"
-        matches = re.finditer(pattern, code)
-        for match in matches:
-            contract_type, var_name = match.group(1), match.group(2)
-            if self._is_contract_reference(contract_type):
-                references.append(
-                    ContractReference(
-                        state_variable_name=var_name,
-                        interface_type=contract_type
-                    )
-                )
-        
-        return references
+        known_references = []
 
-    def _is_contract_reference(self, var_type: str) -> bool:
-        """Heuristic: Is this type likely a contract reference?"""
-        return (
-            var_type[0].isupper()  # Uppercase (Solidity naming convention)
-            and var_type not in ["uint256", "string", "bool"]  # Not a primitive
-            and not var_type.startswith(("mapping", "array", "uint", "int"))  # Not a complex type
-        )
-
-    # Step 2: Deployment Initialization Matching
-    def _normalize_deployment_instructions(self, instructions: Union[str, Dict]) -> str:
-        """Convert deployment config (JSON/script) into parseable text."""
-        if isinstance(instructions, dict):
-            return json.dumps(instructions)
-        return instructions
-
-    def _match_deployment_initializers(
-        self,
-        references: List[ContractReference],
-        deployment_code: str,
-        contract_name: str
-    ) -> ContractAnalysisResult:
-        """Match references with deployment initializations."""
-        deployment_matches = {}
-        updated_references = []
-        
-        for ref in references:
-            # Case 1: Direct assignment (e.g., `stabilityPool = new MockStabilityPool()`)
-            direct_pattern = rf"{ref.state_variable_name}\s*=\s*(.*?);"
-            direct_match = re.search(direct_pattern, deployment_code)
-            
-            # Case 2: Method call (e.g., `setStabilityPool(address(stabilityPool))`)
-            method_pattern = rf"\.(set\w+|setAddresses)\s*\((.*?)\)"
-            method_matches = re.finditer(method_pattern, deployment_code)
-            
-            # Case 3: Constructor initialization
-            constructor_pattern = rf"constructor\s*\(.*?{ref.interface_type}\s+{ref.state_variable_name}.*?\)"
-            constructor_match = re.search(constructor_pattern, deployment_code)
-            
-            if direct_match:
-                impl = self._extract_concrete_implementation(direct_match.group(1))
-                ref.concrete_implementation = impl
-                ref.initialization = {
-                    "method": "direct_assignment",
-                    "params": [direct_match.group(1)],
-                    "code_snippet": direct_match.group(0)
-                }
-                deployment_matches[ref.state_variable_name] = direct_match.group(0)
-            elif constructor_match:
-                ref.initialization = {
-                    "method": "constructor",
-                    "params": [],
-                    "code_snippet": constructor_match.group(0)
-                }
-            else:
-                # Check method calls
-                for match in method_matches:
-                    if ref.state_variable_name.lower() in match.group(0).lower():
-                        impl = self._extract_concrete_implementation(match.group(2))
-                        ref.concrete_implementation = impl
-                        ref.initialization = {
-                            "method": match.group(1),
-                            "params": [p.strip() for p in match.group(2).split(",")],
-                            "code_snippet": match.group(0)
-                        }
-                        deployment_matches[ref.state_variable_name] = match.group(0)
-                        break
-            
-            updated_references.append(ref)
-        
-        return ContractAnalysisResult(
-            contract_name=contract_name,
-            references=updated_references,
-            deployment_matches=deployment_matches
-        )
-
-    def _extract_concrete_implementation(self, code_snippet: str) -> Optional[str]:
-        """Extract concrete contract type from initialization code."""
-        # Example: `new MockStabilityPool()` -> "MockStabilityPool"
-        new_pattern = r"new\s+([A-Z][a-zA-Z0-9]*)"
-        match = re.search(new_pattern, code_snippet)
-        return match.group(1) if match else None
-
-    # Step 3: LLM Fallback
-    def _analyze_with_llm(
-        self,
-        contract_code: str,
-        deployment_code: str,
-        contract_name: str
-    ) -> Optional[ContractAnalysisResult]:
-        """Use LLM to resolve ambiguous references."""
-        try:
-            from app.three_stage_llm_call import ThreeStageAnalyzer  # Your custom LLM analyzer
-            analyzer = ThreeStageAnalyzer()
-            llm_result = analyzer.analyze_contract_references(
-                contract_code,
-                deployment_code,
-                contract_name
-            )
-            references = [
+        contract_references = []
+        for init in direct_initializations:
+            known_references.append(init["variable"])
+            contract_references.append(
                 ContractReference(
-                    state_variable_name=ref["variable"],
-                    interface_type=ref["interface"],
-                    concrete_implementation=ref.get("implementation"),
-                    initialization=ref.get("initialization")
+                    state_variable_name=init["variable"],
+                    contract_name=init["implementation"]
                 )
-                for ref in llm_result.get("references", [])
-            ]
-            return ContractAnalysisResult(
-                contract_name=contract_name,
-                references=references,
-                deployment_matches={
-                    ref.state_variable_name: ref.initialization["code_snippet"]
-                    for ref in references if ref.initialization
-                }
             )
-        except Exception as e:
-            print(f"LLM fallback failed: {e}")
-            return None
 
-    def _needs_llm_fallback(self, result: ContractAnalysisResult) -> bool:
-        """Check if any references lack initialization info."""
-        return any(
-            ref.initialization is None or ref.concrete_implementation is None
-            for ref in result.references
-        )
+        references_to_resolve = []
 
-    # Slither Integration
-    def _run_slither(self, project_path: str, contract_name: str) -> List[Dict]:
-        """Run Slither directly via Python API and extract state variables for a contract."""
-        slither = Slither(project_path)
-        for contract in slither.contracts:
-            if contract.name == contract_name:
-                return [
+        for init in initialization_with_constructors_functions:
+            known_references.append(init["variable"])
+            references_to_resolve.append(
                     {
-                        "name": var.name,
-                        "type": str(var.type),
-                        "visibility": var.visibility,
-                        #"src": var.source_mapping.content,
-                        "expression": var.expression
+                        "state_variable_name": init["variable"],
+                        "initialization_expression": init["assignment_expression"],
+                        "initialized_function": init["assigned_in"],
                     }
-                    for var in contract.state_variables
-                ]
-        return []
+                )
+        possible_address_assignments = []
+        for cast in inline_casts:
+            if cast["variable"].startswith("TMP_") and (cast["cast_from"] != "" and cast["cast_from"] is not None):
+                if cast["cast_from"] not in possible_address_assignments:
+                    possible_address_assignments.append(cast["cast_from"])
+
+        
+        address_assignments = self.extract_address_assignments(contract_name, possible_address_assignments)
+        for assignment in address_assignments:
+            if assignment["variable"] not in known_references:
+                known_references.append(assignment["variable"])
+                references_to_resolve.append(
+                    {
+                        "state_variable_name": assignment["variable"],
+                        "initialization_expression": assignment["assignment_expression"],
+                        "initialized_function": assignment["assigned_in"],
+                    }
+                )
+        
+        # Step 2: Call LLM to resolve contract references based on deployment instructions:
+        prompt = self._construct_prompt(contract_name, references_to_resolve, deployment_instructions)
+        #print(f"Constructed prompt for LLM:\n{prompt}")
+        llm = ThreeStageAnalyzer(ContractReferences)
+        result = llm.ask_llm(prompt)
+        for ref in contract_references:
+            result.references.append(ref)
+        return result
     
+    def _construct_prompt(
+        self,
+        contract_name: str,
+        references: List[Dict],
+        deployment_instructions: DeploymentInstruction
+    ) -> str:
+        """
+        Construct a prompt for LLM to resolve contract references.
+        """
+        prompt = f"""
+        Here is a list of contract references that need to be resolved. By references what I mean is, one contract can refer to other contracts. 
+        The references are generally state variables that are initialized during deployment.
+
+        The references(state variables) to resolve for {contract_name} are:
+
+        References:
+        {json.dumps(references, indent=2)}
+
+        Deployment Instructions:
+        {deployment_instructions.to_dict()}
+
+        Please provide a list of resolved contract names for the state variables based on deployment instructions.
+        """
+        return prompt
+
     def resolve_assignment_expression(self, func, value_name: str, depth=0, visited=None) -> str:
         if visited is None:
             visited = set()
@@ -276,11 +152,13 @@ class ContractReferenceAnalyzer:
 
 
 
-    def find_contract_references(self, project_path: str, contract_name: str) -> List[Dict]:
-        slither = Slither(project_path)
+    def find_contract_references(self, contract_name: str) -> List[Dict]:
         result = []
+        direct_initializations = []
+        initialization_with_constructors_functions = []
+        inline_casts = []
 
-        for contract in slither.contracts:
+        for contract in self.slither.contracts:
             if contract.name != contract_name:
                 continue
 
@@ -298,11 +176,12 @@ class ContractReferenceAnalyzer:
                     if "new " in expr_str:
                         # Try to extract contract name (e.g., new ChainlinkOracle(...) → ChainlinkOracle)
                         contract_name = expr_str.split("new ")[1].split("(")[0].strip()
-                        result.append({
+                        direct_initializations.append({
                             "variable": var.name,
                             "contract_type": var.type.name,
                             "assignment_type": "declaration_new",
                             "implementation": contract_name,
+                            "assignment_expression": expr_str,
                             "line": var.source_mapping.start_line
                         })
 
@@ -331,7 +210,7 @@ class ContractReferenceAnalyzer:
                                 "assignment_expression": assignment_expression,
                                 "line": getattr(node.source_mapping, "start", -1)
                             }
-                            result.append(assignment)
+                            initialization_with_constructors_functions.append(assignment)
 
 
             # Case 3: Inline casts in external calls (e.g., IOracle(addr).fetchPrice())
@@ -342,7 +221,7 @@ class ContractReferenceAnalyzer:
                             dest = ir.destination
                             if hasattr(dest, "type") and hasattr(dest.type, "type") and isinstance(dest.type.type, Contract):
                                 cast_from = self.find_original_cast_source(func, ir.destination)
-                                result.append({
+                                inline_casts.append({
                                     "variable": dest.name,
                                     "inline_call_cast": True,
                                     "cast_to": dest.type.type.name,
@@ -351,7 +230,7 @@ class ContractReferenceAnalyzer:
                                     "cast_from": cast_from
                                 })
 
-        return result
+        return direct_initializations, initialization_with_constructors_functions, inline_casts
 
     def find_original_cast_source(self, func, tmp_var):
         """
@@ -382,11 +261,10 @@ class ContractReferenceAnalyzer:
 
         return None
     
-    def extract_address_assignments(self, project_path: str, contract_name: str, target_vars: List[str]) -> List[Dict]:
-        slither = Slither(project_path)
+    def extract_address_assignments(self, contract_name: str, target_vars: List[str]) -> List[Dict]:
         results = []
 
-        for contract in slither.contracts:
+        for contract in self.slither.contracts:
             if contract.name != contract_name:
                 continue
 
@@ -426,33 +304,18 @@ class ContractReferenceAnalyzer:
 if __name__ == "__main__":
     project_path = "/tmp/workspaces/b2467fc4-e77a-4529-bcea-09c31cb2e8fe/stablebase"
     contract_name = "StabilityPool"
-    """context = prepare_context_lazy({
-        "run_id": "1746304145",
+    context = prepare_context_lazy({
+        "run_id": "1747743579",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase"
-    })"""
-    analyzer = ContractReferenceAnalyzer(use_slither=True, llm_fallback=True)
+    })
+    analyzer = ContractReferenceAnalyzer(context)
     print(f"Extracting contract references for contract: {contract_name} in {project_path}")
-    state_vars = analyzer._run_slither(project_path, contract_name)
-    print("State Variables:")
-    for var in state_vars:
-        print(f"- {var['name']} ({var['type']}, {var['visibility']}), {var['expression']})")
-
-    references = [
-        ContractReference(state_variable_name=var['name'], interface_type=var['type'])
-        for var in state_vars if analyzer._is_contract_reference(var['type'])
-    ]
-    print("\nContract References:")
-    for ref in references:
-        print(f"- {ref.state_variable_name}: {ref.interface_type}")
-    
-
-    result = analyzer.find_contract_references(project_path, contract_name)
-    print("\nContract References from Slither:")
-    for ref in result:
-        print(f"- {ref}")
-
-    result = analyzer.extract_address_assignments(project_path, contract_name, ["stableBaseCDP"])
-    print("\nCasts from Address Variables:")
-    for ref in result:
-        print(f"- {ref}")
+    print (context.deployment_instructions())
+    result = analyzer.analyze(
+        context.deployment_instructions(),
+        "StableBaseCDP"
+    )
+    print("Contract References:")
+    for ref in result.references:
+        print(f"State Variable: {ref.state_variable_name}, Contract: {ref.contract_name}")

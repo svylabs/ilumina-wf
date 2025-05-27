@@ -10,103 +10,16 @@
         "contract_name": "StableBaseCDP",
         "state_updated": [
           {
-            "state_variable_name": "safes",
-            "type": "mapping(uint256 => Safe)",
-            "summary_of_update": "Updates the Safe struct for the given safeId with new borrowedAmount, totalBorrowedAmount, and potentially weight, feePaid.",
+            "state_variable_name": "safes[safeId].borrowedAmount",
+            "type": "mapping",
+            "summary_of_update": "Updates the safe's borrowedAmount.",
             "has_conditional_updates": false,
             "conditions": []
           },
           {
             "state_variable_name": "totalDebt",
             "type": "uint256",
-            "summary_of_update": "Increases totalDebt by the borrowed amount.",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "PROTOCOL_MODE",
-            "type": "enum",
-            "summary_of_update": "Changes PROTOCOL_MODE from BOOTSTRAP to NORMAL if totalDebt exceeds BOOTSTRAP_MODE_DEBT_THRESHOLD.",
-            "has_conditional_updates": true,
-            "conditions": [
-              "debt > BOOTSTRAP_MODE_DEBT_THRESHOLD",
-              "PROTOCOL_MODE == SBStructs.Mode.BOOTSTRAP"
-            ]
-          },
-          {
-            "state_variable_name": "safesOrderedForRedemption",
-            "type": "IDoublyLinkedList",
-            "summary_of_update": "Updates the redemption queue with the new weight for the safe.",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "safesOrderedForLiquidation",
-            "type": "IDoublyLinkedList",
-            "summary_of_update": "Updates the liquidation queue with the new ratio for the safe.",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "liquidationSnapshots",
-            "type": "mapping(uint256 => LiquidationSnapshot)",
-            "summary_of_update": "Updates debtPerCollateralSnapshot and collateralPerCollateralSnapshot if snapshots are not equal to cumulative debt/collateral per unit collateral.",
-            "has_conditional_updates": true,
-            "conditions": [
-              "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
-            ]
-          },
-          {
-            "state_variable_name": "totalCollateral",
-            "type": "uint256",
-            "summary_of_update": "Increases totalCollateral if liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
-            "has_conditional_updates": true,
-            "conditions": [
-              "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
-            ]
-          }
-        ]
-      },
-      {
-        "contract_name": "DFIREToken",
-        "state_updated": [
-          {
-            "state_variable_name": "_balances",
-            "type": "mapping(address => uint256)",
-            "summary_of_update": "Mints SBD tokens to the borrower.",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "_totalSupply",
-            "type": "uint256",
-            "summary_of_update": "Increases the total supply of SBD tokens.",
-            "has_conditional_updates": false,
-            "conditions": []
-          }
-        ]
-      },
-      {
-        "contract_name": "StabilityPool",
-        "state_updated": [
-          {
-            "state_variable_name": "users",
-            "type": "mapping(address => UserInfo)",
-            "summary_of_update": "Adds rewards in the stability pool",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "rewardLoss",
-            "type": "uint256",
-            "summary_of_update": "Updates rewardLoss in stability pool.",
-            "has_conditional_updates": false,
-            "conditions": []
-          },
-          {
-            "state_variable_name": "totalRewardPerToken",
-            "type": "uint256",
-            "summary_of_update": "Updates totalRewardPerToken in stability pool.",
+            "summary_of_update": "Updates totalDebt by adding the borrowed amount.",
             "has_conditional_updates": false,
             "conditions": []
           }
@@ -119,33 +32,18 @@
     "contract_name": "StableBaseCDP",
     "function_name": "borrow",
     "pre_execution_parameter_generation_rules": [
-      "Generate a valid `safeId` for an existing safe.",
-      "Generate a `borrowAmount` greater than 0.",
-      "Ensure that the `borrowAmount` does not cause the safe to become undercollateralized based on the current collateral amount and asset price.",
-      "Ensure that the `safeId` corresponds to a Safe owned by the `msg.sender`."
+      "The `safeId` is provided by the user, and must correspond to an existing safe in the `safes` mapping.",
+      "The `borrowAmount` is provided by the user and must be greater than 0.",
+      "The maximum allowable `borrowAmount` is calculated as `(collateralValueInUSD / minimumCollateralizationRatio) - borrowedAmount - interestAccumulated`. The user-provided `borrowAmount` must be less than or equal to this calculated maximum."
     ],
     "on_execution_state_updates_made": [
-      "The `safes` mapping is updated with the new `borrowedAmount`, `totalBorrowedAmount`, and potentially `weight` and `feePaid` for the specified `safeId`.",
-      "The `totalDebt` is increased by the `borrowAmount`.",
-      "If the `totalDebt` exceeds `BOOTSTRAP_MODE_DEBT_THRESHOLD` and `PROTOCOL_MODE` is `BOOTSTRAP`, then `PROTOCOL_MODE` is changed to `NORMAL`.",
-      "The `safesOrderedForRedemption` doubly linked list is updated to reflect the new weight of the safe.",
-      "The `safesOrderedForLiquidation` doubly linked list is updated to reflect the new collateralization ratio of the safe.",
-      "If `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`, then `liquidationSnapshots.debtPerCollateralSnapshot` and `liquidationSnapshots.collateralPerCollateralSnapshot` are updated, and `totalCollateral` is increased.",
-      "The `_balances` mapping of `DFIREToken` is updated to reflect the minting of SBD tokens to the borrower.",
-      "The `_totalSupply` of `DFIREToken` is increased.",
-      "The `users`, `rewardLoss`, and `totalRewardPerToken` state variables in the `StabilityPool` contract are updated."
+      "The `safes[safeId].borrowedAmount` is increased by `borrowAmount`.  If the safe does not exist, the transaction will revert.",
+      "The `totalDebt` is increased by `borrowAmount`. If an overflow occurs during the addition, the transaction will revert."
     ],
     "post_execution_contract_state_validation_rules": [
-      "Assert that the `safes[safeId].borrowedAmount` is equal to the initial `safes[safeId].borrowedAmount` plus the `borrowAmount`.",
-      "Assert that `totalDebt` is equal to the initial `totalDebt` plus the `borrowAmount`.",
-      "If `PROTOCOL_MODE` was initially `BOOTSTRAP` and the new `totalDebt` is greater than `BOOTSTRAP_MODE_DEBT_THRESHOLD`, assert that `PROTOCOL_MODE` is now `NORMAL`.",
-      "Verify that the `safesOrderedForRedemption` doubly linked list is correctly updated based on the new safe's weight.",
-      "Verify that the `safesOrderedForLiquidation` doubly linked list is correctly updated based on the new safe's collateralization ratio.",
-      "If `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`, then verify that `liquidationSnapshots.debtPerCollateralSnapshot` and `liquidationSnapshots.collateralPerCollateralSnapshot` are updated, and `totalCollateral` is increased accordingly.",
-      "Verify that the borrower's `_balances` in `DFIREToken` has increased by the `borrowAmount`.",
-      "Verify that the `_totalSupply` of `DFIREToken` has increased by the `borrowAmount`.",
-      "Verify that the `users`, `rewardLoss`, and `totalRewardPerToken` state variables in the `StabilityPool` contract are updated accordingly.",
-      "Verify that the `msg.sender` is the owner of the safe with `safeId`."
+      "The new `safes[safeId].borrowedAmount` must equal the previous `safes[safeId].borrowedAmount` plus `borrowAmount`.",
+      "The new `totalDebt` must equal the previous `totalDebt` plus `borrowAmount`.",
+      "The collateralization ratio for `safeId` (calculated as `(collateralValueInUSD) / (borrowedAmount + interestAccumulated)`) must be greater than or equal to `minimumCollateralizationRatio`."
     ]
   }
 }

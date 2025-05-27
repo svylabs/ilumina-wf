@@ -5,70 +5,11 @@ import json
 from slither.slither import Slither
 from slither.core.declarations import Function
 from slither.slithir.operations import InternalCall, HighLevelCall
-from app.compiler import Compiler
-from app.three_stage_llm_call import ThreeStageAnalyzer
-from app.models import ActionExecution, ActionDetail  
-from app.context import example_contexts, prepare_context_lazy
-
-def extract_local_function_tree(project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
-    slither = Slither(project_path)
-    local_root = os.path.abspath(project_path if os.path.isdir(project_path) else os.path.dirname(project_path))
-    print(f"Local root: {local_root}")
-
-    # Step 1: Map all locally defined functions
-    all_funcs = {}  # full_name -> Function
-    funcs_by_name = {}  # short name -> list of Functions (for fallback matching)
-
-    for contract in slither.contracts:
-        if contract.is_interface:
-            continue
-        for func in contract.functions:
-            src_path = func.source_mapping.filename.absolute
-            if src_path and local_root in os.path.abspath(src_path):
-                all_funcs[func.full_name] = func
-                funcs_by_name.setdefault(func.name, []).append(func)
-
-    if entry_func_full_name not in all_funcs:
-        print("Available function full names detected by Slither:")
-        for fname in all_funcs.keys():
-            print(f"  - {fname}")
-        raise ValueError(f"Function '{entry_func_full_name}' not found in local project.")
-
-    visited = set()
-    result = {}
-
-    def visit(func: Function):
-        if func.full_name in visited:
-            return
-        visited.add(func.full_name)
-        # result[func.full_name] = func.source_mapping.content
-        result[func.full_name] = func
-
-        for node in func.nodes:
-            for ir in node.irs:
-                # Internal call to a known local function
-                if isinstance(ir, InternalCall):
-                    callee = ir.function
-                    if isinstance(callee, Function) and callee.full_name in all_funcs:
-                        visit(all_funcs[callee.full_name])
-
-                # External call (possibly to another local contract or library)
-                elif isinstance(ir, HighLevelCall):
-                    # First: direct function resolution (if available)
-                    if isinstance(ir.function, Function):
-                        callee = ir.function
-                        if callee.full_name in all_funcs:
-                            visit(all_funcs[callee.full_name])
-                    else:
-                        # Fallback: match by function name
-                        called_name = ir.function_name
-                        if called_name in funcs_by_name and len(funcs_by_name[called_name]) == 1:
-                            possible_callee = funcs_by_name[called_name][0]
-                            if possible_callee.full_name in all_funcs:
-                                visit(all_funcs[possible_callee.full_name])
-
-    visit(all_funcs[entry_func_full_name])
-    return result
+from .compiler import Compiler
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .models import ActionExecution, ActionDetail, ContractReferences
+from .context import example_contexts, prepare_context_lazy
+from .contract_reference_analyzer import ContractReferenceAnalyzer
 
 class ActionAnalyzer:
     def __init__(self, action, context):
@@ -80,11 +21,128 @@ class ActionAnalyzer:
         contract_path = os.path.join(self.context.cws(), f"{contract_name}.sol")
         with open(contract_path, "r") as f:
             return f.read()
+        
+    def extract_local_function_tree(self, project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
+        slither = Slither(project_path)
+        local_root = os.path.abspath(project_path if os.path.isdir(project_path) else os.path.dirname(project_path))
+        print(f"Local root: {local_root}")
+
+        # Step 1: Map all locally defined functions
+        all_funcs = {}  # full_name -> Function
+        funcs_by_name = {}  # short name -> list of Functions (for fallback matching)
+        contract_reference_analyzer = ContractReferenceAnalyzer(context, slither=slither)
+
+        deployment_instructions = self.context.deployment_instructions()
+        contract_map = {}
+        for contract in slither.contracts:
+            if contract.is_interface:
+                continue
+            contract_map[contract.name] = contract
+        
+        contract_references = contract_reference_analyzer.analyze(deployment_instructions, contract_name)
+
+        result = {} # A mapping of contract_name and list of functions called by the entry function
+
+        for contract in slither.contracts:
+            if contract.is_interface:
+                continue
+            for func in contract.functions:
+                src_path = func.source_mapping.filename.absolute
+                if src_path and local_root in os.path.abspath(src_path):
+                    all_funcs[contract.name + "_" + func.full_name] = func
+                    print (f"Found local function: {contract.name}_{func.full_name} in {src_path}")
+                    funcs_by_name.setdefault(func.name, []).append(func)
+            
+
+        if contract_name + "_"+ entry_func_full_name not in all_funcs:
+            print("Available function full names detected by Slither:")
+            for fname in all_funcs.keys():
+                print(f"  - {fname}")
+            raise ValueError(f"Function '{entry_func_full_name}' not found in local project.")
+
+        visited = set()
+        result = {}
+
+        def visit(contract_name: str, func: Function):
+            if contract_name + "_" + func.full_name in visited:
+                return
+            visited.add(contract_name + "_" + func.full_name)
+            # result[func.full_name] = func.source_mapping.content
+            result[contract_name + "_" + func.full_name] = func
+
+            for node in func.nodes:
+                for ir in node.irs:
+                    # Internal call to a known local function
+                    if isinstance(ir, InternalCall):
+                        callee = ir.function
+                        if isinstance(callee, Function) and callee.full_name in all_funcs:
+                            visit(contract_name, all_funcs[contract_name + "_" + callee.full_name])
+
+                    # External call (possibly to another local contract or library)
+                    elif isinstance(ir, HighLevelCall):
+                        # First: direct function resolution (if available)
+                        if isinstance(ir.function, Function):
+                            callee = ir.function
+                            destination = ir.destination
+                            resolved_contract = self.resolve_contract(callee, destination.name, contract_references)
+                            full_name = f"{resolved_contract}_{callee.full_name}" if resolved_contract else callee.full_name
+                            print(f"Visiting function: {full_name} in contract {contract_name}")
+                            if full_name in all_funcs:
+                                visit(resolved_contract, all_funcs[full_name])
+                        """
+                        else:
+                            # Fallback: match by function name
+                            called_name = ir.function_name
+                            if called_name in funcs_by_name and len(funcs_by_name[called_name]) == 1:
+                                possible_callee = funcs_by_name[called_name][0]
+                                if possible_callee.full_name in all_funcs:
+                                    visit(all_funcs[possible_callee.full_name])
+                        """
+
+        visit(contract_name, all_funcs[contract_name + "_" + entry_func_full_name])
+        return result
+    
+    def resolve_contract(self, func: Function, var_name: str, contract_references: ContractReferences, depth=0, max_depth=10):
+        """
+        Recursively resolve the contract type for a variable name used in a given function,
+        tracing assignments and checking against known state variables via contract_references.
+        """
+        if depth > max_depth:
+            return None  # Prevent infinite recursion
+
+        # Check if var_name matches any known state variable reference
+        for state_var in contract_references.references:
+            if state_var.state_variable_name == var_name:
+                return state_var.contract_name
+
+        # Check if var_name is a parameter of the function
+        for param in func.parameters:
+            if param.name == var_name and param.type:
+                return param.type.name  # Return the contract type from parameter definition
+
+        # Walk through IR to trace variable assignment
+        for node in func.nodes:
+            for ir in node.irs:
+                if hasattr(ir, 'destination') and hasattr(ir, 'value'):
+                    dest = ir.destination
+                    value = ir.value
+
+                    if hasattr(dest, 'name') and dest.name == var_name:
+                        if hasattr(value, 'name'):
+                            origin_var_name = value.name
+                            # Recurse to resolve the origin
+                            return self.resolve_contract(func, origin_var_name, contract_references, depth + 1, max_depth)
+
+        return None
+
+
+
+
     
     def _get_function_call_tree(self, contract_name: str, entry_function: str) -> dict:
         """Get all functions called by the entry function"""
         project_path = self.context.cws()
-        return extract_local_function_tree(
+        return self.extract_local_function_tree(
             project_path,
             contract_name,
             # f"{entry_function}()"
@@ -264,8 +322,8 @@ if __name__ == "__main__":
     # context = MockContext()
     #context = example_contexts[1]
     context = prepare_context_lazy({
-        "run_id": "1746304145",
-        "submission_id": "de71c43b-9ae9-462c-a97e-3b5c46498193",
+        "run_id": "1747743579",
+        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase"
     })
     analyzer = ActionAnalyzer(test_action, context)
