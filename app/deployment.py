@@ -13,29 +13,63 @@ class DeploymentAnalyzer:
         self.compiled_contracts = self.load_compiled_contracts()
 
     def load_compiled_contracts(self):
-        """Search for all JSON files in the artifacts/contracts directory and extract contract data."""
-        artifacts_root = os.path.join(self.context.cws(), "artifacts/contracts")
+        """Search for all JSON files in the artifacts/contracts (Hardhat) or out (Foundry) directory and extract contract data."""
+        project_type = self.context.project_type()
+        artifacts_root = os.path.join(self.context.cws(), "artifacts/contracts" if project_type == 'hardhat' else "out")
+
         if not os.path.exists(artifacts_root):
             print(f"Warning: Artifacts directory not found: {artifacts_root}")
             return {}
-
+        
         compiled_contracts = {}
         for root, _, files in os.walk(artifacts_root):
             for file in files:
-                if file.endswith(".json"):
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     file_path = os.path.join(root, file)
-                    # print(f"Found JSON file in deployment: {file_path}")  # Print the JSON file path
                     try:
                         with open(file_path, "r") as f:
                             data = json.load(f)
-                            if "contractName" in data:  # Check for contract metadata
-                                compiled_contracts[data["contractName"]] = data
-                    except json.JSONDecodeError:
-                        print(f"Warning: Failed to parse JSON file: {file_path}")
 
-        if not compiled_contracts:
-            print(f"Warning: No valid contract artifacts found in {artifacts_root}")
+                        # Handle both Hardhat and Foundry artifact formats
+                        contract_name = None
+                        # Hardhat format
+                        if "contractName" in data:
+                            contract_name = data["contractName"]
+                        # Foundry format
+                        elif "abi" in data and project_type == 'foundry':
+                            contract_name = os.path.splitext(file)[0]
+
+                        if contract_name:
+                            compiled_contracts[contract_name] = data
+                    except Exception as e:
+                        print(f"Error reading {file_path}: {e}")
+
         return compiled_contracts
+
+    # def load_compiled_contracts(self):
+    #     """Search for all JSON files in the artifacts/contracts directory and extract contract data."""
+    #     artifacts_root = os.path.join(self.context.cws(), "artifacts/contracts")
+    #     if not os.path.exists(artifacts_root):
+    #         print(f"Warning: Artifacts directory not found: {artifacts_root}")
+    #         return {}
+
+    #     compiled_contracts = {}
+    #     for root, _, files in os.walk(artifacts_root):
+    #         for file in files:
+    #             if file.endswith(".json"):
+    #                 file_path = os.path.join(root, file)
+    #                 # print(f"Found JSON file in deployment: {file_path}")  # Print the JSON file path
+    #                 try:
+    #                     with open(file_path, "r") as f:
+    #                         data = json.load(f)
+    #                         if "contractName" in data:  # Check for contract metadata
+    #                             compiled_contracts[data["contractName"]] = data
+    #                 except json.JSONDecodeError:
+    #                     print(f"Warning: Failed to parse JSON file: {file_path}")
+
+    #     if not compiled_contracts:
+    #         print(f"Warning: No valid contract artifacts found in {artifacts_root}")
+    #     return compiled_contracts
 
     def identify_deployable_contracts(self):
         deployable_contracts = []
