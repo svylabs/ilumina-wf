@@ -97,84 +97,44 @@ class Compiler:
             
         except subprocess.CalledProcessError as e:
             raise Exception(f"Foundry compilation failed: {e.stderr}")
-    
-    def _process_foundry_artifacts(self) -> Dict[str, dict]:
-        """Process Foundry artifacts and extract ABIs with proper path handling"""
-        contracts_abi = {}
-        artifacts_root = os.path.join(self.context.cws(), "out")
 
-        if not os.path.exists(artifacts_root):
-            raise FileNotFoundError(f"Foundry artifacts directory not found: {artifacts_root}")
+    def _process_foundry_artifacts(self) -> Dict[str, dict]:
+        """Process Foundry artifacts and extract ABIs"""
+        contracts_abi = {}
+        artifacts_root = os.path.join(self.context.cws(), "out")  # Foundry uses 'out' directory
         
+        # Walk through artifacts directory
         for root, _, files in os.walk(artifacts_root):
             for file in files:
                 if file.endswith(".json") and not file.endswith(".dbg.json"):
-                    file_path = os.path.join(root, file)
+                # if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
+                    contract_path = os.path.join(root, file)
                     try:
-                        with open(file_path, "r") as f:
+                        with open(contract_path, "r") as f:
                             artifact = json.load(f)
 
                         if "abi" in artifact and artifact["abi"]:
-                            # Guess contract name
-                            file_stem = Path(file).stem
-                            folder_name = os.path.basename(root)
-
-                            # If folder ends with .sol, contract likely named after folder
-                            if folder_name.endswith(".sol"):
-                                contract_name = file_stem
-                            else:
-                                contract_name = folder_name
+                            # For Foundry, contract name comes from directory structure
+                            contract_name = os.path.splitext(file)[0]
+                            if os.path.basename(root).endswith('.sol'):
+                                contract_name = os.path.basename(root).replace('.sol', '')
 
                             contracts_abi[contract_name] = {
                                 "abi": artifact["abi"],
                                 "bytecode": artifact.get("bytecode", ""),
                                 "deployedBytecode": artifact.get("deployedBytecode", "")
                             }
+                    except json.JSONDecodeError:
+                        continue
 
-                    except Exception as e:
-                        print(f"Failed to process {file_path}: {e}")
+        # Print all extracted ABIs
+        # print("Foundry Contracts ABI:", json.dumps(contracts_abi, indent=2))
 
-            return contracts_abi  
-
-
-
-    # def _process_foundry_artifacts(self) -> Dict[str, dict]:
-    #     """Process Foundry artifacts and extract ABIs"""
-    #     contracts_abi = {}
-    #     artifacts_root = os.path.join(self.context.cws(), "out")  # Foundry uses 'out' directory
-        
-    #     # Walk through artifacts directory
-    #     for root, _, files in os.walk(artifacts_root):
-    #         for file in files:
-    #             if file.endswith(".json") and not file.endswith(".dbg.json"):
-    #             # if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
-    #                 contract_path = os.path.join(root, file)
-    #                 try:
-    #                     with open(contract_path, "r") as f:
-    #                         artifact = json.load(f)
-
-    #                     if "abi" in artifact and artifact["abi"]:
-    #                         # For Foundry, contract name comes from directory structure
-    #                         contract_name = os.path.splitext(file)[0]
-    #                         if os.path.basename(root).endswith('.sol'):
-    #                             contract_name = os.path.basename(root).replace('.sol', '')
-
-    #                         contracts_abi[contract_name] = {
-    #                             "abi": artifact["abi"],
-    #                             "bytecode": artifact.get("bytecode", ""),
-    #                             "deployedBytecode": artifact.get("deployedBytecode", "")
-    #                         }
-    #                 except json.JSONDecodeError:
-    #                     continue
-
-    #     # Print all extracted ABIs
-    #     # print("Foundry Contracts ABI:", json.dumps(contracts_abi, indent=2))
-
-    #     # Save compiled contracts to JSON file
-    #     with open(self.compiled_contracts_path, "w") as f:
-    #         json.dump(contracts_abi, f, indent=2)
+        # Save compiled contracts to JSON file
+        with open(self.compiled_contracts_path, "w") as f:
+            json.dump(contracts_abi, f, indent=2)
             
-    #     return contracts_abi 
+        return contracts_abi 
     
     def get_contract_abi(self, contract_name: str) -> Optional[dict]:
         """Get ABI for a specific contract"""
@@ -188,14 +148,24 @@ class Compiler:
         if contract_name in contracts_abi:
             return contracts_abi[contract_name]
         
+        # Remove any .sol suffix if present
+        clean_name = contract_name.replace('.sol', '')
+        if clean_name in contracts_abi:
+            return contracts_abi[clean_name]
+        
         # Foundry-specific fallbacks
         if self.context.project_type() == 'foundry':
-            # Try with .sol suffix
-            if f"{contract_name}.sol" in contracts_abi:
-                return contracts_abi[f"{contract_name}.sol"]
             # Try with Contract suffix
-            if f"{contract_name}Contract" in contracts_abi:
-                return contracts_abi[f"{contract_name}Contract"]
+            if f"{clean_name}Contract" in contracts_abi:
+                return contracts_abi[f"{clean_name}Contract"]
+            # Try with Base suffix
+            if f"{clean_name}Base" in contracts_abi:
+                return contracts_abi[f"{clean_name}Base"]
+            
+        # Try case-insensitive match
+        for key in contracts_abi.keys():
+            if key.lower() == contract_name.lower():
+                return contracts_abi[key]
             
         return None
             

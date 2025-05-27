@@ -196,17 +196,30 @@ class ActionGenerator:
             
         sanitized_class_name = self._sanitize_for_classname(action_name)
         class_name = sanitized_class_name + "Action"
-        
-        # Get ABI for the contract
-        contract_abi = self.compiler.get_contract_abi(contract_name)
-        if self.context.project_type() == 'foundry':
-            contract_abi = (
-                self.compiler.get_contract_abi(contract_name + "Contract") or
-                self.compiler.get_contract_abi(contract_name + "Base")
-            )
+
+        # Get ABI for the contract - try multiple variations
+        contract_abi = None
+        contract_variations = [
+            contract_name,
+            contract_name.replace(' ', ''),
+            contract_name.replace(' ', '') + 'Contract',
+            contract_name.replace(' ', '') + 'Base',
+            self._sanitize_for_classname(contract_name),
+            self._sanitize_for_classname(contract_name) + 'Contract'
+        ]
+
+        for variation in contract_variations:
+            contract_abi = self.compiler.get_contract_abi(variation)
+            if contract_abi:
+                break
+
         if not contract_abi:
             available = list(self.compiler.get_all_contract_names())
-            raise Exception(f"ABI not found for contract: {contract_name}. Available contracts: {available}")
+            raise Exception(
+                f"ABI not found for contract: {contract_name}. Tried variations: {contract_variations}. "
+                f"Available contracts: {available}. "
+                f"Please check the contract name matches exactly with one of the compiled contracts."
+            )
         
         # Find the function in ABI
         function_abi = None
