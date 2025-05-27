@@ -34,6 +34,7 @@ from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
 from app.snapshot_generator import SnapshotGenerator
+from app.action_analyzer import ActionAnalyzer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1048,6 +1049,49 @@ def _get_step_metadata(log):
             return log.get("scaffold", "")
         case _:
             return "" 
+
+@app.route('/api/analyze_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def analyze_action(submission, request_context, user_prompt):
+    """Analyze a specific action for a given contract."""
+    try:
+        # Update status to in_progress
+        update_analysis_status(submission["submission_id"], "analyze_action", "in_progress")
+
+        # Get parameters from request
+        data = request.get_json()
+        contract_name = data.get("contract_name")
+        action_name = data.get("action_name")
+
+        if not contract_name or not action_name:
+            return jsonify({"error": "Both contract_name and action_name are required"}), 400
+
+        # Get the current context
+        context = prepare_context(submission)
+
+        # Load the Actors file
+        actors = context.actor_summary()
+
+        # Get the action
+        action = actors.find_action(contract_name, action_name)
+        if not action:
+            return jsonify({"error": f"Action {contract_name} {action_name} not found in actors file"}), 404
+
+    
+        # Create ActionAnalyzer and analyze the action
+        analyzer = ActionAnalyzer(context)
+        analysis_result = analyzer.analyze(action)
+
+        # Update status to success
+        update_analysis_status(submission["submission_id"], "analyze_action", "success")
+
+        return jsonify({"message": "Action analysis completed successfully", "result": analysis_result}), 200
+
+    except Exception as e:
+        # Update status to error
+        update_analysis_status(submission["submission_id"], "analyze_action", "error", metadata={"message": str(e)})
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

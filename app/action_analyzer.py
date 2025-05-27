@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from .models import Action
 load_dotenv()
 import json
 from slither.slither import Slither
@@ -7,7 +8,7 @@ from slither.core.declarations import Function
 from slither.slithir.operations import InternalCall, HighLevelCall
 from .compiler import Compiler
 from .three_stage_llm_call import ThreeStageAnalyzer
-from .models import ActionExecution, ActionDetail, ContractReferences
+from .models import ActionExecution, ActionDetail, ContractReferences, ActionSummary
 from .context import example_contexts, prepare_context_lazy
 from .contract_reference_analyzer import ContractReferenceAnalyzer
 
@@ -202,7 +203,7 @@ class ActionAnalyzer:
             "contracts": contract_contexts
         }
     
-    def analyze(self, action):
+    def analyze(self, action: Action):
         """Main analysis workflow"""
         # Step 1: Build complete context
         context = self._build_action_context(action)
@@ -226,11 +227,15 @@ class ActionAnalyzer:
             "3. Provide validation rules for each category of state updates based on the actual updates, these rules will be used to validate the state updates after executing the action.",
         ])
         
-        return {
-            "execution": action_execution,
-            "detail": action_detail,
-            "context": context
-        }
+        summary = ActionSummary(
+            action=action,
+            execution=action_execution,
+            detail=action_detail
+        )
+        with open(self.context.action_summary_path(action), "w") as f:
+            f.write(json.dumps(summary, indent=2))
+        self.context.commit(f"Action analysis for {action.name} completed")
+        return summary
     
     def _generate_state_change_prompt(self, context) -> str:
         """Generate prompt for state change analysis"""
@@ -333,8 +338,6 @@ if __name__ == "__main__":
     def cws(self):
             return "/tmp/workspaces/s2/stablebase"
     
-    from app.models import Action
-    
     test_action = Action(
         name="borrow",
         summary="Borrow from the protocol",
@@ -363,13 +366,5 @@ if __name__ == "__main__":
     
     print("\nAnalysis Results:")
     print(result)
-    
-    
-    # Save results for inspection
-    with open("action_analysis.json", "w") as f:
-        json.dump({
-            "execution": result["execution"].dict(),
-            "detail": result["detail"].dict()
-        }, f, indent=2)
     
     print("\nSaved results to action_analysis.json")

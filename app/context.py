@@ -4,7 +4,7 @@ import uuid
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
-from .models import Project, Actors, DeploymentInstruction
+from .models import Project, Actors, DeploymentInstruction, Action
 from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import json
 
@@ -281,6 +281,10 @@ class RunContext:
             raise Exception(f"Git command failed: {e}")
         except Exception as e:
             raise Exception(f"Failed to commit changes to the simulation repo: {e}")
+        
+    def action_summary_path(self, action: Action):
+        summary_path = action.contract_name + "_" + action.name + ".json"
+        return os.path.join(self.simulation_path(), "simulation", "actions", summary_path)
         
     def actions_directory(self):
         return os.path.join(self.simulation_path(), "simulation", "actions")

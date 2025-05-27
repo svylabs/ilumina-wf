@@ -343,7 +343,7 @@ class ContractStateUpdate(IluminaOpenAIResponseModel):
             "contract_name": self.contract_name,
             "state_updated": [state_update.to_dict() for state_update in self.state_updated]
         }
-
+    
 class ActionExecution(IluminaOpenAIResponseModel):
     action_name: str
     contract_name: str
@@ -391,6 +391,32 @@ class Action(IluminaOpenAIResponseModel):
             "function_name": self.function_name,
             "probability": self.probability
         }
+    
+class ActionSummary(IluminaOpenAIResponseModel):
+    action: Action
+    action_detail: ActionDetail
+    action_execution: ActionExecution
+
+    def to_dict(self):
+        return {
+            "action": self.action.to_dict(),
+            "action_detail": self.action_detail.to_dict(),
+            "action_execution": self.action_execution.to_dict()
+        }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    @classmethod
+    def load_summary(self, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionSummary.load(content)
+        return None
+
     
 class ContractReference(IluminaOpenAIResponseModel):
     state_variable_name: str
@@ -490,6 +516,17 @@ class Actors(IluminaOpenAIResponseModel):
                 content = json.loads(f.read())
                 #print(json.dumps(content))
                 return Actors.load(content)
+        return None
+    
+    def find_action(self, contract_name: str, action_name: str):
+        """
+        Find an action by contract name and action name.
+        Returns the Action object if found, otherwise None.
+        """
+        for actor in self.actors:
+            for action in actor.actions:
+                if action.contract_name == contract_name and action.name == action_name:
+                    return action
         return None
 
     
