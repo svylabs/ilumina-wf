@@ -266,23 +266,23 @@ class Identifier(IluminaOpenAIResponseModel):
             "description": self.description
         }
     
-class StateUpdatesForContract(IluminaOpenAIResponseModel):
-    contract_name: str
+class StateUpdatesByCategory(IluminaOpenAIResponseModel):
+    category: str
     state_updates: list[str]
 
     def to_dict(self):
         return {
-            "contract_name": self.contract_name,
+            "category": self.category,
             "state_updates": self.state_updates
         }
 
-class ValidationRulesForContract(IluminaOpenAIResponseModel):
-    contract_name: str
+class ValidationRulesByCategory(IluminaOpenAIResponseModel):
+    category: str
     rules: list[str]
 
     def to_dict(self):
         return {
-            "contract_name": self.contract_name,
+            "category": self.category,
             "rules": self.rules
         }
     
@@ -291,9 +291,9 @@ class ActionDetail(IluminaOpenAIResponseModel):
     contract_name: str
     function_name: str
     pre_execution_parameter_generation_rules:  list[str]
-    on_execution_state_updates_made: list[StateUpdatesForContract]
+    on_execution_state_updates_made: list[StateUpdatesByCategory]
     # Validation rules in terms of function calls to make to validate the state
-    post_execution_contract_state_validation_rules: list[ValidationRulesForContract]
+    post_execution_contract_state_validation_rules: list[ValidationRulesByCategory]
 
     def to_dict(self):
         return {

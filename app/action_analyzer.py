@@ -246,9 +246,9 @@ Contracts Involved:
 {contracts_text}
 
 Please analyze:
-1. Which state variables are modified
-2. When they are modified (conditions/timing)
-3. What new identifiers are created
+1. Which state variables that are modified when the main function is executed.
+2. The conditions under which these variables are modified(eg to account for specific edge cases).
+2. Try to understand if the action needs any new identifiers created.
 
 Return analysis in JSON matching ActionExecution schema.
 """
@@ -256,16 +256,14 @@ Return analysis in JSON matching ActionExecution schema.
     def _generate_detail_prompt(self, action_execution) -> str:
         """Generate prompt for detailed action description"""
         return f"""
-Based on this state change analysis, create detailed action instructions:
+Based on this state change analysis, create detailed execution plan for a particular action:
 
 {json.dumps(action_execution.dict(), indent=2)}
 
 Generate:
-1. Parameter generation rules
-2. State update descriptions
-3. Validation rules
-
-Return in JSON matching ActionDetail schema.
+1. Parameter generation rules for executing the action.
+2. Categorize the state updates into multiple categories and provide a list of updates per category.
+3. Validation rules for each category of state updates.
 """
     
     # def analyze(self):
