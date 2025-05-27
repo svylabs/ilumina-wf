@@ -18,11 +18,14 @@ class Verification(IluminaOpenAIResponseModel):
 
 
 class ThreeStageAnalyzer:
-    def __init__(self, model_class: Type[IluminaOpenAIResponseModel]):
+    def __init__(self, model_class: Type[IluminaOpenAIResponseModel], system_prompt=""):
         self.model_class = model_class
         self.draft = None
+        base_system_prompt = "You are an AI assistant and will use a workflow draft-verify-correct to create the final output necessary for the task, and optionally followed by checks to see if guidelines by users are met with regard to the output."
+        if system_prompt != "":
+            base_system_prompt += f"\n\n{system_prompt}"
         self.conversations = [
-            {"role": "system", "content": "We will use a workflow style draft-verify-correct to create the final output necessary for the task, followed by checks to see if guidelines by users are met with regard to the output."},
+            {"role": "system", "content": base_system_prompt},
         ]
 
     def ask_llm(self, prompt: str, guidelines=[]) -> IluminaOpenAIResponseModel:
