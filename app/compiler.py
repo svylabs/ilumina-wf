@@ -106,8 +106,7 @@ class Compiler:
         # Walk through artifacts directory
         for root, _, files in os.walk(artifacts_root):
             for file in files:
-                if file.endswith(".json") and not file.endswith(".dbg.json"):
-                # if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
+                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     contract_path = os.path.join(root, file)
                     try:
                         with open(contract_path, "r") as f:
@@ -168,8 +167,6 @@ class Compiler:
                 return contracts_abi[key]
             
         return None
-            
-        # return contracts_abi.get(contract_name)
     
     def get_all_contract_names(self) -> list:
         """Get list of all available contract names"""
