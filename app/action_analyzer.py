@@ -75,7 +75,8 @@ class ActionAnalyzer:
                     # Internal call to a known local function
                     if isinstance(ir, InternalCall):
                         callee = ir.function
-                        if isinstance(callee, Function) and callee.full_name in all_funcs:
+                        full_name = f"{contract_name}_{callee.full_name}"
+                        if isinstance(callee, Function) and full_name in all_funcs:
                             visit(contract_name, all_funcs[contract_name + "_" + callee.full_name])
 
                     # External call (possibly to another local contract or library)
@@ -89,6 +90,8 @@ class ActionAnalyzer:
                             print(f"Visiting function: {full_name} in contract {contract_name}")
                             if full_name in all_funcs:
                                 visit(resolved_contract, all_funcs[full_name])
+                            else:
+                                print("Warning: Function not found in all_funcs, skipping:", full_name)
                         """
                         else:
                             # Fallback: match by function name
@@ -156,6 +159,7 @@ class ActionAnalyzer:
             action.contract_name,
             action.function_name
         )
+        print (f"Call tree for {action.contract_name}.{action.function_name} - {call_tree}")
         
         # Get context for each contract
         contracts = set()
