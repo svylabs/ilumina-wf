@@ -292,13 +292,15 @@ class RunContext:
             if not os.path.exists(artifacts_root):
                 raise FileNotFoundError(f"Artifacts directory not found: {artifacts_root}")
             
-        # Search for JSON files containing the contract name
-        for root, _, files in os.walk(artifacts_root):
-            for file in files:
-                if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
-                    file_path = os.path.join(root, file)
-                    if file == f"{contract_name}.json":
-                        return file_path
+            # Search for JSON files containing the contract name
+            for root, _, files in os.walk(artifacts_root):
+                for file in files:
+                    if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
+                        file_path = os.path.join(root, file)
+                        if file == f"{contract_name}.json":
+                            return file_path
+                        
+            raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
                     
         else:  # foundry
             artifacts_root = os.path.join(self.cws(), "out")
@@ -315,7 +317,7 @@ class RunContext:
             if os.path.exists(abi_path):
                 return abi_path
             
-        raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
+            raise FileNotFoundError(f"Could not find artifact for contract {contract_name} in {artifacts_root}")
     
     def relative_path_prefix_artifacts(self, file):
         """Get relative path to artifacts directory"""
