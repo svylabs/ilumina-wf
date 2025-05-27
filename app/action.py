@@ -192,15 +192,21 @@ class ActionGenerator:
         
         # Return if file already exists
         if os.path.exists(filepath):
-            return
+            return {"file_path": filepath, "existing": True}
             
         sanitized_class_name = self._sanitize_for_classname(action_name)
         class_name = sanitized_class_name + "Action"
         
         # Get ABI for the contract
         contract_abi = self.compiler.get_contract_abi(contract_name)
+        if self.context.project_type() == 'foundry':
+            contract_abi = (
+                self.compiler.get_contract_abi(contract_name + "Contract") or
+                self.compiler.get_contract_abi(contract_name + "Base")
+            )
         if not contract_abi:
-            raise Exception(f"ABI not found for contract: {contract_name}")
+            available = list(self.compiler.get_all_contract_names())
+            raise Exception(f"ABI not found for contract: {contract_name}. Available contracts: {available}")
         
         # Find the function in ABI
         function_abi = None
