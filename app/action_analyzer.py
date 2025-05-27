@@ -212,12 +212,19 @@ class ActionAnalyzer:
         
         # Step 3: Get state change analysis from LLM
         analyzer = ThreeStageAnalyzer(ActionExecution)
-        action_execution = analyzer.ask_llm(prompt)
+        action_execution = analyzer.ask_llm(prompt, guidelines=[
+            "1. Don't duplicate contracts in state updates, merge them into one list per contract.",
+            "2. Ensure all contracts are included in the state updates, not just the main contract."
+        ])
         
         # Step 4: Generate detailed action description
         detail_prompt = self._generate_detail_prompt(action_execution)
         detail_analyzer = ThreeStageAnalyzer(ActionDetail)
-        action_detail = detail_analyzer.ask_llm(detail_prompt)
+        action_detail = detail_analyzer.ask_llm(detail_prompt, guidelines=[
+            "1. Provide categories for state updates based on high level action, for example: ('balance updates', 'fee distribution')."
+            "2. For each category, provide one list of state updates happening in the system, don't duplicate state updates for category.",
+            "3. Provide validation rules for each category of state updates based on the actual updates, these rules will be used to validate the state updates after executing the action.",
+        ])
         
         return {
             "execution": action_execution,
@@ -245,8 +252,7 @@ Main Function: {context['action']['function']}
 Contracts Involved:
 {contracts_text}
 
-Please analyze:
-1. Which state variables that are modified when the main function is executed.
+1. Which state variables are modified in various contracts when the main function is executed.
 2. The conditions under which these variables are modified(eg to account for specific edge cases).
 2. Try to understand if the action needs any new identifiers created.
 
