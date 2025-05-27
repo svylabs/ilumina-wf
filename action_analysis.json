@@ -12,7 +12,7 @@
           {
             "state_variable_name": "safes[_safeId].borrowedAmount",
             "type": "uint256",
-            "summary_of_update": "Increased by debtIncrease when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the borrowed amount of a safe by adding `debtIncrease` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -21,7 +21,7 @@
           {
             "state_variable_name": "safes[_safeId].totalBorrowedAmount",
             "type": "uint256",
-            "summary_of_update": "Increased by debtIncrease when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the total borrowed amount of a safe by adding `debtIncrease` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -30,7 +30,7 @@
           {
             "state_variable_name": "liquidationSnapshots[_safeId].debtPerCollateralSnapshot",
             "type": "uint256",
-            "summary_of_update": "Updated to cumulativeDebtPerUnitCollateral when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the debt per collateral snapshot of a safe to `cumulativeDebtPerUnitCollateral` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -39,7 +39,7 @@
           {
             "state_variable_name": "safes[_safeId].collateralAmount",
             "type": "uint256",
-            "summary_of_update": "Increased by collateralIncrease when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the collateral amount of a safe by adding `collateralIncrease` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -48,7 +48,7 @@
           {
             "state_variable_name": "liquidationSnapshots[_safeId].collateralPerCollateralSnapshot",
             "type": "uint256",
-            "summary_of_update": "Updated to cumulativeCollateralPerUnitCollateral when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the collateral per collateral snapshot of a safe to `cumulativeCollateralPerUnitCollateral` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -57,7 +57,7 @@
           {
             "state_variable_name": "totalCollateral",
             "type": "uint256",
-            "summary_of_update": "Increased by collateralIncrease when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Increases the total collateral by `collateralIncrease` if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral` is true.",
             "has_conditional_updates": true,
             "conditions": [
               "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
@@ -66,16 +66,16 @@
           {
             "state_variable_name": "totalDebt",
             "type": "uint256",
-            "summary_of_update": "Increased by debtIncrease when liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral",
+            "summary_of_update": "Updates the total debt by adding `delta` if `add` is true, otherwise subtracts `delta`.",
             "has_conditional_updates": true,
             "conditions": [
-              "liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral"
+              "add == true"
             ]
           },
           {
             "state_variable_name": "PROTOCOL_MODE",
-            "type": "SBStructs.Mode",
-            "summary_of_update": "Changed to NORMAL if debt > BOOTSTRAP_MODE_DEBT_THRESHOLD and PROTOCOL_MODE is BOOTSTRAP",
+            "type": "enum SBStructs.Mode",
+            "summary_of_update": "Changes `PROTOCOL_MODE` from `BOOTSTRAP` to `NORMAL` if `debt > BOOTSTRAP_MODE_DEBT_THRESHOLD` and `PROTOCOL_MODE == SBStructs.Mode.BOOTSTRAP`.",
             "has_conditional_updates": true,
             "conditions": [
               "debt > BOOTSTRAP_MODE_DEBT_THRESHOLD",
@@ -85,45 +85,34 @@
           {
             "state_variable_name": "totalDebt",
             "type": "uint256",
-            "summary_of_update": "Increased by amount if add == true",
-            "has_conditional_updates": true,
-            "conditions": [
-              "add == true"
-            ]
-          },
-          {
-            "state_variable_name": "totalDebt",
-            "type": "uint256",
-            "summary_of_update": "Decreased by amount if add == false",
-            "has_conditional_updates": true,
-            "conditions": [
-              "add == false"
-            ]
+            "summary_of_update": "Updates the total debt to `debt`.",
+            "has_conditional_updates": false,
+            "conditions": []
           },
           {
             "state_variable_name": "safes[safeId].weight",
             "type": "uint256",
-            "summary_of_update": "Set to shieldingRate if it's the first time borrowing and there are no existing borrowings",
+            "summary_of_update": "Updates the weight of the safe based on shielding rate and existing borrowings.",
             "has_conditional_updates": true,
             "conditions": [
               "safe.borrowedAmount == 0",
-              "safesOrderedForRedemption.getHead() == 0"
+              "_minFeeWeightNode == 0"
             ]
           },
           {
             "state_variable_name": "safes[safeId].weight",
             "type": "uint256",
-            "summary_of_update": "Set to minFeeWeight + shieldingRate if it's the first time borrowing and there are existing borrowings",
+            "summary_of_update": "Updates the weight of the safe based on shielding rate and minimum fee weight.",
             "has_conditional_updates": true,
             "conditions": [
               "safe.borrowedAmount == 0",
-              "safesOrderedForRedemption.getHead() != 0"
+              "_minFeeWeightNode != 0"
             ]
           },
           {
             "state_variable_name": "safes[safeId].weight",
             "type": "uint256",
-            "summary_of_update": "Updated fee weight based on minFeeWeight and shieldingRate if not the first borrow and shieldingRate > 0",
+            "summary_of_update": "Updates the weight of the safe based on the shielding rate and the minimum rate paid by existing borrowers",
             "has_conditional_updates": true,
             "conditions": [
               "safe.borrowedAmount != 0",
@@ -133,21 +122,28 @@
           {
             "state_variable_name": "safes[safeId].borrowedAmount",
             "type": "uint256",
-            "summary_of_update": "Increased by amount",
+            "summary_of_update": "Increases the borrowed amount of the safe by `amount`.",
             "has_conditional_updates": false,
             "conditions": []
           },
           {
             "state_variable_name": "safes[safeId].totalBorrowedAmount",
             "type": "uint256",
-            "summary_of_update": "Increased by amount",
+            "summary_of_update": "Increases the total borrowed amount of the safe by `amount`.",
             "has_conditional_updates": false,
             "conditions": []
           },
           {
             "state_variable_name": "safes[safeId].feePaid",
             "type": "uint256",
-            "summary_of_update": "Increased by _shieldingFee",
+            "summary_of_update": "Increases the fee paid by the safe by `_shieldingFee`.",
+            "has_conditional_updates": false,
+            "conditions": []
+          },
+          {
+            "state_variable_name": "totalDebt",
+            "type": "uint256",
+            "summary_of_update": "Increases the total debt by `amount`.",
             "has_conditional_updates": false,
             "conditions": []
           }
@@ -155,32 +151,110 @@
       },
       {
         "contract_name": "OrderedDoublyLinkedList",
-        "state_updated": []
-      },
-      {
-        "contract_name": "DFIDToken",
-        "state_updated": []
-      },
-      {
-        "contract_name": "sbdToken",
         "state_updated": [
           {
-            "state_variable_name": "_totalSupply",
+            "state_variable_name": "nodes[id]",
+            "type": "IDoublyLinkedList.Node",
+            "summary_of_update": "Updates `nodes[id]` with new node information, updating the linked list for redemption.",
+            "has_conditional_updates": false,
+            "conditions": []
+          },
+          {
+            "state_variable_name": "head",
             "type": "uint256",
-            "summary_of_update": "Increases the total supply by _amountToBorrow if msg.sender is not address(this)",
+            "summary_of_update": "Updates the head of the linked list if it's empty.",
             "has_conditional_updates": true,
             "conditions": [
-              "msg.sender != address(this)"
+              "head == 0"
             ]
           },
           {
-            "state_variable_name": "_balances[msg.sender]",
+            "state_variable_name": "tail",
             "type": "uint256",
-            "summary_of_update": "Increases the balance of the msg.sender by _amountToBorrow if msg.sender is not address(this)",
+            "summary_of_update": "Updates the tail of the linked list if it's empty.",
             "has_conditional_updates": true,
             "conditions": [
-              "msg.sender != address(this)"
+              "head == 0"
             ]
+          },
+          {
+            "state_variable_name": "nodes[_nearestSpot].prev",
+            "type": "uint256",
+            "summary_of_update": "Updates the previous node of the nearest spot.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _head",
+              "nodes[_nearestSpot].value >= node.value"
+            ]
+          },
+          {
+            "state_variable_name": "head",
+            "type": "uint256",
+            "summary_of_update": "Updates the head to `id`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _head",
+              "nodes[_nearestSpot].value >= node.value"
+            ]
+          },
+          {
+            "state_variable_name": "nodes[_nearestSpot].next",
+            "type": "uint256",
+            "summary_of_update": "Updates the next node of the nearest spot.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _head",
+              "nodes[_nearestSpot].value < node.value"
+            ]
+          },
+          {
+            "state_variable_name": "tail",
+            "type": "uint256",
+            "summary_of_update": "Updates the tail to `id`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _tail",
+              "nodes[_nearestSpot].value < node.value"
+            ]
+          },
+          {
+            "state_variable_name": "nodes[_nearestSpot].prev",
+            "type": "uint256",
+            "summary_of_update": "Updates the previous node of the nearest spot.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _tail",
+              "nodes[_nearestSpot].value >= node.value"
+            ]
+          },
+          {
+            "state_variable_name": "head",
+            "type": "uint256",
+            "summary_of_update": "Updates the head to `id`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_nearestSpot == _tail",
+              "nodes[_nearestSpot].value >= node.value"
+            ]
+          }
+        ]
+      },
+      {
+        "contract_name": "DFIDToken",
+        "state_updated": [
+          {
+            "state_variable_name": "_balances[to]",
+            "type": "uint256",
+            "summary_of_update": "Mints `_amountToBorrow` to the msg.sender.",
+            "has_conditional_updates": false,
+            "conditions": []
+          },
+          {
+            "state_variable_name": "_totalSupply",
+            "type": "uint256",
+            "summary_of_update": "Increases the total supply by the minted amount.",
+            "has_conditional_updates": false,
+            "conditions": []
           }
         ]
       },
@@ -188,13 +262,21 @@
         "contract_name": "DFIREStaking",
         "state_updated": [
           {
-            "state_variable_name": "totalRewardPerToken",
+            "state_variable_name": "rewardToken.allowance",
             "type": "uint256",
-            "summary_of_update": "Increased by (_amount * PRECISION) / _totalStake if totalStake > 0 and transferFrom succeeds",
+            "summary_of_update": "Transfers tokens from the message sender to the contract.",
             "has_conditional_updates": true,
             "conditions": [
-              "totalStake > 0",
-              "rewardToken.transferFrom(msg.sender, address(this), _amount) == true"
+              "totalStake != 0"
+            ]
+          },
+          {
+            "state_variable_name": "totalRewardPerToken",
+            "type": "uint256",
+            "summary_of_update": "Increases `totalRewardPerToken` if `totalStake != 0`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "totalStake != 0"
             ]
           }
         ]
@@ -203,31 +285,36 @@
         "contract_name": "StabilityPool",
         "state_updated": [
           {
-            "state_variable_name": "totalRewardPerToken",
+            "state_variable_name": "stakingToken.allowance",
             "type": "uint256",
-            "summary_of_update": "Increased reward per token when rewardSenderActive, totalStakedRaw > 0 and transferFrom succeeds",
+            "summary_of_update": "Transfers tokens from the message sender to the contract.",
             "has_conditional_updates": true,
             "conditions": [
-              "rewardSenderActive == true",
-              "totalStakedRaw > 0",
-              "stakingToken.transferFrom(msg.sender, address(this), _amount) == true"
+              "_totalStakedRaw != 0"
+            ]
+          },
+          {
+            "state_variable_name": "totalRewardPerToken",
+            "type": "uint256",
+            "summary_of_update": "Increases `totalRewardPerToken` if `_totalStakedRaw != 0`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "_totalStakedRaw != 0"
             ]
           },
           {
             "state_variable_name": "rewardLoss",
             "type": "uint256",
-            "summary_of_update": "Set to new reward loss calculation when rewardSenderActive, totalStakedRaw > 0 and transferFrom succeeds.",
+            "summary_of_update": "Updates rewardLoss.  The update is a calculation involving _amount, rewardLoss, stakeScalingFactor, totalStakedRaw, and precision.",
             "has_conditional_updates": true,
             "conditions": [
-              "rewardSenderActive == true",
-              "totalStakedRaw > 0",
-              "stakingToken.transferFrom(msg.sender, address(this), _amount) == true"
+              "_totalStakedRaw != 0"
             ]
           },
           {
             "state_variable_name": "lastSBRRewardDistributedTime",
             "type": "uint256",
-            "summary_of_update": "Set to block.timestamp when sbrRewardDistributionStatus is NOT_STARTED",
+            "summary_of_update": "Sets `lastSBRRewardDistributedTime` to the current block timestamp.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.NOT_STARTED"
@@ -236,7 +323,7 @@
           {
             "state_variable_name": "sbrRewardDistributionEndTime",
             "type": "uint256",
-            "summary_of_update": "Set to block.timestamp + 365 days when sbrRewardDistributionStatus is NOT_STARTED",
+            "summary_of_update": "Sets `sbrRewardDistributionEndTime` to the current block timestamp plus 365 days.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.NOT_STARTED"
@@ -244,17 +331,27 @@
           },
           {
             "state_variable_name": "sbrRewardDistributionStatus",
-            "type": "StabilityPool.SBRRewardDistribution",
-            "summary_of_update": "Set to STARTED when sbrRewardDistributionStatus is NOT_STARTED",
+            "type": "enum StabilityPool.SBRRewardDistribution",
+            "summary_of_update": "Sets `sbrRewardDistributionStatus` to `SBRRewardDistribution.STARTED`.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.NOT_STARTED"
             ]
           },
           {
+            "state_variable_name": "sbrRewardDistributionStatus",
+            "type": "enum StabilityPool.SBRRewardDistribution",
+            "summary_of_update": "Updates `sbrRewardDistributionStatus` to `SBRRewardDistribution.ENDED` if `block.timestamp > sbrRewardDistributionEndTime`.",
+            "has_conditional_updates": true,
+            "conditions": [
+              "sbrRewardDistributionStatus == SBRRewardDistribution.STARTED",
+              "block.timestamp > sbrRewardDistributionEndTime"
+            ]
+          },
+          {
             "state_variable_name": "totalSbrRewardPerToken",
             "type": "uint256",
-            "summary_of_update": "Increase Total SBR Reward Per Token by the SBR Reward Calculation",
+            "summary_of_update": "Increases `totalSbrRewardPerToken`.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.STARTED",
@@ -264,7 +361,7 @@
           {
             "state_variable_name": "sbrRewardLoss",
             "type": "uint256",
-            "summary_of_update": "Sets the new SBR Reward Loss Amount",
+            "summary_of_update": "Updates `sbrRewardLoss`.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.STARTED",
@@ -272,19 +369,9 @@
             ]
           },
           {
-            "state_variable_name": "sbrRewardDistributionStatus",
-            "type": "StabilityPool.SBRRewardDistribution",
-            "summary_of_update": "sbrRewardDistributionStatus is set to ENDED",
-            "has_conditional_updates": true,
-            "conditions": [
-              "sbrRewardDistributionStatus == SBRRewardDistribution.STARTED",
-              "block.timestamp > sbrRewardDistributionEndTime"
-            ]
-          },
-          {
             "state_variable_name": "lastSBRRewardDistributedTime",
             "type": "uint256",
-            "summary_of_update": "set to block timestamp",
+            "summary_of_update": "Updates `lastSBRRewardDistributedTime` to current block timestamp.",
             "has_conditional_updates": true,
             "conditions": [
               "sbrRewardDistributionStatus == SBRRewardDistribution.STARTED"
@@ -299,36 +386,64 @@
     "contract_name": "StableBaseCDP",
     "function_name": "borrow",
     "pre_execution_parameter_generation_rules": [
-      "Generate _safeId representing the safe from which to borrow.",
-      "Generate amount representing the amount of debt to borrow.",
-      "Generate shieldingRate representing the shielding rate to apply to the borrow operation."
+      "_safeId: uint256. Existing safe id to borrow from. Must exist.",
+      "amount: uint256. Amount of debt to borrow. Must be a non-negative number.",
+      "shieldingRate: uint256. The shielding rate associated with the safe."
     ],
     "on_execution_state_updates_made": [
-      "If `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`, then `safes[_safeId].borrowedAmount` is increased by `debtIncrease`, `safes[_safeId].totalBorrowedAmount` is increased by `debtIncrease`, `liquidationSnapshots[_safeId].debtPerCollateralSnapshot` is updated to `cumulativeDebtPerUnitCollateral`, `safes[_safeId].collateralAmount` is increased by `collateralIncrease`, `liquidationSnapshots[_safeId].collateralPerCollateralSnapshot` is updated to `cumulativeCollateralPerUnitCollateral`, `totalCollateral` is increased by `collateralIncrease`, and `totalDebt` is increased by `debtIncrease`.",
-      "If `debt > BOOTSTRAP_MODE_DEBT_THRESHOLD` and `PROTOCOL_MODE == SBStructs.Mode.BOOTSTRAP`, then `PROTOCOL_MODE` is changed to `NORMAL`.",
-      "If `add == true`, then `totalDebt` is increased by `amount`. If `add == false`, then `totalDebt` is decreased by `amount`.",
-      "If `safe.borrowedAmount == 0` and `safesOrderedForRedemption.getHead() == 0`, then `safes[safeId].weight` is set to `shieldingRate`.",
-      "If `safe.borrowedAmount == 0` and `safesOrderedForRedemption.getHead() != 0`, then `safes[safeId].weight` is set to `minFeeWeight + shieldingRate`.",
-      "If `safe.borrowedAmount != 0` and `shieldingRate > 0`, then `safes[safeId].weight` is updated based on `minFeeWeight` and `shieldingRate`.",
-      "`safes[safeId].borrowedAmount` is increased by `amount`.",
-      "`safes[safeId].totalBorrowedAmount` is increased by `amount`.",
-      "`safes[safeId].feePaid` is increased by `_shieldingFee`.",
-      "If `msg.sender != address(this)`, then `_totalSupply` of `sbdToken` is increased by `_amountToBorrow` and `_balances[msg.sender]` of `sbdToken` is increased by `_amountToBorrow`.",
-      "If `totalStake > 0` and `rewardToken.transferFrom(msg.sender, address(this), _amount) == true`, then `totalRewardPerToken` of `DFIREStaking` is increased by `(_amount * PRECISION) / _totalStake`.",
-      "If `rewardSenderActive == true`, `totalStakedRaw > 0` and `stakingToken.transferFrom(msg.sender, address(this), _amount) == true`, then `totalRewardPerToken` of `StabilityPool` is increased. `rewardLoss` of `StabilityPool` is updated to a new reward loss calculation.",
-      "If `sbrRewardDistributionStatus == SBRRewardDistribution.NOT_STARTED`, then `lastSBRRewardDistributedTime` of `StabilityPool` is set to `block.timestamp`, `sbrRewardDistributionEndTime` of `StabilityPool` is set to `block.timestamp + 365 days`, and `sbrRewardDistributionStatus` of `StabilityPool` is set to `STARTED`.",
-      "If `sbrRewardDistributionStatus == SBRRewardDistribution.STARTED` and `totalStakedRaw > 0`, then `totalSbrRewardPerToken` of `StabilityPool` is increased by the SBR Reward Calculation and `sbrRewardLoss` of `StabilityPool` is set to the new SBR Reward Loss Amount.",
-      "If `sbrRewardDistributionStatus == SBRRewardDistribution.STARTED` and `block.timestamp > sbrRewardDistributionEndTime`, then `sbrRewardDistributionStatus` of `StabilityPool` is set to `ENDED`.",
-      "If `sbrRewardDistributionStatus == SBRRewardDistribution.STARTED`, then `lastSBRRewardDistributedTime` of `StabilityPool` is set to `block.timestamp`."
+      "Updates `safes[_safeId].borrowedAmount` by `debtIncrease`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Updates `safes[_safeId].totalBorrowedAmount` by `debtIncrease`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Updates `liquidationSnapshots[_safeId].debtPerCollateralSnapshot` to `cumulativeDebtPerUnitCollateral`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Updates `safes[_safeId].collateralAmount` by `collateralIncrease`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Updates `liquidationSnapshots[_safeId].collateralPerCollateralSnapshot` to `cumulativeCollateralPerUnitCollateral`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Increases `totalCollateral` by `collateralIncrease`, if `liquidationSnapshot.collateralPerCollateralSnapshot != cumulativeCollateralPerUnitCollateral`.",
+      "Updates `totalDebt` by adding `delta` if `add == true`, else subtracts `delta`.",
+      "Changes `PROTOCOL_MODE` to `NORMAL` if `debt > BOOTSTRAP_MODE_DEBT_THRESHOLD` and `PROTOCOL_MODE == SBStructs.Mode.BOOTSTRAP`.",
+      "Updates `totalDebt` to `debt`.",
+      "Updates `safes[safeId].weight` based on shielding rate and borrowings if `safe.borrowedAmount == 0` and `_minFeeWeightNode == 0`.",
+      "Updates `safes[safeId].weight` based on shielding rate and minimum fee weight if `safe.borrowedAmount == 0` and `_minFeeWeightNode != 0`.",
+      "Updates `safes[safeId].weight` based on shielding rate and minimum borrower rate if `safe.borrowedAmount != 0` and `shieldingRate > 0`.",
+      "Increases `safes[safeId].borrowedAmount` by `amount`.",
+      "Increases `safes[safeId].totalBorrowedAmount` by `amount`.",
+      "Increases `safes[safeId].feePaid` by `_shieldingFee`.",
+      "Increases `totalDebt` by `amount`.",
+      "Updates `nodes[id]` for redemption list.",
+      "Updates `head` if list is empty.",
+      "Updates `tail` if list is empty.",
+      "Updates previous node of nearest spot if `_nearestSpot == _head` and `nodes[_nearestSpot].value >= node.value`.",
+      "Updates `head` to `id` if `_nearestSpot == _head` and `nodes[_nearestSpot].value >= node.value`.",
+      "Updates next node of nearest spot if `_nearestSpot == _head` and `nodes[_nearestSpot].value < node.value`.",
+      "Updates `tail` to `id` if `_nearestSpot == _tail` and `nodes[_nearestSpot].value < node.value`.",
+      "Updates previous node of nearest spot if `_nearestSpot == _tail` and `nodes[_nearestSpot].value >= node.value`.",
+      "Updates `head` to `id` if `_nearestSpot == _tail` and `nodes[_nearestSpot].value >= node.value`.",
+      "Mints `_amountToBorrow` to the msg.sender.",
+      "Increases `_totalSupply`.",
+      "Transfers tokens from sender if `totalStake != 0`.",
+      "Increases `totalRewardPerToken` if `totalStake != 0`.",
+      "Transfers tokens from sender if `_totalStakedRaw != 0`.",
+      "Increases `totalRewardPerToken` if `_totalStakedRaw != 0`.",
+      "Updates `rewardLoss` if `_totalStakedRaw != 0`.",
+      "Sets `lastSBRRewardDistributedTime` to block timestamp if not started.",
+      "Sets `sbrRewardDistributionEndTime` if not started.",
+      "Sets `sbrRewardDistributionStatus` to `STARTED` if not started.",
+      "Updates `sbrRewardDistributionStatus` to `ENDED` if started and time is up.",
+      "Increases `totalSbrRewardPerToken` if started and staked.",
+      "Updates `sbrRewardLoss` if started and staked.",
+      "Updates `lastSBRRewardDistributedTime` if started."
     ],
     "post_execution_contract_state_validation_rules": [
-      "`safes[_safeId].borrowedAmount` should be greater than or equal to the previous value.",
-      "`safes[_safeId].totalBorrowedAmount` should be greater than or equal to the previous value.",
-      "`totalDebt` should reflect the expected increase or decrease based on the borrow amount.",
-      "If applicable, `PROTOCOL_MODE` should be `NORMAL` if debt exceeds the threshold.",
-      "`sbdToken._totalSupply` should be greater than or equal to the previous value.",
-      "`sbdToken._balances[msg.sender]` should be greater than or equal to the previous value.",
-      "If rewards are distributed, the appropriate reward tokens' state should be updated in DFIREStaking and StabilityPool."
+      "safes[_safeId].borrowedAmount >= 0",
+      "safes[_safeId].totalBorrowedAmount >= 0",
+      "liquidationSnapshots[_safeId].debtPerCollateralSnapshot >= 0",
+      "safes[_safeId].collateralAmount >= 0",
+      "liquidationSnapshots[_safeId].collateralPerCollateralSnapshot >= 0",
+      "totalCollateral >= 0",
+      "totalDebt >= 0",
+      "totalDebt == sum(safes[i].borrowedAmount for all i)",
+      "_balances[msg.sender] >= 0",
+      "_totalSupply >= 0",
+      "nodes[id].value == safes[safeId].weight",
+      "amount >= 0"
     ]
   }
 }

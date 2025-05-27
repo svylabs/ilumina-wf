@@ -159,7 +159,7 @@ class ActionAnalyzer:
             action.contract_name,
             action.function_name
         )
-        print (f"Call tree for {action.contract_name}.{action.function_name} - {call_tree}")
+        #ßßprint (f"Call tree for {action.contract_name}.{action.function_name} - {call_tree}")
         
         # Get context for each contract
         contracts = set()
@@ -173,6 +173,9 @@ class ActionAnalyzer:
                 contract_code[func.contract.name] += "\n" + func.source_mapping.content
         
         print(f"Contracts involved: {contracts}")
+        for contract_name in contracts:
+            print(f"Contract: {contract_name}")
+            print (contract_code[contract_name])
 
         contract_contexts = []
         for contract_name in contract_code.keys():
