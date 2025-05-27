@@ -268,22 +268,22 @@ class Identifier(IluminaOpenAIResponseModel):
     
 class StateUpdatesByCategory(IluminaOpenAIResponseModel):
     category: str
-    state_updates: list[str]
+    state_update_descriptions: list[str]
 
     def to_dict(self):
         return {
             "category": self.category,
-            "state_updates": self.state_updates
+            "state_update_descriptions": self.state_update_descriptions
         }
 
 class ValidationRulesByCategory(IluminaOpenAIResponseModel):
     category: str
-    rules: list[str]
+    rule_descriptions: list[str]
 
     def to_dict(self):
         return {
             "category": self.category,
-            "rules": self.rules
+            "rule_descriptions": self.rule_descriptions
         }
     
 class ActionDetail(IluminaOpenAIResponseModel):
