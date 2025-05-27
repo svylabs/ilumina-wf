@@ -218,7 +218,7 @@ class ActionAnalyzer:
         ])
         
         # Step 4: Generate detailed action description
-        detail_prompt = self._generate_detail_prompt(action_execution)
+        detail_prompt = self._generate_detail_prompt(context)
         detail_analyzer = ThreeStageAnalyzer(ActionDetail)
         action_detail = detail_analyzer.ask_llm(detail_prompt, guidelines=[
             "1. Provide categories for state updates based on high level action, for example: ('balance updates', 'fee distribution')."
@@ -237,12 +237,12 @@ class ActionAnalyzer:
         contracts_text = "\n\n".join(
             f"Contract: {c['name']}\n"
             f"Code:\n{c['code']}\n"
-            f"ABI:\n{json.dumps(c['abi'], indent=2)}"
+            f"ABI:\n{json.dumps(c['abi'])}"
             for c in context['contracts']
         )
         
         return f"""
-Analyze the state changes for this action:
+Analyze the state changes that happen within contracts when main function is executed.
 
 Action: {context['action']['name']}
 Description: {context['action']['summary']}
@@ -254,22 +254,35 @@ Contracts Involved:
 
 1. Which state variables are modified in various contracts when the main function is executed.
 2. The conditions under which these variables are modified(eg to account for specific edge cases).
-2. Try to understand if the action needs any new identifiers created.
+2. Try to understand if the action needs any new identifiers created by users.
 
 Return analysis in JSON matching ActionExecution schema.
 """
     
-    def _generate_detail_prompt(self, action_execution) -> str:
+    def _generate_detail_prompt(self, context) -> str:
         """Generate prompt for detailed action description"""
+        contracts_text = "\n\n".join(
+            f"Contract: {c['name']}\n"
+            f"Code:\n{c['code']}\n"
+            f"ABI:\n{json.dumps(c['abi'])}"
+            for c in context['contracts']
+        )
         return f"""
-Based on this state change analysis, create detailed execution plan for a particular action:
+Based on the execution of the entry function, create detailed plan for users to execute a particular action:
 
-{json.dumps(action_execution.dict(), indent=2)}
+Action: {context['action']['name']}
+Description: {context['action']['summary']}
+Main Contract: {context['action']['contract']}
+Entry Function: {context['action']['function']}
+
+Contracts Involved:
+{contracts_text}
+
 
 Generate:
 1. Parameter generation rules for executing the action.
 2. Categorize the state updates into multiple categories and provide a list of updates per category.
-3. Validation rules for each category of state updates.
+3. Validation rules to validate the proper execution of the action by validating the state.
 """
     
     # def analyze(self):
