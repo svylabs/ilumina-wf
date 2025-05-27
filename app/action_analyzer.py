@@ -180,7 +180,7 @@ class ActionAnalyzer:
         contract_contexts = []
         for contract_name in contract_code.keys():
             print(f"Contract: {contract_name}")
-            if contract_name == "ERC721Utils": continue
+            #if contract_name == "ERC721Utils": continue
             abi = ""
             with open(self.context.contract_artifact_path(contract_name), "r") as f:
                 abi = json.load(f)["abi"]
@@ -262,7 +262,7 @@ Based on this state change analysis, create detailed action instructions:
 
 Generate:
 1. Parameter generation rules
-2. State update descriptions  
+2. State update descriptions
 3. Validation rules
 
 Return in JSON matching ActionDetail schema.

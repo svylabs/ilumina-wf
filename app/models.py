@@ -266,14 +266,34 @@ class Identifier(IluminaOpenAIResponseModel):
             "description": self.description
         }
     
+class StateUpdatesForContract(IluminaOpenAIResponseModel):
+    contract_name: str
+    state_updates: list[str]
+
+    def to_dict(self):
+        return {
+            "contract_name": self.contract_name,
+            "state_updates": self.state_updates
+        }
+
+class ValidationRulesForContract(IluminaOpenAIResponseModel):
+    contract_name: str
+    rules: list[str]
+
+    def to_dict(self):
+        return {
+            "contract_name": self.contract_name,
+            "rules": self.rules
+        }
+    
 class ActionDetail(IluminaOpenAIResponseModel):
     action_name: str
     contract_name: str
     function_name: str
-    pre_execution_parameter_generation_rules: list[str]
-    on_execution_state_updates_made: list[str]
+    pre_execution_parameter_generation_rules:  list[str]
+    on_execution_state_updates_made: list[StateUpdatesForContract]
     # Validation rules in terms of function calls to make to validate the state
-    post_execution_contract_state_validation_rules: list[str]
+    post_execution_contract_state_validation_rules: list[ValidationRulesForContract]
 
     def to_dict(self):
         return {
@@ -281,8 +301,8 @@ class ActionDetail(IluminaOpenAIResponseModel):
             "contract_name": self.contract_name,
             "function_name": self.function_name,
             "pre_execution_parameter_generation_rules": self.pre_execution_parameter_generation_rules,
-            "on_execution_state_updates_made": self.on_execution_state_updates_made,
-            "post_execution_contract_state_validation_rules": self.post_execution_contract_state_validation_rules
+            "on_execution_state_updates_made": [sup.to_dict() for sup in self.on_execution_state_updates_made],
+            "post_execution_contract_state_validation_rules": [svr.to_dict() for svr in self.post_execution_contract_state_validation_rules]
         }
 
     @classmethod
