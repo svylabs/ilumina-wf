@@ -31,7 +31,7 @@ class ActionAnalyzer:
         # Step 1: Map all locally defined functions
         all_funcs = {}  # full_name -> Function
         funcs_by_name = {}  # short name -> list of Functions (for fallback matching)
-        contract_reference_analyzer = ContractReferenceAnalyzer(context, slither=slither)
+        contract_reference_analyzer = ContractReferenceAnalyzer(self.context, slither=slither)
 
         deployment_instructions = self.context.deployment_instructions()
         contract_map = {}
@@ -156,11 +156,19 @@ class ActionAnalyzer:
     def _build_action_context(self, action) -> dict:
         """Build complete context for action analysis"""
         # Get all contracts/functions involved
+        abi_path = self.context.contract_artifact_path(action.contract_name)
+        full_function_name = action.function_name
+        with open(abi_path, "r") as f:
+            abi = json.load(f)["abi"]
+            for item in abi:
+                if item.get("type") == "function" and item.get("name") == action.function_name:
+                    full_function_name = item.get("name") + "(" + ",".join([param["type"] for param in item.get("inputs", [])]) + ")"
+                    break
         call_tree = self._get_function_call_tree(
             action.contract_name,
-            action.function_name
+            full_function_name
         )
-        #ßßprint (f"Call tree for {action.contract_name}.{action.function_name} - {call_tree}")
+        #print (f"Call tree for {action.contract_name}.{action.function_name} - {call_tree}")
         
         # Get context for each contract
         contracts = set()
@@ -229,11 +237,11 @@ class ActionAnalyzer:
         
         summary = ActionSummary(
             action=action,
-            execution=action_execution,
-            detail=action_detail
+            action_execution=action_execution,
+            action_detail=action_detail
         )
         with open(self.context.action_summary_path(action), "w") as f:
-            f.write(json.dumps(summary, indent=2))
+            json.dump(summary.to_dict(), f, indent=2)
         self.context.commit(f"Action analysis for {action.name} completed")
         return summary
     
@@ -342,7 +350,7 @@ if __name__ == "__main__":
         name="borrow",
         summary="Borrow from the protocol",
         contract_name="StableBaseCDP",
-        function_name="borrow(uint256,uint256,uint256,uint256,uint256)",
+        function_name="borrow",
         probability=1.0
     )
     
@@ -356,9 +364,9 @@ if __name__ == "__main__":
     analyzer = ActionAnalyzer(test_action, context)
     
     # Test 1: Call tree extraction
-    print("Testing call tree extraction...")
-    call_tree = analyzer._get_function_call_tree("StableBaseCDP", "borrow(uint256,uint256,uint256,uint256,uint256)")
-    print(f"Found {len(call_tree)} functions in call tree")
+    #print("Testing call tree extraction...")
+    #call_tree = analyzer._get_function_call_tree("StableBaseCDP", "borrow(uint256,uint256,uint256,uint256,uint256)")
+    #print(f"Found {len(call_tree)} functions in call tree")
     
     # Test 2: Full analysis
     print("\nRunning full analysis...")

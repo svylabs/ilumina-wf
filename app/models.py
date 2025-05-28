@@ -518,14 +518,14 @@ class Actors(IluminaOpenAIResponseModel):
                 return Actors.load(content)
         return None
     
-    def find_action(self, contract_name: str, action_name: str):
+    def find_action(self, contract_name: str, function_name: str):
         """
         Find an action by contract name and action name.
         Returns the Action object if found, otherwise None.
         """
         for actor in self.actors:
             for action in actor.actions:
-                if action.contract_name == contract_name and action.name == action_name:
+                if action.contract_name == contract_name and action.function_name == function_name:
                     return action
         return None
 

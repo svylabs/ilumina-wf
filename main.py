@@ -24,7 +24,7 @@ from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client, storage_client
-from app.submission import store_analysis_metadata, update_analysis_status
+from app.submission import store_analysis_metadata, update_analysis_status, update_action_analysis_status
 from app.tools import authenticate
 import uuid
 import traceback
@@ -1057,41 +1057,45 @@ def analyze_action(submission, request_context, user_prompt):
     """Analyze a specific action for a given contract."""
     try:
         # Update status to in_progress
-        update_analysis_status(submission["submission_id"], "analyze_action", "in_progress")
-
+        
         # Get parameters from request
         data = request.get_json()
         contract_name = data.get("contract_name")
-        action_name = data.get("action_name")
+        function_name = data.get("function_name")
 
-        if not contract_name or not action_name:
+        if not contract_name or not function_name:
             return jsonify({"error": "Both contract_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission)
+        context = prepare_context(submission, optimize=False)
 
         # Load the Actors file
         actors = context.actor_summary()
 
         # Get the action
-        action = actors.find_action(contract_name, action_name)
+        action = actors.find_action(contract_name, function_name)
         if not action:
-            return jsonify({"error": f"Action {contract_name} {action_name} not found in actors file"}), 404
+            return jsonify({"error": f"Action {contract_name} {function_name} not found in actors file"}), 404
 
+        update_action_analysis_status(submission["submission_id"], contract_name, function_name, "analyze", "in_progress")
+        print (f"Analyzing.. {action.to_dict()}")
     
         # Create ActionAnalyzer and analyze the action
-        analyzer = ActionAnalyzer(context)
+        analyzer = ActionAnalyzer(action, context)
         analysis_result = analyzer.analyze(action)
 
         # Update status to success
-        update_analysis_status(submission["submission_id"], "analyze_action", "success")
+        update_action_analysis_status(submission["submission_id"], contract_name, function_name, "analyze", "success")
 
-        return jsonify({"message": "Action analysis completed successfully", "result": analysis_result}), 200
+        return jsonify({"message": "Action analysis completed successfully", "status": "success"}), 200
 
     except Exception as e:
         # Update status to error
-        update_analysis_status(submission["submission_id"], "analyze_action", "error", metadata={"message": str(e)})
-        return jsonify({"error": str(e)}), 500
+        app.logger.error("Error in analyze_action endpoint", exc_info=e)
+        update_action_analysis_status(submission["submission_id"], contract_name, function_name, "analyze", "error", metadata={
+            "message": str(e)
+        })
+        return jsonify({"error": str(e)}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
