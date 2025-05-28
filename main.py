@@ -530,8 +530,27 @@ def analyze_action():
         action_name = data.get("action_name")
         actor_name = data.get("actor_name")
         
-        if not all([submission_id, contract_name, function_name, action_name, actor_name]):
-            return jsonify({"error": "Missing required parameters"}), 400
+        # if not all([submission_id, contract_name, function_name, action_name, actor_name]):
+        #     return jsonify({"error": "Missing required parameters"}), 400
+
+        # Validate required parameters
+        missing_params = []
+        if not submission_id:
+            missing_params.append("submission_id")
+        if not contract_name:
+            missing_params.append("contract_name")
+        if not function_name:
+            missing_params.append("function_name")
+        if not action_name:
+            missing_params.append("action_name")
+        if not actor_name:
+            missing_params.append("actor_name")
+            
+        if missing_params:
+            return jsonify({
+                "error": "Missing required parameters",
+                "missing": missing_params
+            }), 400
         
         # Get the submission and context
         key = datastore_client.key("Submission", submission_id)
