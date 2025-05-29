@@ -301,6 +301,10 @@ class RunContext:
     def deployment_instructions(self):
         return DeploymentInstruction.load_summary(self.deployment_instructions_path())
     
+    def snapshot_data_structure_path(self, contract_name):
+        """Returns path to snapshot data structure file"""
+        return os.path.join(self.simulation_path(), "simulation", "contracts", f"{contract_name}_snapshot.json")
+    
     def deployed_contracts(self):
         submission = None
         if self.submission != None:
