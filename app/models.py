@@ -735,11 +735,23 @@ class SnapshotAttribute(IluminaOpenAIResponseModel):
             "contract_function": self.contract_function,
             "parameters": [param.to_dict() for param in self.parameters]
         }
-
-class SnapshotDataStructure(IluminaOpenAIResponseModel):
-    attributes: List[SnapshotAttribute]
+    
+class SnapshotTypescriptDataStructure(IluminaOpenAIResponseModel):
+    common_contract_state_snapshot_interface_code: str
+    user_data_snapshot_interface_code: str
 
     def to_dict(self):
         return {
-            "attributes": [attr.to_dict() for attr in self.attributes]
+            "common_contract_state_snapshot_interface_code": self.common_contract_state_snapshot_interface_code,
+            "user_data_snapshot_interface_code": self.user_data_snapshot_interface_code
+        }
+
+class SnapshotDataStructure(IluminaOpenAIResponseModel):
+    attributes: list[SnapshotAttribute]
+    typescript_interfaces: SnapshotTypescriptDataStructure
+    
+    def to_dict(self):
+        return {
+            "attributes": [attr.to_dict() for attr in self.attributes],
+            "typescript_interfaces": self.typescript_interfaces.to_dict()
         }

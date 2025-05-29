@@ -38,7 +38,16 @@ class SnapshotAnalyzer:
             abi = artifact.get('abi', [])
 
         analyzer = ThreeStageAnalyzer(SnapshotDataStructure)
-        prompt = f"""
+        prompt = self._get_prompt_for_snapshot_structure(contract_name, abi, new_identifiers)
+        #print(prompt)
+        snapshot_data_structure = analyzer.ask_llm(prompt)
+        print(f"Snapshot Data Structure for {contract_name}:\n{json.dumps(snapshot_data_structure.to_dict(), indent=2)}")
+
+    def _get_prompt_for_snapshot_structure(self, contract_name: str, abi: list, new_identifiers: list):
+        """
+        Generate the prompt for snapshot structure analysis
+        """
+        return f"""
         Analyze the contract {contract_name} with the following ABI:
         {json.dumps(abi, indent=2)}
 
@@ -47,9 +56,21 @@ class SnapshotAnalyzer:
 
         Can you come up with a datastructure to snapshot the state of the contract(along with functions to use to snapshot them)? Use the view functions, any functions that requires identifiers.
         There is also an inbuilt identifier(accountAddress) in addition to the identifiers listed above.
+
+        The snapshot should have two fields, the list of attributes and the datastructure defined in typescript.
+
+        1. Ignore any constants.
+        2. Include only public state variables and view functions.
+        3. Have proper names(nouns) for the attributes.
+        4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
+        5. Ignore any state variables that are addresses.
+
+        For typescript structure, use the following format:
+        1. Use BigInt for any uint or int types.
+        2. Use string for any address types.
+        3. common_contract_state_snapshot_interface_code - should have typescript datastructure for contract state snapshot
+        4. user_data_snapshot_interface_code - should have typescript datastructure for user specific data snapshot
         """
-        snapshot_data_structure = analyzer.ask_llm(prompt)
-        print(f"Snapshot Data Structure for {contract_name}:\n{json.dumps(snapshot_data_structure.to_dict(), indent=2)}")
 
 if __name__ == "__main__":
     # Example usage
@@ -59,5 +80,5 @@ if __name__ == "__main__":
         "github_repository_url": "https://github.com/svylabs/stablebase"
     })
     analyzer = SnapshotAnalyzer(context)
-    analyzer.analyze("StableBaseCDP")  # Replace "MyContract" with the actual contract name
+    analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
         
