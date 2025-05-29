@@ -5,7 +5,7 @@ import json
 from .context import RunContext, prepare_context_lazy
 from .models import Action, ActionSummary, SnapshotDataStructure
 from .three_stage_llm_call import ThreeStageAnalyzer
-class SnapshotAnalyzer:
+class SnapshotDataStructureAnalyzer:
     def __init__(self, context: RunContext):
         self.context = context
 
@@ -70,6 +70,7 @@ class SnapshotAnalyzer:
         2. Use string for any address types.
         3. common_contract_state_snapshot_interface_code - should have typescript datastructure for contract state snapshot
         4. user_data_snapshot_interface_code - should have typescript datastructure for user specific data snapshot
+        5. Have proper names for the interfaces in common_contract_state_snapshot_interface_code and user_data_snapshot_interface_code based on the contract name.
         """
 
 if __name__ == "__main__":
@@ -79,6 +80,6 @@ if __name__ == "__main__":
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase"
     })
-    analyzer = SnapshotAnalyzer(context)
+    analyzer = SnapshotDataStructureAnalyzer(context)
     analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
         
