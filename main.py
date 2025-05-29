@@ -529,6 +529,9 @@ def analyze_action():
         function_name = data.get("function_name")
         action_name = data.get("action_name")
         actor_name = data.get("actor_name")
+        
+        # if not all([submission_id, contract_name, function_name, action_name, actor_name]):
+        #     return jsonify({"error": "Missing required parameters"}), 400
 
         # Validate required parameters
         missing_params = []
