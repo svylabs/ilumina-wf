@@ -125,33 +125,3 @@ class UserPromptManager:
         query.add_filter("step", "=", step)
         query.order = ["-timestamp"]
         return list(query.fetch())
-    
-# Functions to store and retrieve action analyses for smart contract functions.
-def store_action_analysis(submission_id: str, contract_name: str, function_name: str, 
-                        action_name: str, actor_name: str, analysis_data: dict):
-    """Store or update action analysis in Datastore"""
-    analysis_id = f"{submission_id}_{contract_name}_{function_name}"
-    key = datastore_client.key("SubmissionActionAnalysis", analysis_id)
-    entity = datastore.Entity(key=key)
-
-    entity.update({
-        "submission_id": submission_id,
-        "contract_name": contract_name,
-        "function_name": function_name,
-        "action_name": action_name,
-        "actor_name": actor_name,
-        "analysis": analysis_data,
-        "status": "completed",
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
-    })
-
-    datastore_client.put(entity)
-    return entity
-
-def get_action_analyses(submission_id: str):
-    """Get all action analyses for a submission"""
-    query = datastore_client.query(kind="SubmissionActionAnalysis")
-    query.add_filter("submission_id", "=", submission_id)
-    query.order = ["-updated_at"]
-    return list(query.fetch())
