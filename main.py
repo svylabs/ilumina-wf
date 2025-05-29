@@ -1096,6 +1096,38 @@ def analyze_action(submission, request_context, user_prompt):
             "message": str(e)
         })
         return jsonify({"error": str(e)}), 200
+    
+@app.route('/api/analyze_all_actions', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def analyze_all_actions(submission, request_context, user_prompt):
+    """Analyze all actions for a submission by creating tasks for each action"""
+    try:
+        # Get the current context
+        context = prepare_context(submission, optimize=False)
+        
+        # Load the Actors file
+        actors = context.actor_summary()
+        
+        # For each contract and action, create a task
+        for contract in actors.contracts:
+            for action in contract.actions:
+                # Create task for this action
+                create_task({
+                    "submission_id": submission["submission_id"],
+                    "contract_name": contract.name,
+                    "function_name": action.name,
+                    "step": "analyze_action"
+                })
+        
+        return jsonify({
+            "message": f"Created tasks for analyzing {len(actors.contracts)} contracts",
+            "status": "success"
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
