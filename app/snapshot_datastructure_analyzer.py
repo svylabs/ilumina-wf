@@ -64,13 +64,13 @@ class SnapshotDataStructureAnalyzer:
         The snapshot should have two fields, the list of attributes and the datastructure defined in typescript.
 
         1. Ignore any constants.
-        2. Include only public state variables and view functions.
+        2. Include only public state variables and view functions, any function that does state changes should not be included in this.
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
         5. Ignore any state variables that are addresses.
 
         For typescript structure, use the following format:
-        1. Use BigInt for any uint or int types.
+        1. Use bigint for any uint or int types.
         2. Use string for any address types.
         3. common_contract_state_snapshot_interface_code - should have typescript datastructure for contract state snapshot
         4. user_data_snapshot_interface_code - should have typescript datastructure for user specific data snapshot

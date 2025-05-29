@@ -755,3 +755,16 @@ class SnapshotDataStructure(IluminaOpenAIResponseModel):
             "attributes": [attr.to_dict() for attr in self.attributes],
             "typescript_interfaces": self.typescript_interfaces.to_dict()
         }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    @classmethod
+    def load_summary(cls, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.load(f)
+                #print(json.dumps(content))
+                return SnapshotDataStructure.load(content)
+        return None

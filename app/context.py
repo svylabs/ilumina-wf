@@ -305,6 +305,10 @@ class RunContext:
         """Returns path to snapshot data structure file"""
         return os.path.join(self.simulation_path(), "simulation", "contracts", f"{contract_name}_snapshot.json")
     
+    def snapshot_interface_code_path(self):
+        """Returns path to snapshot interface code file"""
+        return os.path.join(self.simulation_path(), "simulation", "contracts", "snapshot_interfaces.ts")
+    
     def deployed_contracts(self):
         submission = None
         if self.submission != None:
