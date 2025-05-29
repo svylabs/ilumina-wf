@@ -1109,19 +1109,21 @@ def analyze_all_actions(submission, request_context, user_prompt):
         # Load the Actors file
         actors = context.actor_summary()
         
-        # For each contract and action, create a task
-        for contract in actors.contracts:
-            for action in contract.actions:
+        # For each actor and action, create a task
+        count = 0
+        for actor in actors.actors:
+            for action in actor.actions:
                 # Create task for this action
                 create_task({
                     "submission_id": submission["submission_id"],
-                    "contract_name": contract.name,
-                    "function_name": action.name,
+                    "contract_name": getattr(action, "contract_name", None),
+                    "function_name": getattr(action, "function_name", None),
                     "step": "analyze_action"
                 })
+                count += 1
         
         return jsonify({
-            "message": f"Created tasks for analyzing {len(actors.contracts)} contracts",
+            "message": f"Created tasks for analyzing {count} actions",
             "status": "success"
         }), 200
 
