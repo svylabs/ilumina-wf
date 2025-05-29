@@ -24,7 +24,7 @@ from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client, storage_client
-# from app.submission import store_analysis_metadata, update_analysis_status
+from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
 import uuid
 import traceback
@@ -34,14 +34,6 @@ from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
 from app.snapshot_generator import SnapshotGenerator
-from app.compiler import Compiler
-from app.submission import (
-    store_analysis_metadata, 
-    update_analysis_status,
-    store_action_analysis,
-    get_action_analyses,
-    UserPromptManager
-)
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -461,160 +453,6 @@ def implement_action(submission, request_context, user_prompt):
         }), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    
-@app.route('/api/analyze_all_actions', methods=['POST'])
-@authenticate
-def analyze_all_actions():
-    """Create analysis tasks for all actions in the submission"""
-    try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-        
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id"}), 400
-
-        # Get the submission to access the actor summary
-        key = datastore_client.key("Submission", submission_id)
-        submission = datastore_client.get(key)
-        
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
-
-        # Load the actor summary from context
-        context = prepare_context_lazy(submission)
-        try:
-            with open(context.actor_summary_path(), 'r') as f:
-                actors_data = json.load(f)
-        except FileNotFoundError:
-            return jsonify({"error": "Actor summary not found"}), 404
-            
-        # Create a task for each action
-        task_count = 0
-        for actor in actors_data.get("actors", []):
-            for action in actor.get("actions", []):
-                task_data = {
-                    "submission_id": submission_id,
-                    "contract_name": action["contract_name"],
-                    "function_name": action["function_name"],
-                    "action_name": action["name"],
-                    "actor_name": actor["name"],
-                    "step": "analyze_action" 
-                }
-                # Create task with all required parameters
-                task_name = create_task(task_data)
-                task_count += 1
-                
-        return jsonify({
-            "message": f"Created {task_count} action analysis tasks",
-            "task_count": task_count
-        }), 200
-        
-    except Exception as e:
-        app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/analyze_action', methods=['POST'])
-@authenticate
-def analyze_action():
-    """Analyze a specific action and store the results"""
-    try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-        contract_name = data.get("contract_name")
-        function_name = data.get("function_name")
-        action_name = data.get("action_name")
-        actor_name = data.get("actor_name")
-        
-        if not all([submission_id, contract_name, function_name, action_name, actor_name]):
-            return jsonify({"error": "Missing required parameters"}), 400
-        
-        # Get the submission and context
-        key = datastore_client.key("Submission", submission_id)
-        submission = datastore_client.get(key)
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
-            
-        context = prepare_context(submission)
-        
-        # Get the contract ABI
-        compiler = Compiler(context)
-        contract_abi = compiler.get_contract_abi(contract_name)
-        if not contract_abi:
-            return jsonify({"error": f"Contract {contract_name} not found"}), 404
-            
-        # Find the function in ABI
-        function_abi = None
-        for item in contract_abi.get("abi", []):
-            if item.get("name") == function_name and item.get("type") == "function":
-                function_abi = item
-                break
-                
-        if not function_abi:
-            return jsonify({"error": f"Function {function_name} not found in contract"}), 404
-            
-        # Prepare analysis data
-        analysis_data = {
-            "summary": f"Analysis of {action_name} action for {actor_name}",
-            "parameters": [{
-                "name": input["name"],
-                "type": input["type"],
-                "description": f"Parameter {input['name']} of type {input['type']}"
-            } for input in function_abi.get("inputs", [])],
-            "implementation_status": "not_started",
-            "abi": function_abi
-        }
-        
-        # Store the analysis
-        store_action_analysis(
-            submission_id,
-            contract_name,
-            function_name,
-            action_name,
-            actor_name,
-            analysis_data
-        )
-        
-        return jsonify({
-            "message": "Action analysis completed",
-            "action_name": action_name,
-            "contract_name": contract_name,
-            "function_name": function_name
-        }), 200
-        
-    except Exception as e:
-        app.logger.error("Error in analyze_action endpoint", exc_info=e)
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/submission/<submission_id>/actions', methods=['GET'])
-@authenticate
-def get_submission_actions(submission_id):
-    """Get all action analyses for a submission"""
-    try:
-        actions = get_action_analyses(submission_id)
-        
-        # Convert to response format
-        response = []
-        for action in actions:
-            response.append({
-                "id": action.key.name,
-                "contract_name": action["contract_name"],
-                "function_name": action["function_name"],
-                "action_name": action["action_name"],
-                "actor_name": action["actor_name"],
-                "status": action["status"],
-                "created_at": action["created_at"],
-                "updated_at": action["updated_at"],
-                "analysis": action.get("analysis", {})
-            })
-            
-        return jsonify({
-            "actions": response,
-            "count": len(response)
-        }), 200
-        
-    except Exception as e:
-        app.logger.error("Error in get_submission_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
     
 @app.route('/api/generate_snapshots', methods=['POST'])
