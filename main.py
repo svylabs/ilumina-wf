@@ -1129,5 +1129,40 @@ def analyze_all_actions(submission, request_context, user_prompt):
         app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/submission/<submission_id>/actions', methods=['GET'])
+@authenticate
+def get_action_analyses(submission_id):
+    """Get all action analyses for a submission"""
+    try:
+        # Query all action analyses for this submission
+        query = datastore_client.query(kind="SubmissionActionAnalysis")
+        query.add_filter("submission_id", "=", submission_id)
+        query.order = ["contract_name", "function_name"]
+        
+        action_analyses = list(query.fetch())
+        
+        # Transform the data for the response
+        analyses = []
+        for analysis in action_analyses:
+            analyses.append({
+                "contract_name": analysis.get("contract_name"),
+                "function_name": analysis.get("function_name"),
+                "status": analysis.get("status"),
+                "step": analysis.get("step"),
+                "updated_at": analysis.get("updated_at"),
+                "metadata": {k: v for k, v in analysis.items() 
+                           if k not in ["contract_name", "function_name", "status", "step", "updated_at"]}
+            })
+        
+        return jsonify({
+            "submission_id": submission_id,
+            "action_analyses": analyses,
+            "count": len(analyses)
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_action_analyses endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
