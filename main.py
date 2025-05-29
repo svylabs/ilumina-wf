@@ -501,17 +501,13 @@ def analyze_all_actions():
                     "actor_name": actor["name"],
                     "step": "analyze_action" 
                 }
-
-                print("Creating task with data:", task_data)
-
                 # Create task with all required parameters
                 task_name = create_task(task_data)
                 task_count += 1
                 
         return jsonify({
             "message": f"Created {task_count} action analysis tasks",
-            "task_count": task_count,
-            "task_data": task_data
+            "task_count": task_count
         }), 200
         
     except Exception as e:
