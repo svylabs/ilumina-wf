@@ -41,7 +41,7 @@ class SnapshotDataStructureAnalyzer:
         prompt = self._get_prompt_for_snapshot_structure(contract_name, abi, new_identifiers)
         #print(prompt)
         snapshot_data_structure = analyzer.ask_llm(prompt)
-        with open(self, context.snapshot_data_structure_path(contract_name), 'w') as f:
+        with open(self.context.snapshot_data_structure_path(contract_name), 'w') as f:
             f.write(json.dumps(snapshot_data_structure.to_dict(), indent=2))
         
         self.context.commit(f"Snapshot data structure for {contract_name} generated successfully.")
