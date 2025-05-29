@@ -708,3 +708,38 @@ class SnapshotCode(IluminaOpenAIResponseModel):
             "code": self.code,
             "dependencies": self.dependencies
         }
+    
+
+class Parameter(IluminaOpenAIResponseModel):
+    name: str
+    type: str
+    reference: str
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "type": self.type,
+            "reference": self.reference
+        }
+    
+class SnapshotAttribute(IluminaOpenAIResponseModel):
+    name: str
+    type: str
+    contract_function: str
+    parameters: list[Parameter]
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "type": self.type,
+            "contract_function": self.contract_function,
+            "parameters": [param.to_dict() for param in self.parameters]
+        }
+
+class SnapshotDataStructure(IluminaOpenAIResponseModel):
+    attributes: List[SnapshotAttribute]
+
+    def to_dict(self):
+        return {
+            "attributes": [attr.to_dict() for attr in self.attributes]
+        }
