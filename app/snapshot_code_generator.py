@@ -13,6 +13,9 @@ class SnapshotCodeGenerator:
         """
         #contracts = self.context.deployed_contracts()
         deployment_instructions = self.context.deployment_instructions()
+        if deployment_instructions is None:
+            print("Error: deployment_instructions is None. Please check your context or deployment instructions source.")
+            return
         interfaces = ""
         for item in deployment_instructions.sequence:
             if item.type == "deploy":
@@ -41,6 +44,55 @@ class SnapshotCodeGenerator:
         # Need to generate the code using LLM based on the json.
         # Finally, use all the `take<ContractReference>Snapshot` functions to generate a single provider class that will be used to take the snapshot of the whole project.
 
+        # Generate snapshot code for each deployed contract reference
+        from .three_stage_llm_call import ThreeStageAnalyzer
+        contracts_dir = os.path.join(self.context.simulation_path(), "simulation", "contracts")
+        os.makedirs(contracts_dir, exist_ok=True)
+        snapshot_functions = []  # (ref_name, filename, function_name)
+        for item in deployment_instructions.sequence:
+            if item.type == "deploy":
+                contract_name = item.contract
+                ref_name = getattr(item, 'ref_name', None) or contract_name
+                snapshot_path = self.context.snapshot_data_structure_path(contract_name)
+                snapshot_data_structure = SnapshotDataStructure.load_summary(snapshot_path)
+                if snapshot_data_structure is None:
+                    print(f"Snapshot data structure for {contract_name} not found. Skipping...")
+                    continue
+                # LLM prompt for snapshot function
+                function_name = f"take{ref_name[0].upper() + ref_name[1:]}Snapshot"
+                prompt = f"""
+                Generate a complete, production-ready TypeScript async function called {function_name} that takes an ethers.
+                Contract instance (for {contract_name}) and returns a snapshot of its state as described by the following JSON structure. 
+                Use the attributes and contract_function/parameters fields to know what to call and how to structure the result. 
+                Handle BigNumber/string conversions, errors, and use proper types. 
+                Output only the function (no extra text).\n\nSnapshot Data Structure:\n{json.dumps(snapshot_data_structure.to_dict(), indent=2)}\n\n
+                Requirements:\n- Use async/await\n- Use ethers.
+                Contract\n- Use BigNumber from 'bignumber.js' if needed\n
+                - Add JSDoc\n- Return a plain JS object matching the described structure\n
+                - Do not include duplicate imports\n"""
+                analyzer = ThreeStageAnalyzer(str)
+                function_code = analyzer.ask_llm(prompt)
+                filename = os.path.join(contracts_dir, f"{function_name}.ts")
+                with open(filename, "w") as f:
+                    f.write(function_code)
+                snapshot_functions.append((ref_name, filename, function_name))
+
+        # Generate provider class that uses all snapshot functions
+        provider_class_path = os.path.join(contracts_dir, "snapshot_provider.ts")
+        with open(provider_class_path, "w") as f:
+            f.write("// Auto-generated snapshot provider class\n")
+            # Import all snapshot functions
+            for ref_name, _, function_name in snapshot_functions:
+                f.write(f"import {{ {function_name} }} from './{function_name}';\n")
+            f.write("\nexport class ProjectSnapshotProvider {\n")
+            f.write("  constructor(private contracts: Record<string, any>) {}\n\n")
+            f.write("  async takeAllSnapshots() {\n    const results: Record<string, any> = {};\n")
+            for ref_name, _, function_name in snapshot_functions:
+                f.write(f"    results['{ref_name}'] = await {function_name}(this.contracts['{ref_name}']);\n")
+            f.write("    return results;\n  }\n}\n")
+
+        self.context.commit("Snapshot code and provider generated successfully.")
+
     def _exported(self, code: str) -> str:
         """
         Helper function to format exported code
@@ -62,5 +114,4 @@ if __name__ == "__main__":
     generator.generate()
     print("Snapshot code generation completed.")
 
-        
-                
+
