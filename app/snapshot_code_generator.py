@@ -12,6 +12,7 @@ class SnapshotCodeGenerator:
         Generate the snapshot data structure for all contracts in the project.
         """
         #contracts = self.context.deployed_contracts()
+        print(f"📁 Deployment instructions path: {self.context.deployment_instructions_path()}")
         deployment_instructions = self.context.deployment_instructions()
         if deployment_instructions is None:
             print("Error: deployment_instructions is None. Please check your context or deployment instructions source.")
@@ -54,6 +55,7 @@ class SnapshotCodeGenerator:
                 contract_name = item.contract
                 ref_name = getattr(item, 'ref_name', None) or contract_name
                 snapshot_path = self.context.snapshot_data_structure_path(contract_name)
+                print(f"snapshot_path: {snapshot_path}")
                 snapshot_data_structure = SnapshotDataStructure.load_summary(snapshot_path)
                 if snapshot_data_structure is None:
                     print(f"Snapshot data structure for {contract_name} not found. Skipping...")
@@ -61,15 +63,7 @@ class SnapshotCodeGenerator:
                 # LLM prompt for snapshot function
                 function_name = f"take{ref_name[0].upper() + ref_name[1:]}Snapshot"
                 prompt = f"""
-                Generate a complete, production-ready TypeScript async function called {function_name} that takes an ethers.
-                Contract instance (for {contract_name}) and returns a snapshot of its state as described by the following JSON structure. 
-                Use the attributes and contract_function/parameters fields to know what to call and how to structure the result. 
-                Handle BigNumber/string conversions, errors, and use proper types. 
-                Output only the function (no extra text).\n\nSnapshot Data Structure:\n{json.dumps(snapshot_data_structure.to_dict(), indent=2)}\n\n
-                Requirements:\n- Use async/await\n- Use ethers.
-                Contract\n- Use BigNumber from 'bignumber.js' if needed\n
-                - Add JSDoc\n- Return a plain JS object matching the described structure\n
-                - Do not include duplicate imports\n"""
+                Generate a complete, production-ready TypeScript async function called {function_name} that takes an ethers.Contract instance (for {contract_name}) and returns a snapshot of its state as described by the following JSON structure. Use the attributes and contract_function/parameters fields to know what to call and how to structure the result. Handle BigNumber/string conversions, errors, and use proper types. Output only the function (no extra text).\n\nSnapshot Data Structure:\n{json.dumps(snapshot_data_structure.to_dict(), indent=2)}\n\nRequirements:\n- Use async/await\n- Use ethers.Contract\n- Use BigNumber from 'bignumber.js' if needed\n- Add JSDoc\n- Return a plain JS object matching the described structure\n- Do not include duplicate imports\n"""
                 analyzer = ThreeStageAnalyzer(str)
                 function_code = analyzer.ask_llm(prompt)
                 filename = os.path.join(contracts_dir, f"{function_name}.ts")
@@ -106,9 +100,12 @@ class SnapshotCodeGenerator:
 
 if __name__ == "__main__":
     context = prepare_context_lazy({
-        "run_id": "1747743579",
-        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
-        "github_repository_url": "https://github.com/svylabs/stablebase"
+        # "run_id": "1747743579",
+        # "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        # "github_repository_url": "https://github.com/svylabs/stablebase"
+        "run_id": "3",
+        "submission_id": "s3",
+        "github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
     })
     generator = SnapshotCodeGenerator(context)
     generator.generate()
