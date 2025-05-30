@@ -35,6 +35,12 @@ class SnapshotCodeGenerator:
         
         self.context.commit("Snapshot interfaces generated successfully.")
 
+        # Generate the snapshot typescript code based on the json.
+        # Need to generate one file per deployed contract that will snapshot the state of the contract and user data if available.
+        # The file should export one function called take<ContractReference>Snapshot - note ContractReference, not contract name, as one contract can be deployed multiple times(eg: OrderedDoublyLinkedList)
+        # Need to generate the code using LLM based on the json.
+        # Finally, use all the `take<ContractReference>Snapshot` functions to generate a single provider class that will be used to take the snapshot of the whole project.
+
     def _exported(self, code: str) -> str:
         """
         Helper function to format exported code
