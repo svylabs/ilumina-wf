@@ -28,7 +28,7 @@ export class ContractSnapshotProvider implements SnapshotProvider {
         };
         const contractSnapshot = {};
         {% for contract in contract_instances %}
-        contractSnapshot["{{ contract.reference_name }}"] = await {{ contract.function_name}}(contracts.{{ contract.reference_name }}, actors);
+        contractSnapshot["{{ contract.reference_name }}"] = await {{ contract.function_name}}(this.contracts.{{ contract.reference_name }}, this.actors);
         {% endfor %}
         snapshot.contractSnapshot = contractSnapshot;
         return snapshot;
