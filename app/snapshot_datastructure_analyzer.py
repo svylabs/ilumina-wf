@@ -68,6 +68,7 @@ class SnapshotDataStructureAnalyzer:
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
         5. Ignore any state variables that are addresses.
+        6. For any state variable that is a mapping, use the identifier name as the key and the value as the value.
 
         For typescript structure, use the following format:
         1. Use bigint for any uint or int types.
@@ -80,14 +81,14 @@ class SnapshotDataStructureAnalyzer:
 if __name__ == "__main__":
     # Example usage
     context = prepare_context_lazy({
-        # "run_id": "1747743579",
-        # "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
-        # "github_repository_url": "https://github.com/svylabs/stablebase"
-        "run_id": "3",
-        "submission_id": "s3",
-        "github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
+        "run_id": "1747743579",
+        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        "github_repository_url": "https://github.com/svylabs/stablebase"
+        #"run_id": "3",
+        #"submission_id": "s3",
+        #"github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
     })
     analyzer = SnapshotDataStructureAnalyzer(context)
     # analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
-    analyzer.analyze("Lock")
+    analyzer.analyze("StableBaseCDP")
         
