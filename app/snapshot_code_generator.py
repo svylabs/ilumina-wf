@@ -88,7 +88,7 @@ class SnapshotCodeGenerator:
 
                 contract_instance["reference_name"] = ref_name
                 contract_instance["function_name"] = f"take{ref_name}ContractSnapshot"
-                contract_instance["snapshot_file_name"] = f"{ref_name}_snapshot"
+                contract_instance["snapshot_file_name"] = f"{ref_name}_snapshot.ts"
                 contract_instance["interface_name"] = snapshot_data_structure.typescript_interfaces.interface_name
                 contracts.append(contract_instance)
                 
@@ -165,7 +165,7 @@ class SnapshotCodeGenerator:
            - contract: ethers.Contract instance
         7. Return type should match the interfaces from the snapshot data structure
         8. Include detailed JSDoc comments
-        9. Import any required dependencies
+        9. Don't import any unnecessary libraries, no need for any retry logic.
         10. Interfaces {interfaces_created[contract_name]["contract_state"]} can be imported from './snapshot_interfaces.ts'
 
         Use the following imports:
