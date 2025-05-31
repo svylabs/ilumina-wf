@@ -80,12 +80,12 @@ class SnapshotCodeGenerator:
                 
                 interfaces_for_contract = ""
                 if contract_name not in interfaces_created:
-                    interfaces_for_contract += self._exported(snapshot_data_structure.typescript_interfaces.common_contract_state_snapshot_interface_code)
-                    interfaces_for_contract += self._exported(snapshot_data_structure.typescript_interfaces.user_data_snapshot_interface_code)
+                    interfaces_for_contract += self._exported(snapshot_data_structure.typescript_interfaces.contract_snapshot_interface_code)
+                    #interfaces_for_contract += self._exported(snapshot_data_structure.typescript_interfaces.user_data_snapshot_interface_code)
                     interface_names = self._get_interface_names(interfaces_for_contract)
                     interfaces_created[contract_name] = {
-                        "contract_state": interface_names[0],
-                        "user_state": interface_names[1]
+                        "contract_state": interface_names[0]
+                        #"user_state": interface_names[1]
                     }
                 
                 interfaces += interfaces_for_contract
@@ -131,9 +131,8 @@ class SnapshotCodeGenerator:
         Generate complete, production-ready TypeScript functions to snapshot the state of {contract_name} contract (reference: {ref_name}).
         
         Requirements:
-        1. Generate two functions:
+        1. Generate function:
            - take{ref_name}ContractSnapshot: For contract state
-           - take{ref_name}UserSnapshot: For user-specific data
         2. Must handle BigInt conversions properly
         3. Include comprehensive error handling
         4. All contract function calls should have an await statement.
@@ -144,7 +143,7 @@ class SnapshotCodeGenerator:
         7. Return type should match the interfaces from the snapshot data structure
         8. Include detailed JSDoc comments
         9. Import any required dependencies
-        10. Interfaces {interfaces_created[contract_name]["contract_state"]}, {interfaces_created[contract_name]["user_state"]} can be imported from './snapshot_interfaces.ts'
+        10. Interfaces {interfaces_created[contract_name]["contract_state"]} can be imported from './snapshot_interfaces.ts'
 
         Use the following imports:
         ```
@@ -157,27 +156,19 @@ class SnapshotCodeGenerator:
         /**
          * Takes a snapshot of {contract_name} state
          * @param contract - ethers.Contract instance
-         * @returns Promise returning the two interfaces {interfaces_created[contract_name]["contract_state"]}, {interfaces_created[contract_name]["user_state"]}
+         * @returns Promise returning the interface {interfaces_created[contract_name]["contract_state"]}
          */
         export async function take{ref_name}ContractSnapshot(contract: ethers.Contract, actors: Actor[]): Promise<...> {{
             // Implementation
         }}
 
-        /**
-         * Takes a snapshot of {contract_name} state
-         * @param contract - ethers.Contract instance
-         * @returns Promise returning the two interfaces {interfaces_created[contract_name]["contract_state"]}, {interfaces_created[contract_name]["user_state"]}
-         */
-        export async function take{ref_name}UserSnapshot(contract: ethers.Contract, actors: Actor[]): Promise<...> {{
-            // Implementation
-        }}
-
-        actors will have a list of identifiers that can be used to fetch user specific data. You need to map the identifiers to appropriate functions to use.
+        actors will have a list of identifiers that can be used to fetch user specific data. You need to map the identifiers to be used with appropriate functions.
         Here are the list of identifiers that can be used:
         {json.dumps(identifiers, indent=2)}
         In addition to this, all actors will have an inbuilt identifier called accountAddress which is the address of the user.
         actor.identifiers will provide the list of identifiers.
-        The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values.
+        The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values. If it's an array, you need to iterate over the array and fetch 
+        the data for each identifier.
 
         
         ```

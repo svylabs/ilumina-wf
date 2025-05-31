@@ -735,13 +735,16 @@ class SnapshotAttribute(IluminaOpenAIResponseModel):
         }
     
 class SnapshotTypescriptDataStructure(IluminaOpenAIResponseModel):
-    common_contract_state_snapshot_interface_code: str
-    user_data_snapshot_interface_code: str
+    #common_contract_state_snapshot_interface_code: str
+    #user_data_snapshot_interface_code: str
+    contract_snapshot_interface_code: str
+    interface_name: str
 
     def to_dict(self):
         return {
-            "common_contract_state_snapshot_interface_code": self.common_contract_state_snapshot_interface_code,
-            "user_data_snapshot_interface_code": self.user_data_snapshot_interface_code
+            "contract_snapshot_interface_code": self.contract_snapshot_interface_code,
+            "interface_name": self.interface_name
+            #"user_data_snapshot_interface_code": self.user_data_snapshot_interface_code
         }
 
 class SnapshotDataStructure(IluminaOpenAIResponseModel):

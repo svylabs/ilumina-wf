@@ -37,7 +37,7 @@ class SnapshotDataStructureAnalyzer:
             artifact = json.load(f)
             abi = artifact.get('abi', [])
 
-        analyzer = ThreeStageAnalyzer(SnapshotDataStructure)
+        analyzer = ThreeStageAnalyzer(SnapshotDataStructure, system_prompt="You are an expert in analyzing smart contracts and generating data structures.")
         prompt = self._get_prompt_for_snapshot_structure(contract_name, abi, new_identifiers)
         #print(prompt)
         snapshot_data_structure = analyzer.ask_llm(prompt)
@@ -68,14 +68,14 @@ class SnapshotDataStructureAnalyzer:
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
         5. Ignore any state variables that are addresses.
-        6. For any state variable that is a mapping, use the identifier name as the key and the value as the value.
+        6. Any state variable that is a mapping, use the identifier name as the key and the value as the value
 
         For typescript structure, use the following format:
         1. Use bigint for any uint or int types.
         2. Use string for any address types.
-        3. common_contract_state_snapshot_interface_code - should have typescript datastructure for contract state snapshot
-        4. user_data_snapshot_interface_code - should have typescript datastructure for user specific data snapshot
-        5. Have proper names for the interfaces in common_contract_state_snapshot_interface_code and user_data_snapshot_interface_code based on the contract name.
+        3. contract_snapshot_interface_code - should have typescript datastructure for contract state snapshot
+        4. Have proper names for the interfaces in contract_snapshot_interface_code based on the contract name.
+        4. Avoid having duplicate attributes in the datastructure.
         """
 
 if __name__ == "__main__":
@@ -90,5 +90,5 @@ if __name__ == "__main__":
     })
     analyzer = SnapshotDataStructureAnalyzer(context)
     # analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
-    analyzer.analyze("StableBaseCDP")
+    analyzer.analyze("StabilityPool")
         
