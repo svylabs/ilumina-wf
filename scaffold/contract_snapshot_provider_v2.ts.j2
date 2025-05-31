@@ -1,8 +1,16 @@
-import { Snapshot } from "@svylabs/ilumina";
+import { Snapshot, SnapshotProvider } from "@svylabs/ilumina";
 import { Contract } from "ethers";
 import { Actor } from "@svylabs/ilumina";
 
+{% for contract in contract_instances %}
+import { {{ contract.function_name }} } from "./{{ contract.snapshot_file_name}}";
+{% endfor %}
 
+export interface ContractSnapshot {
+{% for contract in contract_instances %}
+    {{ contract.reference_name }}: {{ contract.interface_name }};
+{% endfor %}
+}
 
 export class ContractSnapshotProvider implements SnapshotProvider {
     private contracts: Record<string, Contract>;
@@ -14,9 +22,15 @@ export class ContractSnapshotProvider implements SnapshotProvider {
     }
 
     async snapshot(): Promise<Snapshot> {   
-        return {
+        const snapshot: Snapshot = {
             contractSnapshot: {},
             actorSnapshot: {}
         };
+        const contractSnapshot = {};
+        {% for contract in contract_instances %}
+        contractSnapshot["{{ contract.reference_name }}"] = await {{ contract.function_name}}(contracts.{{ contract.reference_name }}, actors);
+        {% endfor %}
+        snapshot.contractSnapshot = contractSnapshot;
+        return snapshot;
     }
 }
