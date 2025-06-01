@@ -158,3 +158,11 @@ class UserPromptManager:
         query.add_filter("step", "=", step)
         query.order = ["-timestamp"]
         return list(query.fetch())
+    
+
+def get_action_analyses(submission_id: str):
+    """Get all action analyses for a submission"""
+    query = datastore_client.query(kind="SubmissionActionAnalysis")
+    query.add_filter("submission_id", "=", submission_id)
+    query.order = ["-updated_at"]
+    return list(query.fetch())

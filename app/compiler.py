@@ -97,35 +97,43 @@ class Compiler:
             
         except subprocess.CalledProcessError as e:
             raise Exception(f"Foundry compilation failed: {e.stderr}")
-    
+
     def _process_foundry_artifacts(self) -> Dict[str, dict]:
         """Process Foundry artifacts and extract ABIs"""
         contracts_abi = {}
+        artifacts_root = os.path.join(self.context.cws(), "out")  # Foundry uses 'out' directory
         
         # Walk through artifacts directory
-        for root, _, files in os.walk(os.path.join(self.artifacts_dir)):
+        for root, _, files in os.walk(artifacts_root):
             for file in files:
                 if file.endswith(".json") and not file.endswith(".dbg.json") and not file.endswith(".metadata.json"):
                     contract_path = os.path.join(root, file)
-                    with open(contract_path, "r") as f:
-                        artifact = json.load(f)
-                        
-                    if "abi" in artifact and artifact["abi"]:
-                        contract_name = Path(file).stem
-                        contracts_abi[contract_name] = {
-                            "abi": artifact["abi"],
-                            "bytecode": artifact.get("bytecode", ""),
-                            "deployedBytecode": artifact.get("deployedBytecode", "")
-                        }
-        
+                    try:
+                        with open(contract_path, "r") as f:
+                            artifact = json.load(f)
+
+                        if "abi" in artifact and artifact["abi"]:
+                            # For Foundry, contract name comes from directory structure
+                            contract_name = os.path.splitext(file)[0]
+                            if os.path.basename(root).endswith('.sol'):
+                                contract_name = os.path.basename(root).replace('.sol', '')
+
+                            contracts_abi[contract_name] = {
+                                "abi": artifact["abi"],
+                                "bytecode": artifact.get("bytecode", ""),
+                                "deployedBytecode": artifact.get("deployedBytecode", "")
+                            }
+                    except json.JSONDecodeError:
+                        continue
+
         # Print all extracted ABIs
         # print("Foundry Contracts ABI:", json.dumps(contracts_abi, indent=2))
-        
+
         # Save compiled contracts to JSON file
         with open(self.compiled_contracts_path, "w") as f:
             json.dump(contracts_abi, f, indent=2)
             
-        return contracts_abi
+        return contracts_abi 
     
     def get_contract_abi(self, contract_name: str) -> Optional[dict]:
         """Get ABI for a specific contract"""
@@ -134,5 +142,38 @@ class Compiler:
             
         with open(self.compiled_contracts_path, "r") as f:
             contracts_abi = json.load(f)
+
+        # Try exact match first
+        if contract_name in contracts_abi:
+            return contracts_abi[contract_name]
+        
+        # Remove any .sol suffix if present
+        clean_name = contract_name.replace('.sol', '')
+        if clean_name in contracts_abi:
+            return contracts_abi[clean_name]
+        
+        # Foundry-specific fallbacks
+        if self.context.project_type() == 'foundry':
+            # Try with Contract suffix
+            if f"{clean_name}Contract" in contracts_abi:
+                return contracts_abi[f"{clean_name}Contract"]
+            # Try with Base suffix
+            if f"{clean_name}Base" in contracts_abi:
+                return contracts_abi[f"{clean_name}Base"]
             
-        return contracts_abi.get(contract_name)
+        # Try case-insensitive match
+        for key in contracts_abi.keys():
+            if key.lower() == contract_name.lower():
+                return contracts_abi[key]
+            
+        return None
+    
+    def get_all_contract_names(self) -> list:
+        """Get list of all available contract names"""
+        if not os.path.exists(self.compiled_contracts_path):
+            self.compile()
+
+        with open(self.compiled_contracts_path, "r") as f:
+            contracts_abi = json.load(f)
+
+        return list(contracts_abi.keys())
