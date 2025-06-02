@@ -189,7 +189,7 @@ class SnapshotCodeGenerator:
         Here are the list of identifiers that can be used:
         {json.dumps(identifiers, indent=2)}
         In addition to this, all actors will have an inbuilt identifier called accountAddress which is the address of the user.
-        actor.identifiers will provide the list of identifiers.
+        actor.getIdentifiers() will provide the list of all identifiers including accountAddress.
         The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values. If it's an array, you need to iterate over the array and fetch 
         the data for each identifier.
 
