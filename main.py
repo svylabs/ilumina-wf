@@ -33,7 +33,6 @@ from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
-from app.snapshot_generator import SnapshotGenerator
 from app.snapshot_datastructure_analyzer import SnapshotDataStructureAnalyzer
 from app.snapshot_code_generator import SnapshotCodeGenerator
 from app.action_analyzer import ActionAnalyzer
@@ -277,12 +276,6 @@ def analyze():
                     next_step = "debug_deploy_script"
                 elif status is not None and status == "success":
                     next_step = "scaffold"
-            elif step == "scaffold":
-                if status is not None and status == "success":
-                    next_step = "generate_snapshots"
-            elif step == "generate_snapshots":
-                if status is not None and status == "success":
-                    next_step = "None"
             elif step == "debug_deployment_script":
                 if status is not None and status != "success":
                     next_step = "verify_deployment_script"
@@ -321,10 +314,6 @@ def analyze():
                 "actor_config": actor_config
             })
             return jsonify({"message": "Created a task to run simulation."}), 200
-        elif next_step == "generate_snapshots":
-            contract_names = data.get("contract_names", [])
-            create_task({"submission_id": submission_id, "step": "generate_snapshots", "contract_names": contract_names}, forward_params=forward_params)
-            return jsonify({"message": "Enqueued step: generate_snapshots"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
@@ -478,38 +467,6 @@ def implement_action(submission, request_context, user_prompt):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-    
-@app.route('/api/generate_snapshots', methods=['POST'])
-@authenticate
-def generate_snapshots():
-    """Generate snapshot code for all contracts"""
-    try:
-        data = request.get_json()
-        submission_id = data.get("submission_id")
-
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id in request body"}), 400
-        
-        # Fetch the submission from Datastore
-        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
-        
-        context = prepare_context(submission, optimize=False)
-        generator = SnapshotGenerator(context)
-        
-        # Generate and save snapshots
-        snapshot_path = os.path.join(context.simulation_path(), "simulation/contracts/snapshot.ts")
-        generator.save_snapshots(snapshot_path)
-        
-        return jsonify({
-            "message": "Snapshot code generated successfully",
-            "path": snapshot_path
-        }), 200
-
-    except Exception as e:
-        app.logger.error("Error generating snapshots", exc_info=e)
-        return jsonify({"error": str(e)}), 500
     
 @app.route('/api/analyze_snapshot', methods=['POST'])
 @authenticate
