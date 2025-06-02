@@ -277,6 +277,12 @@ def analyze():
                     next_step = "debug_deploy_script"
                 elif status is not None and status == "success":
                     next_step = "scaffold"
+            elif step == "scaffold":
+                if status is not None and status == "success":
+                    next_step = "generate_snapshots"
+            elif step == "generate_snapshots":
+                if status is not None and status == "success":
+                    next_step = "None"
             elif step == "debug_deployment_script":
                 if status is not None and status != "success":
                     next_step = "verify_deployment_script"
@@ -315,6 +321,10 @@ def analyze():
                 "actor_config": actor_config
             })
             return jsonify({"message": "Created a task to run simulation."}), 200
+        elif next_step == "generate_snapshots":
+            contract_names = data.get("contract_names", [])
+            create_task({"submission_id": submission_id, "step": "generate_snapshots", "contract_names": contract_names}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: generate_snapshots"}), 200
         else:
             return jsonify({"message": "All steps are completed"}), 200
 
