@@ -34,6 +34,8 @@ from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
 from app.snapshot_generator import SnapshotGenerator
+from app.snapshot_datastructure_analyzer import SnapshotDataStructureAnalyzer
+from app.snapshot_code_generator import SnapshotCodeGenerator
 from app.action_analyzer import ActionAnalyzer
 from app.compiler import Compiler
 from app.submission import (
@@ -498,6 +500,59 @@ def generate_snapshots():
     except Exception as e:
         app.logger.error("Error generating snapshots", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/generate_snapshot_datastructure', methods=['POST'])
+@authenticate
+def generate_snapshot_datastructure():
+    """Generate snapshot data structure for a contract"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+        contract_name = data.get("contract_name")
+        if not submission_id or not contract_name:
+            return jsonify({"error": "Missing submission_id or contract_name in request body"}), 400
+        
+        # Fetch the submission from Datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        context = prepare_context(submission, optimize=False)
+        analyzer = SnapshotDataStructureAnalyzer(context)
+        analyzer.analyze(contract_name)
+        return jsonify({
+            "message": f"Snapshot data structure generated for contract {contract_name}",
+            "contract_name": contract_name
+        }), 200
+    except Exception as e:
+        app.logger.error("Error generating snapshot data structure", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate_snapshot_code', methods=['POST'])
+@authenticate
+def generate_snapshot_code():
+    """Generate snapshot code for all contracts in the project"""
+    try:
+        data = request.get_json()
+        submission_id = data.get("submission_id")
+        if not submission_id:
+            return jsonify({"error": "Missing submission_id in request body"}), 400
+        
+        # Fetch the submission from Datastore
+        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        context = prepare_context(submission, optimize=False)
+        generator = SnapshotCodeGenerator(context)
+        generator.generate()
+        return jsonify({
+            "message": "Snapshot code generated successfully"
+        }), 200
+    except Exception as e:
+        app.logger.error("Error generating snapshot code", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
