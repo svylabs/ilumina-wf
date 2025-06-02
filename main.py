@@ -17,7 +17,7 @@ from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
-from app.models import Project
+from app.models import Project, SnapshotDataStructure
 from app.deployment import DeploymentAnalyzer
 from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
@@ -503,50 +503,87 @@ def generate_snapshots():
     
 @app.route('/api/analyze_snapshot', methods=['POST'])
 @authenticate
-def analyze_snapshot():
-    """Analyze/generate snapshot data structure for a single contract."""
+@inject_analysis_params
+def analyze_snapshot(submission, request_context, user_prompt):
+    """Analyze a contract to determine snapshot data structure (single contract)"""
     try:
         data = request.get_json()
-        submission_id = data.get("submission_id")
         contract_name = data.get("contract_name")
-        if not submission_id or not contract_name:
-            return jsonify({"error": "Missing submission_id or contract_name in request body"}), 400
-        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
+        
+        if not contract_name:
+            return jsonify({"error": "Missing contract_name"}), 400
+
         context = prepare_context(submission, optimize=False)
         analyzer = SnapshotDataStructureAnalyzer(context)
+        
+        # Analyze and generate snapshot data structure
         analyzer.analyze(contract_name)
+        
+        # Load the generated data structure
+        snapshot_data = None
+        try:
+            snapshot_data = SnapshotDataStructure.load_summary(
+                context.snapshot_data_structure_path(contract_name))
+        except Exception as e:
+            app.logger.warning(f"Could not load snapshot data structure for {contract_name}: {str(e)}")
+        
         return jsonify({
-            "message": f"Snapshot data structure generated for contract {contract_name}",
-            "contract_name": contract_name
+            "message": f"Snapshot analysis completed for {contract_name}",
+            "contract_name": contract_name,
+            "snapshot_data": snapshot_data.to_dict() if snapshot_data else None
         }), 200
+
     except Exception as e:
         app.logger.error("Error in analyze_snapshot", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/implement_snapshot', methods=['POST'])
 @authenticate
-def implement_snapshot():
-    """Generate snapshot code for all or specific contracts."""
+@inject_analysis_params
+def implement_snapshot(submission, request_context, user_prompt):
+    """Implement snapshot code for specified contracts (all if none specified)"""
     try:
         data = request.get_json()
-        submission_id = data.get("submission_id")
-        contract_names = data.get("contract_names", [])  # Optional: list of contract names
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id in request body"}), 400
-        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
+        contract_names = data.get("contract_names", [])
+        
         context = prepare_context(submission, optimize=False)
         generator = SnapshotCodeGenerator(context)
-        if contract_names and isinstance(contract_names, list):
-            generator.generate(contract_names)
-            msg = f"Snapshot code generated for contracts: {', '.join(contract_names)}"
-        else:
-            generator.generate()
-            msg = "Snapshot code generated for all contracts"
-        return jsonify({"message": msg}), 200
+        
+        if not contract_names:
+            # Generate for all contracts if none specified
+            project = Project.load_summary(context.summary_path())
+            contract_names = [contract.name for contract in project.contracts 
+                            if contract.is_deployable]
+        
+        # Generate snapshots for each specified contract
+        generated_contracts = []
+        for contract_name in contract_names:
+            try:
+                # Generate only contract snapshot (no user snapshot)
+                contract_snapshot = generator.generate_contract_snapshot(contract_name)
+                generated_contracts.append({
+                    "contract_name": contract_name,
+                    "snapshot_generated": True
+                })
+            except Exception as e:
+                app.logger.warning(f"Failed to generate snapshot for {contract_name}: {str(e)}")
+                generated_contracts.append({
+                    "contract_name": contract_name,
+                    "snapshot_generated": False,
+                    "error": str(e)
+                })
+                continue
+        
+        # Save all snapshots to file
+        snapshot_path = os.path.join(context.simulation_path(), "simulation/contracts/snapshot.ts")
+        generator.save_snapshots(snapshot_path)
+        
+        return jsonify({
+            "message": "Snapshot implementation completed",
+            "generated_contracts": generated_contracts,
+            "snapshot_path": snapshot_path
+        }), 200
+
     except Exception as e:
         app.logger.error("Error in implement_snapshot", exc_info=e)
         return jsonify({"error": str(e)}), 500
