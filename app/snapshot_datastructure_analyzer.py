@@ -81,14 +81,14 @@ class SnapshotDataStructureAnalyzer:
 if __name__ == "__main__":
     # Example usage
     context = prepare_context_lazy({
-        "run_id": "1747743579",
-        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
-        "github_repository_url": "https://github.com/svylabs/stablebase"
-        #"run_id": "3",
-        #"submission_id": "s3",
-        #"github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
+        # "run_id": "1747743579",
+        # "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        # "github_repository_url": "https://github.com/svylabs/stablebase"
+        "run_id": "3",
+        "submission_id": "s3",
+        "github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
     })
     analyzer = SnapshotDataStructureAnalyzer(context)
     # analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
-    analyzer.analyze("StabilityPool")
+    analyzer.analyze("Lock")
         

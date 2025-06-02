@@ -501,22 +501,19 @@ def generate_snapshots():
         app.logger.error("Error generating snapshots", exc_info=e)
         return jsonify({"error": str(e)}), 500
     
-@app.route('/api/generate_snapshot_datastructure', methods=['POST'])
+@app.route('/api/analyze_snapshot', methods=['POST'])
 @authenticate
-def generate_snapshot_datastructure():
-    """Generate snapshot data structure for a contract"""
+def analyze_snapshot():
+    """Analyze/generate snapshot data structure for a single contract."""
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
         contract_name = data.get("contract_name")
         if not submission_id or not contract_name:
             return jsonify({"error": "Missing submission_id or contract_name in request body"}), 400
-        
-        # Fetch the submission from Datastore
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        
         context = prepare_context(submission, optimize=False)
         analyzer = SnapshotDataStructureAnalyzer(context)
         analyzer.analyze(contract_name)
@@ -525,32 +522,33 @@ def generate_snapshot_datastructure():
             "contract_name": contract_name
         }), 200
     except Exception as e:
-        app.logger.error("Error generating snapshot data structure", exc_info=e)
+        app.logger.error("Error in analyze_snapshot", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/generate_snapshot_code', methods=['POST'])
+@app.route('/api/implement_snapshot', methods=['POST'])
 @authenticate
-def generate_snapshot_code():
-    """Generate snapshot code for all contracts in the project"""
+def implement_snapshot():
+    """Generate snapshot code for all or specific contracts."""
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
+        contract_names = data.get("contract_names", [])  # Optional: list of contract names
         if not submission_id:
             return jsonify({"error": "Missing submission_id in request body"}), 400
-        
-        # Fetch the submission from Datastore
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        
         context = prepare_context(submission, optimize=False)
         generator = SnapshotCodeGenerator(context)
-        generator.generate()
-        return jsonify({
-            "message": "Snapshot code generated successfully"
-        }), 200
+        if contract_names and isinstance(contract_names, list):
+            generator.generate(contract_names)
+            msg = f"Snapshot code generated for contracts: {', '.join(contract_names)}"
+        else:
+            generator.generate()
+            msg = "Snapshot code generated for all contracts"
+        return jsonify({"message": msg}), 200
     except Exception as e:
-        app.logger.error("Error generating snapshot code", exc_info=e)
+        app.logger.error("Error in implement_snapshot", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 

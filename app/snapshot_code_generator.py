@@ -211,12 +211,12 @@ class SnapshotCodeGenerator:
 
 if __name__ == "__main__":
     context = prepare_context_lazy({
-        "run_id": "1747743579",
-        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
-        "github_repository_url": "https://github.com/svylabs/stablebase"
-        #"run_id": "3",
-        #"submission_id": "s3",
-        #"github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
+        # "run_id": "1747743579",
+        # "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        # "github_repository_url": "https://github.com/svylabs/stablebase"
+        "run_id": "3",
+        "submission_id": "s3",
+        "github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
     })
     generator = SnapshotCodeGenerator(context)
     generator.generate()
