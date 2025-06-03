@@ -393,7 +393,7 @@ class RunContext:
             raise Exception(f"Failed to commit changes to the simulation repo: {e}")
         
     def action_summary_path(self, action: Action):
-        summary_file = action.contract_name + "_" + action.function_name + ".json"
+        summary_file = action.contract_name.lower() + "_" + action.function_name.lower() + ".json"
         return os.path.join(self.simulation_path(), "simulation", "actions", summary_file)
     
     def action_code_path(self, action: Action):
