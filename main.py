@@ -223,11 +223,10 @@ def begin_analysis():
         "run_id": data["run_id"]
     }), 200
 
-# Modify the APIs to use prepare_context for creating RunContext
 @app.route('/api/analyze', methods=['POST'])
 @authenticate
 def analyze():
-    """Determine the next step and enqueue it"""
+    """Determine the next step and enqueue it (full workflow orchestration)."""
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
@@ -260,11 +259,11 @@ def analyze():
             if step == None or step == "begin_analysis":
                 next_step = "analyze_project"
             elif step == "analyze_project":
-                if status is not None and status == "success":
+                if status == "success":
                     next_step = "analyze_actors"
             elif step == "analyze_actors":
-                if status is not None and status == "success":
-                    next_step = "None"
+                if status == "success":
+                    next_step = "analyze_deployment"
             elif step == "analyze_deployment":
                 if status is not None and status == "success":
                     next_step = "implement_deployment_script"
@@ -302,6 +301,24 @@ def analyze():
         elif next_step == "scaffold":
             create_task({"submission_id": submission_id, "step": "scaffold"}, forward_params=forward_params)
             return jsonify({"message": "Enqueued step: scaffold"}), 200
+        elif next_step == "analyze_all_actions":
+            create_task({"submission_id": submission_id, "step": "analyze_all_actions"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: analyze_all_actions"}), 200
+        elif next_step == "check_contract_actions_analyzed":
+            # This is handled per contract after each analyze_action
+            return jsonify({"message": "Enqueued step: check_contract_actions_analyzed"}), 200
+        elif next_step == "analyze_snapshot":
+            # This is handled per contract after check_contract_actions_analyzed
+            return jsonify({"message": "Enqueued step: analyze_snapshot"}), 200
+        elif next_step == "implement_snapshot":
+            # This is handled per contract after analyze_snapshot
+            return jsonify({"message": "Enqueued step: implement_snapshot"}), 200
+        elif next_step == "implement_all_actions":
+            create_task({"submission_id": submission_id, "step": "implement_all_actions"}, forward_params=forward_params)
+            return jsonify({"message": "Enqueued step: implement_all_actions"}), 200
+        elif next_step == "implement_action":
+            # This is handled per action after implement_all_actions
+            return jsonify({"message": "Enqueued step: implement_action"}), 200
         elif next_step == "run_simulation":
             description = data.get("description")
             branch = data.get("branch")
@@ -427,30 +444,66 @@ def create_actions(submission, request_context, user_prompt):
 
         update_analysis_status(submission["submission_id"], "scaffold", "success")
 
-        return jsonify({"message": "Action files generated successfully"}), 200
+        # --- WORKFLOW: After scaffold, enqueue analyze_all_actions ---
+        create_task({
+            "submission_id": submission["submission_id"],
+            "step": "analyze_all_actions"
+        })
+        return jsonify({"message": "Scaffold completed, analyze_all_actions enqueued"}), 200
 
     except Exception as e:
         update_analysis_status(submission["submission_id"], "scaffold", "error", metadata={"message": str(e)}, step_metadata={
             "log": traceback.format_exc()
         })
         return jsonify({"error": str(e)}), 200
-    
-@app.route('/api/implement_action', methods=['POST'])
+
+@app.route('/api/analyze_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
-def implement_action(submission, request_context, user_prompt):
-    """Generate a single action file for a specific actor and action"""
+def analyze_all_actions(submission, request_context, user_prompt):
+    """Analyze all actions for a submission by creating tasks for each action (with parallel workspace)."""
+    try:
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        actors = context.actor_summary()
+        count = 0
+        for actor in actors.actors:
+            for action in actor.actions:
+                parallel_workspace_id = str(uuid.uuid4())
+                # Create analyze_action task with parallel_workspace
+                create_task({
+                    "submission_id": submission["submission_id"],
+                    "contract_name": getattr(action, "contract_name", None),
+                    "function_name": getattr(action, "function_name", None),
+                    "step": "analyze_action",
+                    "parallel_workspace": True,
+                    "parallel_workspace_id": parallel_workspace_id
+                })
+                count += 1
+        return jsonify({
+            "message": f"Created tasks for analyzing {count} actions",
+            "status": "success"
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/analyze_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def analyze_action(submission, request_context, user_prompt):
+    """Analyze a specific action for a given contract (with parallel workspace)."""
     try:
         # Get parameters from request
         data = request.get_json()
         actor_name = data.get('actor_name')
         action_name = data.get('action_name')
+        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         
         if not actor_name or not action_name:
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         
         # Initialize ActionGenerator
         action_generator = ActionGenerator(context)
@@ -471,19 +524,28 @@ def implement_action(submission, request_context, user_prompt):
 @app.route('/api/analyze_snapshot', methods=['POST'])
 @authenticate
 def analyze_snapshot():
-    """Analyze/generate snapshot data structure for a single contract."""
+    """Analyze/generate snapshot data structure for a single contract (with parallel workspace)."""
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
         contract_name = data.get("contract_name")
+        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not submission_id or not contract_name:
             return jsonify({"error": "Missing submission_id or contract_name in request body"}), 400
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         analyzer = SnapshotDataStructureAnalyzer(context)
         analyzer.analyze(contract_name)
+        # After success, enqueue implement_snapshot for this contract
+        create_task({
+            "submission_id": submission_id,
+            "contract_name": contract_name,
+            "step": "implement_snapshot",
+            "parallel_workspace": True,
+            "parallel_workspace_id": parallel_workspace_id
+        })
         return jsonify({
             "message": f"Snapshot data structure generated for contract {contract_name}",
             "contract_name": contract_name
@@ -495,19 +557,32 @@ def analyze_snapshot():
 @app.route('/api/implement_snapshot', methods=['POST'])
 @authenticate
 def implement_snapshot():
-    """Generate snapshot code for all or specific contracts."""
+    """Generate snapshot code for all or specific contracts (with parallel workspace)."""
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
-        contract_names = data.get("contract_names", [])  # Optional: list of contract names
+        contract_names = data.get("contract_names", [])
+        contract_name = data.get("contract_name")
+        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not submission_id:
             return jsonify({"error": "Missing submission_id in request body"}), 400
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         generator = SnapshotCodeGenerator(context)
-        if contract_names and isinstance(contract_names, list):
+        if contract_name:
+            generator.generate([contract_name])
+            msg = f"Snapshot code generated for contract: {contract_name}"
+            # After success, enqueue implement_all_actions for this contract
+            create_task({
+                "submission_id": submission_id,
+                "contract_name": contract_name,
+                "step": "implement_all_actions",
+                "parallel_workspace": True,
+                "parallel_workspace_id": parallel_workspace_id
+            })
+        elif contract_names and isinstance(contract_names, list):
             generator.generate(contract_names)
             msg = f"Snapshot code generated for contracts: {', '.join(contract_names)}"
         else:
@@ -518,6 +593,31 @@ def implement_snapshot():
         app.logger.error("Error in implement_snapshot", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/implement_all_actions', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def implement_all_actions(submission, request_context, user_prompt):
+    """Enqueue implement_action for all actions (parallel workspace)."""
+    try:
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        actors = context.actor_summary()
+        count = 0
+        for actor in actors.actors:
+            for action in actor.actions:
+                parallel_workspace_id = str(uuid.uuid4())
+                create_task({
+                    "submission_id": submission["submission_id"],
+                    "actor_name": getattr(actor, "name", None),
+                    "action_name": getattr(action, "function_name", None),
+                    "step": "implement_action",
+                    "parallel_workspace": True,
+                    "parallel_workspace_id": parallel_workspace_id
+                })
+                count += 1
+        return jsonify({"message": f"Created tasks for implementing {count} actions", "status": "success"}), 200
+    except Exception as e:
+        app.logger.error("Error in implement_all_actions endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
@@ -1083,21 +1183,19 @@ def _get_step_metadata(log):
 @authenticate
 @inject_analysis_params
 def analyze_action(submission, request_context, user_prompt):
-    """Analyze a specific action for a given contract."""
+    """Analyze a specific action for a given contract (with parallel workspace)."""
     try:
-        # Update status to in_progress
-        
         # Get parameters from request
         data = request.get_json()
         contract_name = data.get("contract_name")
         function_name = data.get("function_name")
-
+        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not contract_name or not function_name:
             return jsonify({"error": "Both contract_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
+        
         # Load the Actors file
         actors = context.actor_summary()
 
@@ -1115,7 +1213,12 @@ def analyze_action(submission, request_context, user_prompt):
 
         # Update status to success
         update_action_analysis_status(submission["submission_id"], contract_name, function_name, "analyze", "success")
-
+        # After success, enqueue check_contract_actions_analyzed for this contract
+        create_task({
+            "submission_id": submission["submission_id"],
+            "contract_name": contract_name,
+            "step": "check_contract_actions_analyzed"
+        })
         return jsonify({"message": "Action analysis completed successfully", "status": "success"}), 200
 
     except Exception as e:
@@ -1125,7 +1228,7 @@ def analyze_action(submission, request_context, user_prompt):
             "message": str(e)
         })
         return jsonify({"error": str(e)}), 200
-    
+
 @app.route('/api/analyze_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
@@ -1142,12 +1245,15 @@ def analyze_all_actions(submission, request_context, user_prompt):
         count = 0
         for actor in actors.actors:
             for action in actor.actions:
-                # Create task for this action
+                parallel_workspace_id = str(uuid.uuid4())
+                # Create analyze_action task with parallel_workspace
                 create_task({
                     "submission_id": submission["submission_id"],
                     "contract_name": getattr(action, "contract_name", None),
                     "function_name": getattr(action, "function_name", None),
-                    "step": "analyze_action"
+                    "step": "analyze_action",
+                    "parallel_workspace": True,
+                    "parallel_workspace_id": parallel_workspace_id
                 })
                 count += 1
         
