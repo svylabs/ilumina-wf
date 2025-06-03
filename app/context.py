@@ -54,12 +54,12 @@ def compile_contracts(context):
     if compile_process.returncode != 0:
         raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
 
-def prepare_context(data, optimize=True, contract_branch="main"):
+def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_workspace=False):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace, submission=data)
+    context = RunContext(submission_id, run_id, repo, workspace, submission=data, needs_parallel_workspace=needs_parallel_workspace)
 
     # Ensure the root workspace exists
     ensure_directory_exists(workspace)
@@ -183,17 +183,17 @@ def prepare_context(data, optimize=True, contract_branch="main"):
 
     return context
 
-def prepare_context_lazy(data):
+def prepare_context_lazy(data, needs_parallel_workspace=False):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace)
+    context = RunContext(submission_id, run_id, repo, workspace, needs_parallel_workspace=needs_parallel_workspace)
 
     return context
  
 class RunContext:
-    def __init__(self, submission_id, run_id, repo, workspace, submission=None):
+    def __init__(self, submission_id, run_id, repo, workspace, submission=None, needs_parallel_workspace=False):
         self.submission_id = submission_id
         self.run_id = run_id
         self.repo = repo
@@ -201,17 +201,26 @@ class RunContext:
         self.name = repo.split("/")[-1]
         self.submission = submission if submission else {}
         self._project_type = None
+        self._parallel_workspace_id = str(uuid.uuid4()) if needs_parallel_workspace else None
         if (os.path.exists(self.cwd()) == False):
             os.makedirs(self.cwd())
+
+    @property
+    def parallel_workspace_id(self):
+        """Get the parallel workspace ID (None if not in parallel mode)"""
+        return self._parallel_workspace_id
+
+    def cwd(self):
+        base_path = os.path.join(self.workspace, self.submission_id)
+        if self._parallel_workspace_id:
+            return os.path.join(base_path, self._parallel_workspace_id)
+        return base_path
 
     def get_submission(self):
         return self.submission
 
     def get_run_id(self):
         return self.run_id
-
-    def cwd(self):
-        return self.workspace + "/" + self.submission_id
 
     def cws(self):
         return self.cwd() + "/" + self.name
