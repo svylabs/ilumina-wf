@@ -308,7 +308,7 @@ if __name__ == "__main__":
         "run_id": "1747743579",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase"
-    })
+    }, needs_parallel_workspace=False)
     analyzer = ContractReferenceAnalyzer(context)
     print(f"Extracting contract references for contract: {contract_name} in {project_path}")
     print (context.deployment_instructions())

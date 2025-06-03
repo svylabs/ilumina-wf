@@ -336,7 +336,7 @@ def analyze_project(submission, request_context, user_prompt):
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_project", user_prompt)
 
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, needs_parallel_workspace=False)
 
         # Perform the project analysis
         analyzer = Analyzer(context)
@@ -380,7 +380,7 @@ def analyze_actors(submission, request_context, user_prompt):
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_actors", user_prompt)
 
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, needs_parallel_workspace=False)
 
         # Perform the actor analysis
         analyzer = Analyzer(context)
@@ -416,7 +416,7 @@ def create_actions(submission, request_context, user_prompt):
     try:
         request_data = request.get_json()
         # Get the current context using prepare_context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         update_analysis_status(submission["submission_id"], "scaffold", "in_progress")
 
         # Initialize AllActionGenerator
@@ -450,7 +450,7 @@ def implement_action(submission, request_context, user_prompt):
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         
         # Initialize ActionGenerator
         action_generator = ActionGenerator(context)
@@ -481,7 +481,7 @@ def analyze_snapshot():
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         analyzer = SnapshotDataStructureAnalyzer(context)
         analyzer.analyze(contract_name)
         return jsonify({
@@ -505,7 +505,7 @@ def implement_snapshot():
         submission = datastore_client.get(datastore_client.key("Submission", submission_id))
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         generator = SnapshotCodeGenerator(context)
         if contract_names and isinstance(contract_names, list):
             generator.generate(contract_names)
@@ -534,7 +534,7 @@ def analyze_deployment(submission, request_context, user_prompt):
             user_prompt_manager.store_prompt_history(submission["submission_id"], "analyze_deployment", user_prompt)
 
         # Get the current context using prepare_context
-        context = prepare_context(submission)
+        context = prepare_context(submission, needs_parallel_workspace=False)
 
         # Perform the deployment analysis
         analyzer = Analyzer(context)
@@ -572,7 +572,7 @@ def implement_deployment_script(submission, request_context, user_prompt):
             "in_progress"
         )
         """Execute and verify the deployment script"""
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         
@@ -650,7 +650,7 @@ def verify_deploy_script(submission, request_context, user_prompt):
             "in_progress"
         )
         # Get the current context using prepare_context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
 
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
@@ -717,7 +717,7 @@ def debug_deploy_script(submission, request_context, user_prompt):
             "in_progress"
         )
         # Get the current context using prepare_context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         # Initialize DeploymentAnalyzer
         deployer = DeploymentAnalyzer(context)
         step_data = submission.get("verify_deployment_script")
@@ -802,7 +802,7 @@ def run_simulation(submission_id):
         )
         run.create()
 
-        context = prepare_context_lazy(submission)
+        context = prepare_context_lazy(submission, needs_parallel_workspace=False)
 
         runner = SimulationRunner(context, run)
         job = runner.create_and_execute_cloud_run_job()
@@ -936,7 +936,7 @@ def run_simulation_batch(submission_id):
             "failed": 0
         })
 
-        context = prepare_context_lazy(submission)
+        context = prepare_context_lazy(submission, needs_parallel_workspace=False)
         runner = SimulationRunner(context, batch)
         job = runner.create_and_execute_cloud_run_job()
 
@@ -1096,7 +1096,7 @@ def analyze_action(submission, request_context, user_prompt):
             return jsonify({"error": "Both contract_name and action_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
 
         # Load the Actors file
         actors = context.actor_summary()
@@ -1133,7 +1133,7 @@ def analyze_all_actions(submission, request_context, user_prompt):
     """Analyze all actions for a submission by creating tasks for each action"""
     try:
         # Get the current context
-        context = prepare_context(submission, optimize=False)
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         
         # Load the Actors file
         actors = context.actor_summary()

@@ -1,4 +1,3 @@
-
 from .models import Action, ActionCode, ActionSummary
 from .context import RunContext, prepare_context_lazy
 from .three_stage_llm_call import ThreeStageAnalyzer
@@ -124,7 +123,7 @@ if __name__ == "__main__":
         #"run_id": "3",
         #"submission_id": "s3",
         #"github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
-    })
+    }, needs_parallel_workspace=False)
     # Load the Actors file
     actors = context.actor_summary()
 

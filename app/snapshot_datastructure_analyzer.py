@@ -87,8 +87,8 @@ if __name__ == "__main__":
         "run_id": "3",
         "submission_id": "s3",
         "github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
-    })
+    }, needs_parallel_workspace=False)
     analyzer = SnapshotDataStructureAnalyzer(context)
     # analyzer.analyze("StabilityPool")  # Replace "MyContract" with the actual contract name
     analyzer.analyze("Lock")
-        
+
