@@ -2,6 +2,7 @@ from .models import Action, ActionCode, ActionSummary
 from .context import RunContext, prepare_context_lazy
 from .three_stage_llm_call import ThreeStageAnalyzer
 import re
+import json
 
 class ActionGenerator:
 
@@ -13,8 +14,6 @@ class ActionGenerator:
     def __init__(self, action: Action, context: RunContext):
         self.action = action
         self.context = context
-
-    import re
 
     def generate_typescript_contract_snapshot_interface(self, ts_file_path):
         with open(ts_file_path, 'r') as file:
@@ -44,30 +43,43 @@ class ActionGenerator:
         action_summary_path = self.context.action_summary_path(self.action)
         action_summary = ActionSummary.load_summary(action_summary_path)
         snapshot_structure_path = self.context.snapshot_provider_code_path()
+        abi = self.context.contract_artifact_path(self.action.contract_name)
+        with open(abi, 'r') as f:
+            artifact = json.load(f)
+            abi = artifact.get('abi', [])
+        function_definition = next((f for f in abi if f.get('name') == self.action.function_name), None)
+        if not function_definition:
+            raise ValueError(f"Function {self.action.function_name} not found in contract {self.action.contract_name} ABI.")
         core_snapshot_structure = self.generate_typescript_contract_snapshot_interface(snapshot_structure_path)
         snapshot_interfaces_path = self.context.snapshot_interface_code_path()
         with open(snapshot_interfaces_path) as f:
             snapshot_interfaces = f.read()
             core_snapshot_structure += "\n\n" + snapshot_interfaces
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
-        prompt = self._generate_action_prompt(action, action_summary, core_snapshot_structure)
+        prompt = self._generate_action_prompt(function_definition, action, action_summary, core_snapshot_structure)
         analyzer = ThreeStageAnalyzer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
         code = analyzer.ask_llm(prompt)
         with open(self.context.action_code_path(self.action), 'w') as f:
             f.write(code.typescript_code)
         self.context.commit(code.commit_message)
 
-    def _generate_action_prompt(self, action: Action, action_summary: ActionSummary, snapshot_structure: str) -> str:
+    def _generate_action_prompt(self, function_definition, action: Action, action_summary: ActionSummary, snapshot_structure: str) -> str:
         return f"""
         Generate a production ready TypeScript code to call the smart contract action {action.name}, contract: {action.contract_name}, function: {action.function_name} using ethers.js. 
 
         Here is a summary of the action.
         {action_summary.to_dict()}
 
+        function definition:
+        {json.dumps(function_definition)}
 
         The code should include:
         1. A class named {action.function_name.capitalize()}Action extending Action in ilumina framework.
         2. It should have a constructor that takes in ethers.js contract instance that will be used during execution.
+            constructor(contract: ethers.Contract) {{
+                super({{action.function_name.capitalize()}}Action)
+                this.contract = contract;
+            }}
         2. There should be three methods:
             a. `initialize`: Where parameters are created to call the contract function, including any new identifiers that needs to be created for the action.
             b. `execute`: Where the contract function is called with the parameters generated.
@@ -94,6 +106,7 @@ class ActionGenerator:
 
     // To validate the action
     Validate the action by comparing the previous snapshot with the new snapshot based on validation rules provided in action summary.
+    In addition, the validation should also be made for account balances, token balances for affected contracts and accounts. Contract address can be accessed using contract.target
     ```async function validate(
         context: RunContext,
         actor: Actor,
@@ -111,6 +124,9 @@ class ActionGenerator:
         ```typescript 
            {snapshot_structure}
         4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
+        5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
+        6. Use BigInt inplace of Number for any numeric values.
+        7. ETH Balances / Token balances for contracts can be accessed the same way as account balances for other real actors.
         ```
             """
         pass
