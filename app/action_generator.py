@@ -67,7 +67,7 @@ class ActionGenerator:
 
 
         The code should include:
-        1. A class named {action.contract_name}{action.function_name.capitalize()}Action implementing Action in ilumina framework.
+        1. A class named {action.function_name.capitalize()}Action extending Action in ilumina framework.
         2. It should have a constructor that takes in ethers.js contract instance that will be used during execution.
         2. There should be three methods:
             a. `initialize`: Where parameters are created to call the contract function, including any new identifiers that needs to be created for the action.
@@ -111,7 +111,7 @@ class ActionGenerator:
         3. Snapshot instances contain  has the following structure:
         ```typescript 
            {snapshot_structure}
-        4. The action should import the required dependencies from ilumia(Actor, RunContext, Snapshot, Account, Action)
+        4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
         ```
             """
         pass
