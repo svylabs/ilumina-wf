@@ -68,13 +68,14 @@ class ActionGenerator:
 
         The code should include:
         1. A class named {action.contract_name}{action.function_name.capitalize()}Action implementing Action in ilumina framework.
+        2. It should have a constructor that takes in ethers.js contract instance that will be used during execution.
         2. There should be three methods:
             a. `initialize`: Where parameters are created to call the contract function, including any new identifiers that needs to be created for the action.
             b. `execute`: Where the contract function is called with the parameters generated.
             c. `validate`: Where the execution of the contract function is validated through snapshots.
 
     The implementation of `initialize` should return the parameters that will be used to call the contract function.
-    Use random values for the parameters generated using prng provided with RunContext, within bounds of the parameters based on snapshots.
+    Use random values for the parameters generated using prng provided with RunContext, within bounds based on snapshots available(for ex: if ether is being sent, it should be a valid value upto max eth available)
     ```async function initialize(
         context: RunContext,
         actor: Actor,
