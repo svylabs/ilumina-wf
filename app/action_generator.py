@@ -58,7 +58,11 @@ class ActionGenerator:
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
         prompt = self._generate_action_prompt(function_definition, action, action_summary, core_snapshot_structure)
         analyzer = ThreeStageAnalyzer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
-        code = analyzer.ask_llm(prompt)
+        code = analyzer.ask_llm(prompt, guidelines=[
+            "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
+            "2. Ensure that all state changes are validated based on the previous and current snapshots."
+            "3. Ensure that state changes across all affected contracts are validated."
+        ])
         with open(self.context.action_code_path(self.action), 'w') as f:
             f.write(code.typescript_code)
         self.context.commit(code.commit_message)
@@ -67,7 +71,7 @@ class ActionGenerator:
         return f"""
         Generate a production ready TypeScript code to call the smart contract action {action.name}, contract: {action.contract_name}, function: {action.function_name} using ethers.js. 
 
-        Here is a summary of the action.
+        Here is a summary of the action, containing state changes, any new identifiers that are created for the action and the validation rules.
         {action_summary.to_dict()}
 
         function definition:
@@ -75,7 +79,7 @@ class ActionGenerator:
 
         The code should include:
         1. A class named {action.function_name.capitalize()}Action extending Action in ilumina framework.
-        2. It should have a constructor that takes in ethers.js contract instance that will be used during execution.
+        2. It should have a constructor that takes in ethers.js contract instance that will be used during execution. Don't assume any other parameters. If you need any data from any other contracts, you need to use data from snapshots provided.
             constructor(contract: ethers.Contract) {{
                 super({{action.function_name.capitalize()}}Action)
                 this.contract = contract;
@@ -126,7 +130,7 @@ class ActionGenerator:
         4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
         6. Use BigInt inplace of Number for any numeric values.
-        7. ETH Balances / Token balances for contracts can be accessed the same way as account balances for other real actors.
+        7. ETH Balances / Token balances for contracts can be accessed the same way as account balances for other real actors from snapshots using the contract address(contract.target)
         ```
             """
         pass
@@ -144,7 +148,7 @@ if __name__ == "__main__":
     actors = context.actor_summary()
 
         # Get the action
-    action = actors.find_action("StableBaseCDP", "openSafe")
+    action = actors.find_action("StableBaseCDP", "borrow")
         
     generator = ActionGenerator(action, context)
     generator.generate_action()

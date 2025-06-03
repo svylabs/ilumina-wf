@@ -321,6 +321,9 @@ class ActionDetail(IluminaOpenAIResponseModel):
 class StateUpdate(IluminaOpenAIResponseModel):
     state_variable_name: str
     type: str
+    what_does_it_track: str
+    why_is_is_important: str
+    when_is_it_updated: str
     summary_of_update: str
     has_conditional_updates: bool
     conditions: list[str]
@@ -329,8 +332,11 @@ class StateUpdate(IluminaOpenAIResponseModel):
         return {
             "state_variable_name": self.state_variable_name,
             "type": self.type,
-            "summary_of_update": self.summary_of_update,
+            "what_does_it_track": self.what_does_it_track,
+            "why_is_is_important": self.why_is_is_important,
+            "when_is_it_updated": self.when_is_it_updated,
             "has_conditional_updates": self.has_conditional_updates,
+            "summary_of_update": self.summary_of_update,
             "conditions": self.conditions
         }
 
