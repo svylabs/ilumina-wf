@@ -144,7 +144,7 @@ if __name__ == "__main__":
     actors = context.actor_summary()
 
         # Get the action
-    action = actors.find_action("StableBaseCDP", "openSafe")
+    action = actors.find_action("StableBaseCDP", "borrow")
         
     generator = ActionGenerator(action, context)
     generator.generate_action()
