@@ -396,14 +396,9 @@ class RunContext:
         summary_file = action.contract_name + "_" + action.function_name + ".json"
         return os.path.join(self.simulation_path(), "simulation", "actions", summary_file)
     
-    def action_path(self, action: Action):
-        """Returns path to action file"""
-        action_file = action.contract_name + "_" + action.function_name + ".ts"
-        return os.path.join(self.simulation_path(), "simulation", "actions", action_file)
-    
     def action_code_path(self, action: Action):
         """Returns path to action code file"""
-        action_file = action.contract_name + "_" + action.function_name + ".ts"
+        action_file = action.contract_name.lower() + "_" + action.function_name.lower() + ".ts"
         return os.path.join(self.simulation_path(), "simulation", "actions", action_file)
         
     def actions_directory(self):
