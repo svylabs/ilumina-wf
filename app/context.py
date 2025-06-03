@@ -1,6 +1,8 @@
 import os
 import glob
 import uuid
+import dotenv
+dotenv.load_dotenv()
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
@@ -384,6 +386,16 @@ class RunContext:
     def action_summary_path(self, action: Action):
         summary_file = action.contract_name + "_" + action.function_name + ".json"
         return os.path.join(self.simulation_path(), "simulation", "actions", summary_file)
+    
+    def action_path(self, action: Action):
+        """Returns path to action file"""
+        action_file = action.contract_name + "_" + action.function_name + ".ts"
+        return os.path.join(self.simulation_path(), "simulation", "actions", action_file)
+    
+    def action_code_path(self, action: Action):
+        """Returns path to action code file"""
+        action_file = action.contract_name + "_" + action.function_name + ".ts"
+        return os.path.join(self.simulation_path(), "simulation", "actions", action_file)
         
     def actions_directory(self):
         return os.path.join(self.simulation_path(), "simulation", "actions")

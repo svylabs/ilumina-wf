@@ -769,3 +769,17 @@ class SnapshotDataStructure(IluminaOpenAIResponseModel):
                 #print(json.dumps(content))
                 return SnapshotDataStructure.load(content)
         return None
+    
+class ActionCode(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    typescript_code: str
+    commit_message: str = ""
+
+    def to_dict(self):
+        return {
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "typescript_code": self.typescript_code,
+            "commit_message": self.commit_message
+        }
