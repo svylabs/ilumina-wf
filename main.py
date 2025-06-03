@@ -1301,5 +1301,40 @@ def get_action_analyses(submission_id):
         app.logger.error("Error in get_action_analyses endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/check_contract_actions_analyzed', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def check_contract_actions_analyzed(submission, request_context, user_prompt):
+    """Check if all actions for a contract are analyzed, then trigger snapshot/implement steps."""
+    try:
+        data = request.get_json()
+        contract_name = data.get("contract_name")
+        if not contract_name:
+            return jsonify({"error": "Missing contract_name"}), 400
+        submission_id = submission["submission_id"]
+        # Query all actions for this contract
+        query = datastore_client.query(kind="SubmissionActionAnalysis")
+        query.add_filter("submission_id", "=", submission_id)
+        query.add_filter("contract_name", "=", contract_name)
+        actions = list(query.fetch())
+        # Check if all actions are analyzed (status == 'success')
+        all_analyzed = all(a.get("status") == "success" for a in actions)
+        if all_analyzed and actions:
+            # Enqueue analyze_snapshot for this contract
+            parallel_workspace_id = str(uuid.uuid4())
+            create_task({
+                "submission_id": submission_id,
+                "contract_name": contract_name,
+                "step": "analyze_snapshot",
+                "parallel_workspace": True,
+                "parallel_workspace_id": parallel_workspace_id
+            })
+            return jsonify({"message": f"All actions analyzed for {contract_name}. Snapshot task enqueued."}), 200
+        else:
+            return jsonify({"message": f"Not all actions analyzed for {contract_name}."}), 200
+    except Exception as e:
+        app.logger.error("Error in check_contract_actions_analyzed endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+    
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
