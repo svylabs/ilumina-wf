@@ -54,12 +54,12 @@ def compile_contracts(context):
     if compile_process.returncode != 0:
         raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
 
-def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_workspace=False):
+def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_workspace=False, parallel_workspace_id=None):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace, submission=data, needs_parallel_workspace=needs_parallel_workspace)
+    context = RunContext(submission_id, run_id, repo, workspace, submission=data, needs_parallel_workspace=needs_parallel_workspace, parallel_workspace_id=parallel_workspace_id)
 
     # Ensure the root workspace exists
     ensure_directory_exists(workspace)
@@ -183,17 +183,16 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
 
     return context
 
-def prepare_context_lazy(data, needs_parallel_workspace=False):
+def prepare_context_lazy(data, needs_parallel_workspace=False, parallel_workspace_id=None):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
     repo = data["github_repository_url"]
     workspace = "/tmp/workspaces"
-    context = RunContext(submission_id, run_id, repo, workspace, needs_parallel_workspace=needs_parallel_workspace)
-
+    context = RunContext(submission_id, run_id, repo, workspace, needs_parallel_workspace=needs_parallel_workspace, parallel_workspace_id=parallel_workspace_id)
     return context
  
 class RunContext:
-    def __init__(self, submission_id, run_id, repo, workspace, submission=None, needs_parallel_workspace=False):
+    def __init__(self, submission_id, run_id, repo, workspace, submission=None, needs_parallel_workspace=False, parallel_workspace_id=None):
         self.submission_id = submission_id
         self.run_id = run_id
         self.repo = repo
@@ -201,7 +200,12 @@ class RunContext:
         self.name = repo.split("/")[-1]
         self.submission = submission if submission else {}
         self._project_type = None
-        self._parallel_workspace_id = str(uuid.uuid4()) if needs_parallel_workspace else None
+        if parallel_workspace_id is not None:
+            self._parallel_workspace_id = parallel_workspace_id
+        elif needs_parallel_workspace:
+            self._parallel_workspace_id = str(uuid.uuid4())
+        else:
+            self._parallel_workspace_id = None
         if (os.path.exists(self.cwd()) == False):
             os.makedirs(self.cwd())
 
