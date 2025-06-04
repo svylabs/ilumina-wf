@@ -223,6 +223,7 @@ def begin_analysis():
         "run_id": data["run_id"]
     }), 200
 
+# Modify the APIs to use prepare_context for creating RunContext
 @app.route('/api/analyze', methods=['POST'])
 @authenticate
 def analyze():
@@ -259,10 +260,10 @@ def analyze():
             if step == None or step == "begin_analysis":
                 next_step = "analyze_project"
             elif step == "analyze_project":
-                if status == "success":
+                if status is not None and status == "success":
                     next_step = "analyze_actors"
             elif step == "analyze_actors":
-                if status == "success":
+                if status is not None and status == "success":
                     next_step = "analyze_deployment"
             elif step == "analyze_deployment":
                 if status is not None and status == "success":
@@ -444,7 +445,7 @@ def create_actions(submission, request_context, user_prompt):
 
         update_analysis_status(submission["submission_id"], "scaffold", "success")
 
-        # --- WORKFLOW: After scaffold, enqueue analyze_all_actions ---
+        # WORKFLOW: After scaffold, enqueue analyze_all_actions
         create_task({
             "submission_id": submission["submission_id"],
             "step": "analyze_all_actions"
@@ -456,36 +457,6 @@ def create_actions(submission, request_context, user_prompt):
             "log": traceback.format_exc()
         })
         return jsonify({"error": str(e)}), 200
-
-@app.route('/api/analyze_all_actions', methods=['POST'])
-@authenticate
-@inject_analysis_params
-def analyze_all_actions(submission, request_context, user_prompt):
-    """Analyze all actions for a submission by creating tasks for each action (with parallel workspace)."""
-    try:
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-        actors = context.actor_summary()
-        count = 0
-        for actor in actors.actors:
-            for action in actor.actions:
-                parallel_workspace_id = str(uuid.uuid4())
-                # Create analyze_action task with parallel_workspace
-                create_task({
-                    "submission_id": submission["submission_id"],
-                    "contract_name": getattr(action, "contract_name", None),
-                    "function_name": getattr(action, "function_name", None),
-                    "step": "analyze_action",
-                    "parallel_workspace": True,
-                    "parallel_workspace_id": parallel_workspace_id
-                })
-                count += 1
-        return jsonify({
-            "message": f"Created tasks for analyzing {count} actions",
-            "status": "success"
-        }), 200
-    except Exception as e:
-        app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/analyze_action', methods=['POST'])
 @authenticate
@@ -561,7 +532,7 @@ def implement_snapshot():
     try:
         data = request.get_json()
         submission_id = data.get("submission_id")
-        contract_names = data.get("contract_names", [])
+        contract_names = data.get("contract_names", []) # Optional: list of contract names
         contract_name = data.get("contract_name")
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not submission_id:
@@ -1213,6 +1184,7 @@ def analyze_action(submission, request_context, user_prompt):
 
         # Update status to success
         update_action_analysis_status(submission["submission_id"], contract_name, function_name, "analyze", "success")
+
         # After success, enqueue check_contract_actions_analyzed for this contract
         create_task({
             "submission_id": submission["submission_id"],
