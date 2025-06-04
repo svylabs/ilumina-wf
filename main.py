@@ -458,36 +458,26 @@ def create_actions(submission, request_context, user_prompt):
         })
         return jsonify({"error": str(e)}), 200
 
-@app.route('/api/analyze_action', methods=['POST'])
+@app.route('/api/implement_action', methods=['POST'])
 @authenticate
 @inject_analysis_params
-def analyze_action(submission, request_context, user_prompt):
-    """Analyze a specific action for a given contract (with parallel workspace)."""
+def implement_action(submission, request_context, user_prompt):
+    """Generate a single action file for a specific actor and action (with parallel workspace)."""
     try:
-        # Get parameters from request
         data = request.get_json()
         actor_name = data.get('actor_name')
         action_name = data.get('action_name')
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
-        
         if not actor_name or not action_name:
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
-
-        # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
-        
-        # Initialize ActionGenerator
         action_generator = ActionGenerator(context)
-        
-        # Generate the specific action
         result = action_generator.generate_single_action(actor_name, action_name)
-
         return jsonify({
             "message": f"Action '{action_name}' for actor '{actor_name}' generated successfully",
             "file_path": result["file_path"],
             "action_details": result["action_details"]
         }), 200
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
