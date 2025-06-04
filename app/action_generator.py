@@ -42,6 +42,16 @@ class ActionGenerator:
     def generate_action(self):
         action_summary_path = self.context.action_summary_path(self.action)
         action_summary = ActionSummary.load_summary(action_summary_path)
+        deployment_instructions = self.context.deployment_instructions()
+        deployed_contracts = []
+        for instruction in deployment_instructions.sequence:
+            if instruction.type == 'deploy':
+                deployed_contracts.append(
+                    {
+                        "contract_name": instruction.contract,
+                        "contract_reference": instruction.ref_name
+                    }
+                )
         snapshot_structure_path = self.context.snapshot_provider_code_path()
         abi = self.context.contract_artifact_path(self.action.contract_name)
         with open(abi, 'r') as f:
@@ -56,7 +66,7 @@ class ActionGenerator:
             snapshot_interfaces = f.read()
             core_snapshot_structure += "\n\n" + snapshot_interfaces
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
-        prompt = self._generate_action_prompt(function_definition, action, action_summary, core_snapshot_structure)
+        prompt = self._generate_action_prompt(function_definition, action, action_summary, core_snapshot_structure, deployed_contracts)
         analyzer = ThreeStageAnalyzer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
         code = analyzer.ask_llm(prompt, guidelines=[
             "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
@@ -67,7 +77,7 @@ class ActionGenerator:
             f.write(code.typescript_code)
         self.context.commit(code.commit_message)
 
-    def _generate_action_prompt(self, function_definition, action: Action, action_summary: ActionSummary, snapshot_structure: str) -> str:
+    def _generate_action_prompt(self, function_definition, action: Action, action_summary: ActionSummary, snapshot_structure: str, deployed_contracts) -> str:
         return f"""
         Generate a production ready TypeScript code to call the smart contract action {action.name}, contract: {action.contract_name}, function: {action.function_name} using ethers.js. 
 
@@ -76,6 +86,10 @@ class ActionGenerator:
 
         function definition:
         {json.dumps(function_definition)}
+
+        deployed contracts:
+        {json.dumps(deployed_contracts, indent=2)}
+        Address for these contracts can be accessed using RunContext (context.contracts.contract_reference as Contract).target
 
         The code should include:
         1. A class named {action.function_name.capitalize()}Action extending Action in ilumina framework.
@@ -121,6 +135,7 @@ class ActionGenerator:
 
         1. RunContext is a context that provides the following:
             a. context.prng: A pseudo-random number generator for generating random values, context.prng.next() will provide a random number between [0, 4294967296). Do not use Math.random()
+            b. context.contracts: A typescript Record<string, any> that contains the ethers.js contract instances for the deployed contracts.
         2. actor: Actor is an object that represents the actor performing the action. It has the following properties:
             account - and account.address gives the address and account.value gives the HardHat signer object.
             identifiers - can be accessed using getIdentifiers()
@@ -130,7 +145,8 @@ class ActionGenerator:
         4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
         6. Use BigInt inplace of Number for any numeric values.
-        7. ETH Balances / Token balances for contracts can be accessed the same way as account balances for other real actors from snapshots using the contract address(contract.target)
+        7. ETH Balances can be accessed using accountSnapshot
+        8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
         ```
             """
         pass

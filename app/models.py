@@ -324,6 +324,7 @@ class StateUpdate(IluminaOpenAIResponseModel):
     what_does_it_track: str
     why_is_is_important: str
     when_is_it_updated: str
+    how_to_validate_state_update: str
     summary_of_update: str
     has_conditional_updates: bool
     conditions: list[str]
@@ -335,6 +336,7 @@ class StateUpdate(IluminaOpenAIResponseModel):
             "what_does_it_track": self.what_does_it_track,
             "why_is_is_important": self.why_is_is_important,
             "when_is_it_updated": self.when_is_it_updated,
+            "how_to_validate_state_update": self.how_to_validate_state_update,
             "has_conditional_updates": self.has_conditional_updates,
             "summary_of_update": self.summary_of_update,
             "conditions": self.conditions
@@ -398,32 +400,6 @@ class Action(IluminaOpenAIResponseModel):
             "probability": self.probability
         }
     
-class ActionSummary(IluminaOpenAIResponseModel):
-    action: Action
-    action_detail: ActionDetail
-    action_execution: ActionExecution
-
-    def to_dict(self):
-        return {
-            "action": self.action.to_dict(),
-            "action_detail": self.action_detail.to_dict(),
-            "action_execution": self.action_execution.to_dict()
-        }
-    
-    @classmethod
-    def load(cls, data):
-        return cls(**data)
-    
-    @classmethod
-    def load_summary(self, path):
-        if (os.path.exists(path)):
-            with open(path, "r") as f:
-                content = json.loads(f.read())
-                #print(json.dumps(content))
-                return ActionSummary.load(content)
-        return None
-
-    
 class ContractReference(IluminaOpenAIResponseModel):
     state_variable_name: str
     contract_name: str
@@ -446,6 +422,60 @@ class ContractReferences(IluminaOpenAIResponseModel):
     def load(cls, data):
         return cls(**data)
     
+
+
+class ContractContext(IluminaOpenAIResponseModel):
+    contract_name: str
+    code_snippet: str
+    references: ContractReferences
+
+    def to_dict(self):
+        return {
+            "contract_name": self.contract_name,
+            "code_snippet": self.code_snippet,
+            "references": self.references.to_dict()
+        }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+class ActionContext(IluminaOpenAIResponseModel):
+    contract_context: list[ContractContext]
+
+    def to_dict(self):
+        return {
+            "contract_context": [context.to_dict() for context in self.contract_context]
+        }
+    
+    
+class ActionSummary(IluminaOpenAIResponseModel):
+    action: Action
+    action_detail: ActionDetail
+    action_execution: ActionExecution
+    action_context: ActionContext
+
+    def to_dict(self):
+        return {
+            "action": self.action.to_dict(),
+            "action_detail": self.action_detail.to_dict(),
+            "action_execution": self.action_execution.to_dict(),
+            "action_context": self.action_context.to_dict()
+        }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    @classmethod
+    def load_summary(self, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionSummary.load(content)
+        return None
+
 
 class Actor(IluminaOpenAIResponseModel):
     name: str
