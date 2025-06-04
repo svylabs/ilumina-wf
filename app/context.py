@@ -387,10 +387,23 @@ class RunContext:
             if not result.stdout.strip():
                 print("No changes to commit in the simulation repo.")
                 return
-            # Add, commit, push
+            # Add and commit
             subprocess.run(["git", "add", "."], cwd=simulation_path, check=True)
             subprocess.run(["git", "commit", "-m", message], cwd=simulation_path, check=True)
-            subprocess.run(["git", "push"], cwd=simulation_path, check=True)
+            try:
+                subprocess.run(["git", "push"], cwd=simulation_path, check=True)
+            except subprocess.CalledProcessError as e:
+                print("git push failed, trying git pull --rebase and retrying push...")
+                # Try to rebase and push again
+                try:
+                    subprocess.run(["git", "pull", "--rebase"], cwd=simulation_path, check=True)
+                    subprocess.run(["git", "push"], cwd=simulation_path, check=True)
+                except subprocess.CalledProcessError as e2:
+                    print("git push after rebase failed, trying git push --force as last resort...")
+                    try:
+                        subprocess.run(["git", "push", "--force"], cwd=simulation_path, check=True)
+                    except subprocess.CalledProcessError as e3:
+                        raise Exception(f"Git push failed after rebase and force push: {e3}")
         except subprocess.CalledProcessError as e:
             raise Exception(f"Git command failed: {e}")
         except Exception as e:
