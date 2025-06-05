@@ -1202,7 +1202,10 @@ def analyze_all_actions(submission, request_context, user_prompt):
         
         # Load the Actors file
         actors = context.actor_summary()
-        
+        if actors is None:
+            return jsonify({
+                "error": "Actors summary not found. Please ensure the analyze_actors step has completed successfully."
+            }), 400
         # For each actor and action, create a task
         count = 0
         for actor in actors.actors:
