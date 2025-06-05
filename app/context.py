@@ -428,7 +428,19 @@ class RunContext:
         return Project.load_summary(self.summary_path())
         
     def actor_summary(self):
-        return Actors.load_summary(self.actor_summary_path())
+        # return Actors.load_summary(self.actor_summary_path())
+        path = self.actor_summary_path()
+        if not os.path.exists(path):
+            print(f"[actor_summary] File not found: {path}")
+            return None
+        try:
+            actors = Actors.load_summary(path)
+            if actors is None:
+                print(f"[actor_summary] Failed to load or parse: {path}")
+            return actors
+        except Exception as e:
+            print(f"[actor_summary] Exception loading {path}: {e}")
+            return None
     
     def deployment_instructions(self):
         return DeploymentInstruction.load_summary(self.deployment_instructions_path())

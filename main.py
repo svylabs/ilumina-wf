@@ -1159,6 +1159,10 @@ def analyze_action(submission, request_context, user_prompt):
         
         # Load the Actors file
         actors = context.actor_summary()
+        if actors is None:
+            return jsonify({
+                "error": "Actors summary not found. Please ensure the analyze_actors step has completed successfully."
+            }), 400
 
         # Get the action
         action = actors.find_action(contract_name, function_name)
