@@ -151,8 +151,10 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
     github_repo_url = f"git@github.com:{github_username}/{repo_name}.git"
     already_exists = create_github_repo(github_token, github_username, repo_name)
     if already_exists:
+        print(f"GitHub repository {github_repo_url} already exists, cloning it.")
         clone_repo(github_repo_url, simulation_repo_path, branch="main")
     else:
+        print(f"Creating new GitHub repository {github_repo_url} for simulation.")
         clone_repo(simulation_template_repo, simulation_repo_path, branch="main")
 
     # Install dependencies for SIMULATION project (always uses Hardhat)
@@ -396,7 +398,8 @@ class RunContext:
                 print("git push failed, trying git pull --rebase and retrying push...")
                 # Try to rebase and push again
                 try:
-                    subprocess.run(["git", "pull", "--rebase"], cwd=simulation_path, check=True)
+                    # subprocess.run(["git", "pull", "--rebase"], cwd=simulation_path, check=True)
+                    subprocess.run(["git", "pull", "--rebase", "-X", "theirs"], cwd=simulation_path, check=True)
                     subprocess.run(["git", "push"], cwd=simulation_path, check=True)
                 except subprocess.CalledProcessError as e2:
                     print("git push after rebase failed, trying git push --force as last resort...")
