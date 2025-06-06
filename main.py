@@ -533,7 +533,8 @@ def implement_snapshot():
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         generator = SnapshotCodeGenerator(context)
         if contract_name:
-            generator.generate([contract_name])
+            # generator.generate([contract_name])
+            generator.generate()
             msg = f"Snapshot code generated for contract: {contract_name}"
             # After success, enqueue implement_all_actions for this contract
             create_task({
@@ -544,7 +545,8 @@ def implement_snapshot():
                 "parallel_workspace_id": parallel_workspace_id
             })
         elif contract_names and isinstance(contract_names, list):
-            generator.generate(contract_names)
+            # generator.generate(contract_names)
+            generator.generate()
             msg = f"Snapshot code generated for contracts: {', '.join(contract_names)}"
         else:
             generator.generate()
