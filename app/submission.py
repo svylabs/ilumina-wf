@@ -82,7 +82,39 @@ def update_action_analysis_status(submission_id, contract_name, function_name, s
         "status": status,
         "updated_at": datetime.now(timezone.utc)
     })
-    entity.exclude_from_indexes = ["implementation_status", "analysis_status", "completed_steps"]
+    entity.exclude_from_indexes = ["completed_steps"]
+    if "completed_steps" not in entity:
+        entity["completed_steps"] = []
+    if status == "success":
+        entity["completed_steps"].append({
+            "step": step,
+            "updated_at": datetime.now(timezone.utc),
+            "status": status
+        })
+
+    if metadata:
+        for key, value in metadata.items():
+            entity[key] = value
+
+    datastore_client.put(entity)
+
+def update_snapshot_analysis_status(submission_id, contract_name, step, status, metadata=None):
+    """Update the snapshot analysis status in the SubmissionSnapshotAnalysis table."""
+    key = datastore_client.key("SubmissionSnapshotAnalysis", f"{submission_id}_{contract_name}")
+    entity = datastore_client.get(key)
+
+    if not entity:
+        entity = datastore.Entity(key=key)
+        entity["created_at"] = datetime.now(timezone.utc)
+
+    entity.update({
+        "submission_id": submission_id,
+        "contract_name": contract_name,
+        "step": step,
+        "status": status,
+        "updated_at": datetime.now(timezone.utc)
+    })
+    entity.exclude_from_indexes = ["completed_steps"]
     if "completed_steps" not in entity:
         entity["completed_steps"] = []
     if status == "success":
