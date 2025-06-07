@@ -292,6 +292,9 @@ def analyze():
             elif step == "implement_snapshots":     
                 if status is not None and status == "success":
                     next_step = "implement_all_actions"
+            elif step == "implement_all_actions":
+                if status is not None and status == "success":
+                    next_step = ""
         
         if next_step == "analyze_project":
             create_task({"submission_id": submission_id, "step": "analyze_project"}, forward_params=forward_params)
@@ -552,42 +555,40 @@ def analyze_snapshot(submission, request_context, user_prompt):
 
 @app.route('/api/implement_snapshots', methods=['POST'])
 @authenticate
-def implement_snapshots():
+@inject_analysis_params
+def implement_snapshots(submission, request_context, user_prompt):
     """Generate snapshot code for all or specific contracts (with parallel workspace)."""
     try:
         data = request.get_json()
-        submission_id = data.get("submission_id")
-        contract_names = data.get("contract_names", []) # Optional: list of contract names
-        contract_name = data.get("contract_name")
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_snapshots",
+            "in_progress"
+        )
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
-        if not submission_id:
-            return jsonify({"error": "Missing submission_id in request body"}), 400
-        submission = datastore_client.get(datastore_client.key("Submission", submission_id))
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         generator = SnapshotCodeGenerator(context)
-        if contract_name:
-            # generator.generate([contract_name])
-            generator.generate()
-            msg = f"Snapshot code generated for contract: {contract_name}"
+        generator.generate()
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_snapshots",
+            "success"
+        )
+        if request_context == "bg":
             # After success, enqueue implement_all_actions for this contract
             create_task({
-                "submission_id": submission_id,
-                "step": "implement_all_actions",
-                "parallel_workspace": True,
-                "parallel_workspace_id": parallel_workspace_id
+                "submission_id": submission["submission_id"],
+                "step": "analyze"
             })
-        elif contract_names and isinstance(contract_names, list):
-            # generator.generate(contract_names)
-            generator.generate()
-            msg = f"Snapshot code generated for contracts: {', '.join(contract_names)}"
-        else:
-            generator.generate()
-            msg = "Snapshot code generated for all contracts"
-        return jsonify({"message": msg}), 200
+        return jsonify({"message": "Implemented snapshots"}), 200
     except Exception as e:
         app.logger.error("Error in implement_snapshot", exc_info=e)
+        update_analysis_status(
+            submission["submission_id"],
+            "implement_snapshots",
+            "error",
+            metadata={"message": str(e)}
+        )
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/implement_all_actions', methods=['POST'])
