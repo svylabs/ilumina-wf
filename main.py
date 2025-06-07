@@ -626,7 +626,7 @@ def implement_snapshots(submission, request_context, user_prompt):
 def implement_all_actions(submission, request_context, user_prompt):
     """Enqueue implement_action for all actions (parallel workspace)."""
     try:
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        context = prepare_context(submission, needs_parallel_workspace=False)
         actors = context.actor_summary()
         update_analysis_status(
             submission["submission_id"],
