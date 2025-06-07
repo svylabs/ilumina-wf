@@ -13,7 +13,7 @@ BUCKET_NAME = "ilumina-simulation-logs"
 CONTAINER_IMAGE = os.getenv("CONTAINER_IMAGE", "us-central1-docker.pkg.dev/ilumina-451416/cloud-run-source-deploy/ilumina-wf:latest")
 
 class SimulationRun:
-    def __init__(self, simulation_id, submission_id, status, type="run", batch_id=None, description="", num_simulations=1, branch="main"):
+    def __init__(self, simulation_id, submission_id, status, type="run", batch_id=None, description="", num_simulations=1, branch="main", actor_config=None):
         self.simulation_id = simulation_id
         self.submission_id = submission_id
         self.status = status
@@ -22,6 +22,7 @@ class SimulationRun:
         self.type = type
         self.branch = branch
         self.num_simulations = num_simulations
+        self.actor_config = actor_config or {}
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
 
@@ -38,6 +39,7 @@ class SimulationRun:
             "description": self.description,
             "branch": self.branch,
             "num_simulations": self.num_simulations,
+            "actor_config": self.actor_config,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         })
@@ -79,6 +81,7 @@ class SimulationRun:
                 batch_id=entity.get("batch_id"),
                 description=entity.get("description", ""),
                 num_simulations=entity.get("num_simulations", 1),
+                actor_config=entity.get("actor_config"),
                 branch=entity.get("branch", "main")
             )
         else:
@@ -95,6 +98,7 @@ class SimulationRun:
             batch_id=simulation_entity.get("batch_id"),
             description=simulation_entity.get("description", ""),
             num_simulations=simulation_entity.get("num_simulations", 1),
+            actor_config=simulation_entity.get("actor_config"),
             branch=simulation_entity.get("branch", "main")
         )
         
@@ -149,7 +153,25 @@ class SimulationRunner:
             "failed": failed,
             "scheduled": scheduled})
 
-
+    def _generate_config_file(self):
+        """Generate config.json file for the simulation."""
+        # Try to get actor_config from SimulationRun, fallback to Submission
+        actor_config = self.simulation.actor_config
+        if not actor_config:
+            submission = datastore_client.get(datastore_client.key("Submission", self.simulation.submission_id))
+            actor_config = submission.get("actor_config") if submission else None
+        config = {
+            "actors": actor_config if actor_config else {},
+            "options": {
+                "iterations": 100,
+                "randomSeed": str(self.simulation.simulation_id)
+            }
+        }
+        config_path = os.path.join(self.context.simulation_path(), "config.json")
+        os.makedirs(self.context.simulation_path(), exist_ok=True)
+        import json
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
 
     def run(self):
         """Start the simulation and track its status."""
@@ -158,6 +180,9 @@ class SimulationRunner:
         returncode = 0
 
         try:
+            # Generate config file before running simulation
+            self._generate_config_file()
+
             # Run the simulation script
             result = subprocess.run(["/bin/bash", "scripts/run_simulation.sh", self.simulation.simulation_id, self.context.simulation_path()], 
                                     capture_output=True,

@@ -24,7 +24,7 @@ def main():
     #print(f"Submission: {submission}")
     #print(f"Simulation: {simulation}")
 
-    context = prepare_context(submission, optimize=False, contract_branch=simulation.branch or "main")
+    context = prepare_context(submission, optimize=False, contract_branch=simulation.branch or "main", needs_parallel_workspace=False)
 
     if simulation.type == "run":
         runner = SimulationRunner(context, simulation)
@@ -37,4 +37,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

@@ -153,7 +153,7 @@ def get_project_summary(submission_id):
     submission = datastore_client.get(datastore_client.key("Submission", submission_id))
     if not submission:
         return jsonify({"error": "Submission not found"}), 404
-    context = prepare_context_lazy(submission)
+    context = prepare_context_lazy(submission, needs_parallel_workspace=False)
     blob = bucket.blob(context.gcs_summary_path_from_version(submission["summary_version"]))
 
     if not blob.exists():
@@ -171,7 +171,7 @@ def get_actors_summary(submission_id):
         return jsonify({"error": "Submission not found"}), 404
     bucket = storage_client.bucket(BUCKET_NAME)
 
-    context = prepare_context_lazy(submission)
+    context = prepare_context_lazy(submission, needs_parallel_workspace=False)
     blob = bucket.blob(context.gcs_actor_summary_path_from_version(submission["actor_version"]))
 
     if not blob.exists():
@@ -189,7 +189,7 @@ def get_deployment_instructions(submission_id):
         return jsonify({"error": "Submission not found"}), 404
 
     bucket = storage_client.bucket(BUCKET_NAME)
-    context = prepare_context_lazy(submission)
+    context = prepare_context_lazy(submission, needs_parallel_workspace=False)
     blob = bucket.blob(context.gcs_deployment_instructions_path_from_version(submission["deployment_instruction_version"]))
 
     if not blob.exists():

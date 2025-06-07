@@ -11,3 +11,4 @@ protobuf
 google-genai
 google-cloud-run
 jinja2
+slither-analyzer
