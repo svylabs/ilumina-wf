@@ -323,7 +323,7 @@ def analyze():
             return jsonify({"message": "Enqueued step: analyze_all_actions"}), 200
         elif next_step == "analyze_all_snapshots":
             create_task({"submission_id": submission_id, "step": "analyze_all_snapshots"}, forward_params=forward_params)
-            return jsonify({"message": "Enqueued step: analyze_all_actions"}), 200
+            return jsonify({"message": "Enqueued step: analyze_all_snapshots"}), 200
         elif next_step == "implement_snapshots":
             # This is handled per contract after analyze_snapshot
             create_task({"submission_id": submission_id, "step": "implement_snapshots"}, forward_params=forward_params)
@@ -1311,32 +1311,28 @@ def analyze_all_snapshots(submission, request_context, user_prompt):
         )
         
         # Load the Actors file
-        actors = context.actor_summary()
-        if actors is None:
-            return jsonify({
-                "error": "Actors summary not found. Please ensure the analyze_actors step has completed successfully."
-            }), 400
-        # For each actor and action, create a task
+        deployment_instructions = context.deployment_instructions()
+
         count = 0
         contracts = set()
-        for actor in actors.actors:
-            for action in actor.actions:
-                contract_name = getattr(action, "contract_name", None)
-                if contract_name and contract_name not in contracts:
-                    # Create analyze_snapshot task with parallel_workspace
-                    update_snapshot_analysis_status(
-                        submission["submission_id"],
-                        contract_name,
-                        "analyze_snapshot",
-                        "scheduled"
-                    )
-                    create_task({
-                        "submission_id": submission["submission_id"],
-                        "contract_name": contract_name,
-                        "step": "analyze_snapshot"
-                    })
-                    contracts.add(contract_name)
-                    count += 1
+        for instruction in deployment_instructions.sequence:
+                if instruction.type == "deploy":
+                    contract_name = instruction.contract
+                    if contract_name and contract_name not in contracts:
+                        # Create analyze_snapshot task with parallel_workspace
+                        update_snapshot_analysis_status(
+                            submission["submission_id"],
+                            contract_name,
+                            "analyze_snapshot",
+                            "scheduled"
+                        )
+                        create_task({
+                            "submission_id": submission["submission_id"],
+                            "contract_name": contract_name,
+                            "step": "analyze_snapshot"
+                        })
+                        contracts.add(contract_name)
+                        count += 1
         
         return jsonify({
             "message": f"Created tasks for analyzing {count} contracts",
