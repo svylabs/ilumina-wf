@@ -188,7 +188,8 @@ def get_submission(submission_id):
         "completed_steps": submission.get("completed_steps", []),
         "message": message,
         "latest_prompts": latest_prompts,
-        "step_metadata": step_metadata
+        "step_metadata": step_metadata,
+        "actor_config": submission.get("actor_config", {}),
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
