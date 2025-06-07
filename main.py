@@ -517,6 +517,7 @@ def implement_action(submission, request_context, user_prompt):
             "message": f"Action '{action.name}' for contract: {action.contract_name} - {action.function_name} generated successfully"
         }), 200
     except Exception as e:
+        app.logger.error("Error in implement_action", exc_info=e)
         update_action_analysis_status(
             submission["submission_id"],
             contract_name,
@@ -524,7 +525,7 @@ def implement_action(submission, request_context, user_prompt):
             "implement",
             "error"
         )
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": traceback.format_exc(e)}), 500
     
     
 @app.route('/api/analyze_snapshot', methods=['POST'])
