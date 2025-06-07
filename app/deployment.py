@@ -266,6 +266,7 @@ class DeploymentAnalyzer:
             "4. use contract.target instead of contract.address to get all contract addresses."
             "5. Ensure that we wait for transaction confirmation. For ex: tx = await contract.connect(user).function_call(params); await tx.wait();"
             "6. The code should not assume a deployment config provided anywhere. It should implement the sequence provided as code."
+            "7. Log the deployment addresses in the console after deployment of each contract.",
         ]
 
         llm = ThreeStageAnalyzer(Code)

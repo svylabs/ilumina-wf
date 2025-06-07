@@ -189,7 +189,7 @@ class SnapshotCodeGenerator:
         Here are the list of identifiers that can be used:
         {json.dumps(identifiers, indent=2)}
         In addition to this, all actors will have an inbuilt identifier called accountAddress which is the address of the user.
-        actor.identifiers will provide the list of identifiers.
+        actor.getIdentifiers() will provide the list of all identifiers including accountAddress.
         The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values. If it's an array, you need to iterate over the array and fetch 
         the data for each identifier.
 
@@ -201,13 +201,24 @@ class SnapshotCodeGenerator:
 
     def _exported(self, code: str) -> str:
         """
-        Helper function to format exported code
+        Formats TypeScript interfaces and other code blocks for export.
+        Ensures all interface declarations are prefixed with 'export'.
         """
-        if code.startswith("export "):
+        # If it starts with "export", leave it alone
+        if code.strip().startswith("export "):
             return code + "\n\n"
-        if code.startswith("interface "):
-            return code.replace("interface ", "export interface ") + "\n\n"
-        return code
+
+        # Add 'export' before all 'interface' declarations not already exported
+        def export_interface(match):
+            if match.group(1) == 'export ':
+                return match.group(0)
+            return f"export interface {match.group(2)}"
+
+        code = re.sub(r'(?:(export )?\binterface\b\s+([A-Za-z0-9_]+))',
+                    export_interface,
+                    code)
+
+        return code.strip() + "\n\n"
 
 if __name__ == "__main__":
     context = prepare_context_lazy({
@@ -217,7 +228,7 @@ if __name__ == "__main__":
         #"run_id": "3",
         #"submission_id": "s3",
         #"github_repository_url": "https://github.com/svylabs-com/sample-hardhat-project"
-    })
+    }, needs_parallel_workspace=False)
     generator = SnapshotCodeGenerator(context)
     generator.generate()
     print("Snapshot code generation completed.")

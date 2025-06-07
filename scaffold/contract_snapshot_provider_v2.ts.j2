@@ -1,5 +1,5 @@
 import { Snapshot, SnapshotProvider } from "@svylabs/ilumina";
-import { Contract } from "ethers";
+import { Contract, HardhatEthersSigner } from "ethers";
 import { Actor } from "@svylabs/ilumina";
 
 {% for contract in contract_instances %}
@@ -24,13 +24,16 @@ export class ContractSnapshotProvider implements SnapshotProvider {
     async snapshot(): Promise<Snapshot> {   
         const snapshot: Snapshot = {
             contractSnapshot: {},
-            actorSnapshot: {}
+            accountSnapshot: {}
         };
         const contractSnapshot = {};
         {% for contract in contract_instances %}
         contractSnapshot["{{ contract.reference_name }}"] = await {{ contract.function_name}}(this.contracts.{{ contract.reference_name }}, this.actors);
         {% endfor %}
         snapshot.contractSnapshot = contractSnapshot;
+        for (const actor of this.actors) {
+            snapshot.accountSnapshot[actor.account.address] = await (actor.account.value as HardhatEthersSigner).getBalance();
+        }
         return snapshot;
     }
 }

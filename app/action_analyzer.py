@@ -7,13 +7,14 @@ from slither.slither import Slither
 from slither.core.declarations import Function
 from slither.slithir.operations import InternalCall, HighLevelCall
 from .compiler import Compiler
+from .context import RunContext
 from .three_stage_llm_call import ThreeStageAnalyzer
-from .models import ActionExecution, ActionDetail, ContractReferences, ActionSummary
+from .models import ActionExecution, ActionDetail, ContractReferences, ContractReference, ActionSummary, ActionContext, ContractContext
 from .context import example_contexts, prepare_context_lazy
 from .contract_reference_analyzer import ContractReferenceAnalyzer
 
 class ActionAnalyzer:
-    def __init__(self, action, context):
+    def __init__(self, action, context: RunContext):
         self.action = action
         self.context = context
 
@@ -39,14 +40,20 @@ class ActionAnalyzer:
             if contract.is_interface:
                 continue
             contract_map[contract.name] = contract
-        
-        contract_references = contract_reference_analyzer.analyze(deployment_instructions, contract_name)
 
+        contract_references_by_contract = {}
+        
         result = {} # A mapping of contract_name and list of functions called by the entry function
 
         for contract in slither.contracts:
             if contract.is_interface:
                 continue
+            contract_references = ContractReferences(references=[])
+            for item in deployment_instructions.sequence:
+                if item.type == 'deploy' and contract.name == item.contract:
+                    contract_references = contract_reference_analyzer.analyze(deployment_instructions, contract.name)
+                    contract_references_by_contract[contract.name] = contract_references
+                    break
             for func in contract.functions:
                 src_path = func.source_mapping.filename.absolute
                 if src_path and local_root in os.path.abspath(src_path):
@@ -86,6 +93,7 @@ class ActionAnalyzer:
                         if isinstance(ir.function, Function):
                             callee = ir.function
                             destination = ir.destination
+                            contract_references = contract_references_by_contract.get(contract_name, ContractReferences(references=[]))
                             resolved_contract = self.resolve_contract(callee, destination.name, contract_references)
                             full_name = f"{resolved_contract}_{callee.full_name}" if resolved_contract else callee.full_name
                             print(f"Visiting function: {full_name} in contract {contract_name}")
@@ -104,7 +112,7 @@ class ActionAnalyzer:
                         """
 
         visit(contract_name, all_funcs[contract_name + "_" + entry_func_full_name])
-        return result
+        return result, contract_references_by_contract
     
     def resolve_contract(self, func: Function, var_name: str, contract_references: ContractReferences, depth=0, max_depth=10):
         """
@@ -143,7 +151,7 @@ class ActionAnalyzer:
 
 
     
-    def _get_function_call_tree(self, contract_name: str, entry_function: str) -> dict:
+    def _get_function_call_tree(self, contract_name: str, entry_function: str):
         """Get all functions called by the entry function"""
         project_path = self.context.cws()
         return self.extract_local_function_tree(
@@ -164,7 +172,7 @@ class ActionAnalyzer:
                 if item.get("type") == "function" and item.get("name") == action.function_name:
                     full_function_name = item.get("name") + "(" + ",".join([param["type"] for param in item.get("inputs", [])]) + ")"
                     break
-        call_tree = self._get_function_call_tree(
+        call_tree, contract_references_by_contract = self._get_function_call_tree(
             action.contract_name,
             full_function_name
         )
@@ -198,7 +206,8 @@ class ActionAnalyzer:
                 "name": contract_name,
                 "code": contract_code[contract_name],
                 "abi": abi,
-                "is_main": contract_name == action.contract_name
+                "is_main": contract_name == action.contract_name,
+                "references": contract_references_by_contract.get(contract_name, ContractReferences(references=[])).to_dict()
             })
         
         return {
@@ -234,11 +243,33 @@ class ActionAnalyzer:
             "2. For each category, provide one list of state updates happening in the system, don't duplicate state updates for category.",
             "3. Provide validation rules for each category of state updates based on the actual updates, these rules will be used to validate the state updates after executing the action.",
         ])
+
+        contract_contexts = [
+            ContractContext(
+                contract_name= c['name'],
+                code_snippet=c['code'],
+                references=ContractReferences(references=[
+                        ContractReference(
+                            contract_name=ref['contract_name'],
+                            state_variable_name=ref['state_variable_name']
+                        )
+                        for ref in c['references']['references']
+                    ]
+                )
+            )
+            for c in context['contracts']
+        ]
+
+        # Step 5: Generate action summary
+        action_context= ActionContext(
+            contract_context=contract_contexts,
+        )
         
         summary = ActionSummary(
             action=action,
             action_execution=action_execution,
-            action_detail=action_detail
+            action_detail=action_detail,
+            action_context=action_context
         )
         with open(self.context.action_summary_path(action), "w") as f:
             json.dump(summary.to_dict(), f, indent=2)
@@ -251,6 +282,7 @@ class ActionAnalyzer:
             f"Contract: {c['name']}\n"
             f"Code:\n{c['code']}\n"
             f"ABI:\n{json.dumps(c['abi'])}"
+            f"Contract References:\n{json.dumps(c['references'])}"
             for c in context['contracts']
         )
         
@@ -278,6 +310,7 @@ Return analysis in JSON matching ActionExecution schema.
             f"Contract: {c['name']}\n"
             f"Code:\n{c['code']}\n"
             f"ABI:\n{json.dumps(c['abi'])}"
+            f"Contract References:\n{json.dumps(c['references'])}"
             for c in context['contracts']
         )
         return f"""
@@ -360,7 +393,7 @@ if __name__ == "__main__":
         "run_id": "1747743579",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase"
-    })
+    }, needs_parallel_workspace=False)
     analyzer = ActionAnalyzer(test_action, context)
     
     # Test 1: Call tree extraction
