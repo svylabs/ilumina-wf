@@ -608,8 +608,7 @@ def implement_snapshots(submission, request_context, user_prompt):
         if request_context == "bg":
             # After success, enqueue implement_all_actions for this contract
             create_task({
-                "submission_id": submission["submission_id"],
-                "step": "analyze"
+                "submission_id": submission["submission_id"]
             })
         return jsonify({"message": "Implemented snapshots"}), 200
     except Exception as e:
@@ -1420,7 +1419,7 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
         actions = list(query.fetch())
         # Check if all actions are analyzed (status == 'success')
         all_analyzed = all(a.get("status") == "success" for a in actions)
-        if all_analyzed and actions:
+        if all_analyzed and len(actions) > 0:
             update_analysis_status(
                 submission_id,
                 "analyze_all_actions",
@@ -1429,8 +1428,7 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
             )
             # Enqueue analyze_snapshot for this contract
             create_task({
-                "submission_id": submission_id,
-                "step": "analyze"
+                "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
         else:
@@ -1462,7 +1460,6 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
             # Enqueue analyze_snapshot for this contract
             create_task({
                 "submission_id": submission_id,
-                "step": "analyze"
             })
             return jsonify({"message": f"All actions implemented."}), 200
         else:
@@ -1495,8 +1492,7 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
             )
             # Enqueue analyze_snapshot for this contract
             create_task({
-                "submission_id": submission_id,
-                "step": "analyze"
+                "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
         else:
