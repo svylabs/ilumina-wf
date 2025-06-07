@@ -537,6 +537,12 @@ def analyze_snapshot(submission, request_context, user_prompt):
         contract_name = data.get("contract_name")
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
+        update_snapshot_analysis_status(
+            submission["submission_id"],
+            contract_name,
+            "analyze",
+            "in_progress"
+        )
         analyzer = SnapshotDataStructureAnalyzer(context)
         analyzer.analyze(contract_name)
         # After success, enqueue implement_snapshot for this contract
@@ -545,12 +551,24 @@ def analyze_snapshot(submission, request_context, user_prompt):
                 "submission_id": submission["submission_id"],
                 "step": "check_contract_snapshots_analyzed"
             })
+        update_snapshot_analysis_status(
+            submission["submission_id"],
+            contract_name,
+            "analyze",
+            "success"
+        )
         return jsonify({
             "message": f"Snapshot data structure generated for contract {contract_name}",
             "contract_name": contract_name
         }), 200
     except Exception as e:
         app.logger.error("Error in analyze_snapshot", exc_info=e)
+        update_snapshot_analysis_status(
+            submission["submission_id"],
+            contract_name,
+            "analyze",
+            "error"
+        )
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/implement_snapshots', methods=['POST'])
@@ -569,6 +587,17 @@ def implement_snapshots(submission, request_context, user_prompt):
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         generator = SnapshotCodeGenerator(context)
         generator.generate()
+        query = datastore_client.query(kind="SubmissionSnapshotAnalysis")
+        query.add_filter("submission_id", "=", submission["submission_id"])
+        snapshots = list(query.fetch())
+        for snapshot in snapshots:
+            contract_name = snapshot["contract_name"]
+            update_snapshot_analysis_status(
+                submission["submission_id"],
+                contract_name,
+                "implement",
+                "success"
+            )
         update_analysis_status(
             submission["submission_id"],
             "implement_snapshots",
@@ -1472,7 +1501,7 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
         else:
-            return jsonify({"message": f"Not all actions analyzed."}), 200
+            return jsonify({"message": f"Not all snapshots are analyzed."}), 200
     except Exception as e:
         app.logger.error("Error in check_contract_snapshots_analyzed endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
