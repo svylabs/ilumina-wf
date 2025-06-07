@@ -1440,11 +1440,11 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
                 "submission_id": submission_id,
                 "step": "analyze"
             })
-            return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
+            return jsonify({"message": f"All actions implemented."}), 200
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
-        app.logger.error("Error in check_contract_actions_analyzed endpoint", exc_info=e)
+        app.logger.error("Error in check_contract_actions_implemented endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -1478,7 +1478,7 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
-        app.logger.error("Error in check_contract_actions_analyzed endpoint", exc_info=e)
+        app.logger.error("Error in check_contract_snapshots_analyzed endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
     
