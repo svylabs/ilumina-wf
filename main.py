@@ -636,7 +636,6 @@ def implement_all_actions(submission, request_context, user_prompt):
         count = 0
         for actor in actors.actors:
             for action in actor.actions:
-                parallel_workspace_id = str(uuid.uuid4())
                 update_action_analysis_status(
                     submission["submission_id"],
                     action.contract_name,
@@ -646,11 +645,9 @@ def implement_all_actions(submission, request_context, user_prompt):
                 )
                 create_task({
                     "submission_id": submission["submission_id"],
-                    "actor_name": getattr(actor, "name", None),
-                    "action_name": getattr(action, "function_name", None),
-                    "step": "implement_action",
-                    "parallel_workspace": True,
-                    "parallel_workspace_id": parallel_workspace_id
+                    "contract_name": action.contract_name,
+                    "function_name": action.function_name,
+                    "step": "implement_action"
                 })
                 count += 1
         return jsonify({"message": f"Created tasks for implementing {count} actions", "status": "success"}), 200
