@@ -72,6 +72,9 @@ class ActionGenerator:
             "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
             "2. Ensure that all state changes are validated based on the previous and current snapshots."
             "3. Ensure that state changes across all affected contracts are validated."
+            "4. Ensure that no assumptions are made about the parameters. They should be initialized randomly based on the snapshot data",
+            "5. Ensure that we use the contract passed in the constructor to call the contraction functions and no arbitrary contract is imported.",
+            "6. Double check the parameters generated to ensure they are valid and within bounds based on the values from snapshots."
         ])
         with open(self.context.action_code_path(self.action), 'w') as f:
             f.write(code.typescript_code)
