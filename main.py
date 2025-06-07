@@ -464,8 +464,7 @@ def scaffold(submission, request_context, user_prompt):
         # WORKFLOW: After scaffold, enqueue analyze_all_actions
         if request_context == "bg":
             create_task({
-                "submission_id": submission["submission_id"],
-                "step": "analyze"
+                "submission_id": submission["submission_id"]
             })
         return jsonify({"message": "Scaffold completed, analyze_all_actions enqueued"}), 200
 
