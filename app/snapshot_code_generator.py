@@ -201,13 +201,24 @@ class SnapshotCodeGenerator:
 
     def _exported(self, code: str) -> str:
         """
-        Helper function to format exported code
+        Formats TypeScript interfaces and other code blocks for export.
+        Ensures all interface declarations are prefixed with 'export'.
         """
-        if code.startswith("export "):
+        # If it starts with "export", leave it alone
+        if code.strip().startswith("export "):
             return code + "\n\n"
-        if code.startswith("interface "):
-            return code.replace("interface ", "export interface ") + "\n\n"
-        return code
+
+        # Add 'export' before all 'interface' declarations not already exported
+        def export_interface(match):
+            if match.group(1) == 'export ':
+                return match.group(0)
+            return f"export interface {match.group(2)}"
+
+        code = re.sub(r'(?:(export )?\binterface\b\s+([A-Za-z0-9_]+))',
+                    export_interface,
+                    code)
+
+        return code.strip() + "\n\n"
 
 if __name__ == "__main__":
     context = prepare_context_lazy({
