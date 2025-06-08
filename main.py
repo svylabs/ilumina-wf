@@ -201,15 +201,6 @@ def begin_analysis():
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
 
-    # Check if the repository URL is accessible
-    repo_url = data["github_repository_url"]
-    try:
-        response = requests.get(repo_url)
-        if response.status_code != 200:
-            return jsonify({"error": "Repository URL is not accessible"}), 400
-    except Exception as e:
-        return jsonify({"error": "Failed to access repository URL"}), 400
-
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
     data["step"] = "begin_analysis"
     data["status"] = "success"
@@ -266,7 +257,7 @@ def analyze():
                     next_step = "analyze_actors"
             elif step == "analyze_actors":
                 if status is not None and status == "success":
-                    next_step = "analyze_deployment"
+                    next_step = ""
             elif step == "analyze_deployment":
                 if status is not None and status == "success":
                     next_step = "implement_deployment_script"
