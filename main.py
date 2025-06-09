@@ -1491,6 +1491,93 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
         app.logger.error("Error in check_contract_snapshots_analyzed endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/review_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def review_action(submission, request_context, user_prompt):
+    """Review an implemented action: validate code, parameters, and rules."""
+    try:
+        data = request.get_json()
+        contract_name = data.get("contract_name")
+        function_name = data.get("function_name")
+        code = data.get("code")
+        action_params = data.get("actionParams")
+        validation_rules = data.get("validation_rules")
+        code_snippet = data.get("code_snippet")
+        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
+        if not contract_name or not function_name:
+            return jsonify({"error": "Both contract_name and function_name are required"}), 400
+
+        # Get the current context
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
+        actors = context.actor_summary()
+        if actors is None:
+            return jsonify({"error": "Actors summary not found. Please ensure the analyze_actors step has completed successfully."}), 400
+
+        action = actors.find_action(contract_name, function_name)
+        if not action:
+            return jsonify({"error": f"Action {contract_name} {function_name} not found in actors file"}), 404
+
+        # Load action summary (validation rules, param rules, etc.)
+        summary_path = context.action_summary_path(action)
+        from app.models import ActionSummary
+        action_summary = ActionSummary.load_summary(summary_path)
+        if not action_summary:
+            return jsonify({"error": "Action summary not found. Please run analyze_action first."}), 400
+
+        # Validation logic
+        review = {"param_issues": [], "validation_rule_issues": [], "code_snippet_issues": [], "info": []}
+        # 1. Validate action parameters
+        expected_params = action_summary.action_detail.to_dict().get("parameter_generation_rules", {})
+        if action_params:
+            for param, rule in expected_params.items():
+                if param not in action_params:
+                    review["param_issues"].append(f"Missing parameter: {param}")
+                # Optionally: check value/rule match
+        else:
+            review["param_issues"].append("No actionParams provided for validation.")
+
+        # 2. Validate rules
+        expected_rules = action_summary.action_detail.to_dict().get("validation_rules", [])
+        if validation_rules:
+            for rule in expected_rules:
+                if rule not in validation_rules:
+                    review["validation_rule_issues"].append(f"Missing validation rule: {rule}")
+        else:
+            review["validation_rule_issues"].append("No validation_rules provided for validation.")
+
+        # 3. Validate code snippet (basic check)
+        if code_snippet:
+            # Check if all expected params and rules are referenced in code_snippet
+            for param in expected_params:
+                if param not in code_snippet:
+                    review["code_snippet_issues"].append(f"Parameter '{param}' not referenced in code snippet.")
+            for rule in expected_rules:
+                if rule and rule not in code_snippet:
+                    review["code_snippet_issues"].append(f"Validation rule not found in code snippet: {rule}")
+        else:
+            review["code_snippet_issues"].append("No code_snippet provided for validation.")
+
+        # 4. Optionally, check the code (if provided)
+        if code:
+            # Basic check: does it contain all params and rules?
+            for param in expected_params:
+                if param not in code:
+                    review["info"].append(f"Parameter '{param}' not found in code.")
+            for rule in expected_rules:
+                if rule and rule not in code:
+                    review["info"].append(f"Validation rule not found in code: {rule}")
+        else:
+            review["info"].append("No code provided for review.")
+
+        return jsonify({
+            "review": review,
+            "expected_params": expected_params,
+            "expected_validation_rules": expected_rules
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in review_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
     
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
