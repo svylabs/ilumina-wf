@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import re
-# from typing import Dict, List
 from dotenv import load_dotenv
 load_dotenv(".env")
 from google.cloud import datastore, tasks_v2
@@ -1499,10 +1498,6 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
 def review_action(submission, request_context, user_prompt):
     """Review and validate an action implementation against its validation rules and code"""
     try:
-        import os
-        import json
-        from app.three_stage_llm_call import ThreeStageAnalyzer
-        
         # Parse request
         data = request.get_json()
         contract_name = data.get('contract_name')
