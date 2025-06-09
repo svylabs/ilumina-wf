@@ -819,3 +819,22 @@ class ActionCode(IluminaOpenAIResponseModel):
             "typescript_code": self.typescript_code,
             "commit_message": self.commit_message
         }
+    
+class ActionReview(IluminaOpenAIResponseModel):
+    """Model for structured action review results"""
+    parameter_issues: List[str] = Field(default_factory=list)
+    validation_issues: List[str] = Field(default_factory=list)
+    state_change_issues: List[str] = Field(default_factory=list)
+    security_issues: List[str] = Field(default_factory=list)
+    improvement_suggestions: List[str] = Field(default_factory=list)
+    overall_assessment: str
+
+    def to_dict(self):
+        return {
+            "parameter_issues": self.parameter_issues,
+            "validation_issues": self.validation_issues,
+            "state_change_issues": self.state_change_issues,
+            "security_issues": self.security_issues,
+            "improvement_suggestions": self.improvement_suggestions,
+            "overall_assessment": self.overall_assessment
+        }

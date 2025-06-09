@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import os
 import re
+# from typing import Dict, List
 from dotenv import load_dotenv
 load_dotenv(".env")
 from google.cloud import datastore, tasks_v2
@@ -17,7 +18,7 @@ from app.context import prepare_context, prepare_context_lazy
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
-from app.models import Project
+from app.models import Project, ActionReview
 from app.deployment import DeploymentAnalyzer
 from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
@@ -45,6 +46,7 @@ from app.submission import (
     update_snapshot_analysis_status,
     UserPromptManager
 )
+from app.three_stage_llm_call import ThreeStageAnalyzer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1495,86 +1497,97 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
 @authenticate
 @inject_analysis_params
 def review_action(submission, request_context, user_prompt):
-    """Review an implemented action: validate code, parameters, and rules."""
+    """Review and validate an action implementation against its validation rules and code"""
     try:
+        import os
+        import json
+        from app.three_stage_llm_call import ThreeStageAnalyzer
+        
+        # Parse request
         data = request.get_json()
-        contract_name = data.get("contract_name")
-        function_name = data.get("function_name")
-        code = data.get("code")
-        action_params = data.get("actionParams")
-        validation_rules = data.get("validation_rules")
-        code_snippet = data.get("code_snippet")
-        parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
+        contract_name = data.get('contract_name')
+        function_name = data.get('function_name')
         if not contract_name or not function_name:
             return jsonify({"error": "Both contract_name and function_name are required"}), 400
 
         # Get the current context
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
+        context = prepare_context(submission, needs_parallel_workspace=False)
         actors = context.actor_summary()
-        if actors is None:
-            return jsonify({"error": "Actors summary not found. Please ensure the analyze_actors step has completed successfully."}), 400
-
+        if not actors:
+            return jsonify({"error": "Actors summary not found"}), 404
         action = actors.find_action(contract_name, function_name)
         if not action:
-            return jsonify({"error": f"Action {contract_name} {function_name} not found in actors file"}), 404
+            return jsonify({"error": f"Action {function_name} for contract {contract_name} not found"}), 404
 
-        # Load action summary (validation rules, param rules, etc.)
-        summary_path = context.action_summary_path(action)
-        from app.models import ActionSummary
-        action_summary = ActionSummary.load_summary(summary_path)
-        if not action_summary:
-            return jsonify({"error": "Action summary not found. Please run analyze_action first."}), 400
+        # Load action implementation and summary
+        action_summary_path = context.action_summary_path(action)
+        action_code_path = context.action_code_path(action)
+        if not os.path.exists(action_summary_path):
+            return jsonify({"error": "Action analysis not found"}), 404
+        if not os.path.exists(action_code_path):
+            return jsonify({"error": "Action implementation not found"}), 404
+        with open(action_summary_path, 'r') as f:
+            action_summary = json.load(f)
+        with open(action_code_path, 'r') as f:
+            action_code = f.read()
 
-        # Validation logic
-        review = {"param_issues": [], "validation_rule_issues": [], "code_snippet_issues": [], "info": []}
-        # 1. Validate action parameters
-        expected_params = action_summary.action_detail.to_dict().get("parameter_generation_rules", {})
-        if action_params:
-            for param, rule in expected_params.items():
-                if param not in action_params:
-                    review["param_issues"].append(f"Missing parameter: {param}")
-                # Optionally: check value/rule match
-        else:
-            review["param_issues"].append("No actionParams provided for validation.")
+        # Get contract code snippet
+        contract_code = ""
+        try:
+            contract_path = os.path.join(context.cws(), f"{contract_name}.sol")
+            with open(contract_path, "r") as f:
+                contract_code = f.read()
+        except FileNotFoundError:
+            # Try to find contract in other files
+            for root, _, files in os.walk(context.cws()):
+                for file in files:
+                    if file.endswith(".sol"):
+                        with open(os.path.join(root, file), "r") as f:
+                            content = f.read()
+                            if f"contract {contract_name}" in content:
+                                contract_code = content
+                                break
 
-        # 2. Validate rules
-        expected_rules = action_summary.action_detail.to_dict().get("validation_rules", [])
-        if validation_rules:
-            for rule in expected_rules:
-                if rule not in validation_rules:
-                    review["validation_rule_issues"].append(f"Missing validation rule: {rule}")
-        else:
-            review["validation_rule_issues"].append("No validation_rules provided for validation.")
+        # Prepare review prompt for LLM
+        review_prompt = f"""
+Review the action implementation for {contract_name}.{function_name} and validate it against:
+1. The expected state changes and validation rules
+2. The actual contract implementation
+3. The generated action code
 
-        # 3. Validate code snippet (basic check)
-        if code_snippet:
-            # Check if all expected params and rules are referenced in code_snippet
-            for param in expected_params:
-                if param not in code_snippet:
-                    review["code_snippet_issues"].append(f"Parameter '{param}' not referenced in code snippet.")
-            for rule in expected_rules:
-                if rule and rule not in code_snippet:
-                    review["code_snippet_issues"].append(f"Validation rule not found in code snippet: {rule}")
-        else:
-            review["code_snippet_issues"].append("No code_snippet provided for validation.")
+Action Summary:
+{json.dumps(action_summary, indent=2)}
 
-        # 4. Optionally, check the code (if provided)
-        if code:
-            # Basic check: does it contain all params and rules?
-            for param in expected_params:
-                if param not in code:
-                    review["info"].append(f"Parameter '{param}' not found in code.")
-            for rule in expected_rules:
-                if rule and rule not in code:
-                    review["info"].append(f"Validation rule not found in code: {rule}")
-        else:
-            review["info"].append("No code provided for review.")
+Contract Code:
+{contract_code}
+
+Action Implementation:
+{action_code}
+
+Please review and provide:
+1. Any mismatches between the validation rules and implementation
+2. Any missing validations
+3. Any incorrect parameter generation
+4. Any potential issues with the action code
+5. Suggestions for improvement
+"""
+
+        # Create analyzer with ActionReview model
+        analyzer = ThreeStageAnalyzer(ActionReview)
+        review_results = analyzer.ask_llm(review_prompt, guidelines=[
+            "1. Be thorough in checking all validation rules",
+            "2. Verify all state changes are properly validated",
+            "3. Check parameter generation follows the rules",
+            "4. Look for any potential security issues",
+            "5. Provide specific, actionable feedback"
+        ])
 
         return jsonify({
-            "review": review,
-            "expected_params": expected_params,
-            "expected_validation_rules": expected_rules
+            "action": f"{contract_name}.{function_name}",
+            "review": review_results.to_dict(),
+            "status": "success"
         }), 200
+
     except Exception as e:
         app.logger.error("Error in review_action endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
