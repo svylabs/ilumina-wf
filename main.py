@@ -45,7 +45,7 @@ from app.submission import (
     update_snapshot_analysis_status,
     UserPromptManager
 )
-from app.three_stage_llm_call import ThreeStageAnalyzer
+from app.action_reviewer import ActionReviewer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1505,77 +1505,12 @@ def review_action(submission, request_context, user_prompt):
         if not contract_name or not function_name:
             return jsonify({"error": "Both contract_name and function_name are required"}), 400
 
-        # Get the current context
+        # Get context and create reviewer
         context = prepare_context(submission, needs_parallel_workspace=False)
-        actors = context.actor_summary()
-        if not actors:
-            return jsonify({"error": "Actors summary not found"}), 404
-        action = actors.find_action(contract_name, function_name)
-        if not action:
-            return jsonify({"error": f"Action {function_name} for contract {contract_name} not found"}), 404
+        reviewer = ActionReviewer(context)
 
-        # Load action implementation and summary
-        action_summary_path = context.action_summary_path(action)
-        action_code_path = context.action_code_path(action)
-        if not os.path.exists(action_summary_path):
-            return jsonify({"error": "Action analysis not found"}), 404
-        if not os.path.exists(action_code_path):
-            return jsonify({"error": "Action implementation not found"}), 404
-        with open(action_summary_path, 'r') as f:
-            action_summary = json.load(f)
-        with open(action_code_path, 'r') as f:
-            action_code = f.read()
-
-        # Get contract code snippet
-        contract_code = ""
-        try:
-            contract_path = os.path.join(context.cws(), f"{contract_name}.sol")
-            with open(contract_path, "r") as f:
-                contract_code = f.read()
-        except FileNotFoundError:
-            # Try to find contract in other files
-            for root, _, files in os.walk(context.cws()):
-                for file in files:
-                    if file.endswith(".sol"):
-                        with open(os.path.join(root, file), "r") as f:
-                            content = f.read()
-                            if f"contract {contract_name}" in content:
-                                contract_code = content
-                                break
-
-        # Prepare review prompt for LLM
-        review_prompt = f"""
-Review the action implementation for {contract_name}.{function_name} and validate it against:
-1. The expected state changes and validation rules
-2. The actual contract implementation
-3. The generated action code
-
-Action Summary:
-{json.dumps(action_summary, indent=2)}
-
-Contract Code:
-{contract_code}
-
-Action Implementation:
-{action_code}
-
-Please review and provide:
-1. Any mismatches between the validation rules and implementation
-2. Any missing validations
-3. Any incorrect parameter generation
-4. Any potential issues with the action code
-5. Suggestions for improvement
-"""
-
-        # Create analyzer with ActionReview model
-        analyzer = ThreeStageAnalyzer(ActionReview)
-        review_results = analyzer.ask_llm(review_prompt, guidelines=[
-            "1. Be thorough in checking all validation rules",
-            "2. Verify all state changes are properly validated",
-            "3. Check parameter generation follows the rules",
-            "4. Look for any potential security issues",
-            "5. Provide specific, actionable feedback"
-        ])
+        # Perform the review
+        review_results = reviewer.review_action(contract_name, function_name)
 
         return jsonify({
             "action": f"{contract_name}.{function_name}",
