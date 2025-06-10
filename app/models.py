@@ -842,7 +842,7 @@ class Review(BaseModel):
     )
 
 class ActionReview(BaseModel):
-    missing_validations: List[ ] = Field(
+    missing_validations: List[Review] = Field(
         default_factory=list,
         description="Validations that should exist but are missing"
     )
