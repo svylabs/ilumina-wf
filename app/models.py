@@ -819,7 +819,7 @@ class ActionCode(IluminaOpenAIResponseModel):
             "commit_message": self.commit_message
         }
 
-class Review(BaseModel):
+class Review(IluminaOpenAIResponseModel):
     line_number: Optional[int] = Field(
         None, 
         description="The line number in the code where the issue occurs"
@@ -841,7 +841,7 @@ class Review(BaseModel):
         description="Concrete suggestion for how to fix the issue"
     )
 
-class ActionReview(BaseModel):
+class ActionReview(IluminaOpenAIResponseModel):
     missing_validations: List[Review] = Field(
         default_factory=list,
         description="Validations that should exist but are missing"
