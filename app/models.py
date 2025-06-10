@@ -820,54 +820,33 @@ class ActionCode(IluminaOpenAIResponseModel):
         }
 
 class Review(IluminaOpenAIResponseModel):
-    line_number: Optional[int] = Field(
-        None, 
-        description="The line number in the code where the issue occurs"
-    )
-    description: str = Field(
-        ...,
-        description="Detailed description of the issue found"
-    )
-    severity: Literal["low", "medium", "high"] = Field(
-        "medium",
-        description="How critical this issue is"
-    )
-    category: str = Field(
-        ...,
-        description="Type of issue: validation|parameter|logic"
-    )
-    suggested_fix: Optional[str] = Field(
-        None,
-        description="Concrete suggestion for how to fix the issue"
-    )
-
-class ActionReview(IluminaOpenAIResponseModel):
-    missing_validations: List[Review] = Field(
-        default_factory=list,
-        description="Validations that should exist but are missing"
-    )
-    errors_in_existing_validations: List[Review] = Field(
-        default_factory=list,
-        description="Problems with existing validation logic"
-    )
-    errors_in_parameter_generation: List[Review] = Field(
-        default_factory=list,
-        description="Issues with how parameters are generated"
-    )
-    errors_in_execution_logic: List[Review] = Field(
-        default_factory=list,
-        description="Problems with the core execution logic"
-    )
-    overall_assessment: List[str] = Field(
-        default_factory=list,
-        description="High-level summary of the review findings"
-    )
+    line_number: int
+    description: str
+    severity: Literal["low", "medium", "high"]
+    category: str 
+    suggested_fix: str
 
     def to_dict(self):
         return {
-            "missing_validations": [r.dict() for r in self.missing_validations],
-            "errors_in_existing_validations": [r.dict() for r in self.errors_in_existing_validations],
-            "errors_in_parameter_generation": [r.dict() for r in self.errors_in_parameter_generation],
-            "errors_in_execution_logic": [r.dict() for r in self.errors_in_execution_logic],
+            "line_number": self.line_number,
+            "description": self.description,
+            "severity": self.severity,
+            "category": self.category,
+            "suggested_fix": self.suggested_fix
+        }
+
+class ActionReview(IluminaOpenAIResponseModel):
+    missing_validations: List[str]
+    errors_in_existing_validations: List[Review]
+    errors_in_parameter_generation: List[Review]
+    errors_in_execution_logic: List[Review]
+    overall_assessment: List[str]
+
+    def to_dict(self):
+        return {
+            "missing_validations": self.missing_validations,
+            "errors_in_existing_validations": [r.to_dict() for r in self.errors_in_existing_validations],
+            "errors_in_parameter_generation": [r.to_dict() for r in self.errors_in_parameter_generation],
+            "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
             "overall_assessment": self.overall_assessment
         }
