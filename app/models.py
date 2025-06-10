@@ -1,10 +1,9 @@
 import re
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from pydantic import BaseModel, Field
 import os
 from enum import Enum
-from typing import Literal
 from abc import ABC, abstractmethod
 import re
 
@@ -819,22 +818,56 @@ class ActionCode(IluminaOpenAIResponseModel):
             "typescript_code": self.typescript_code,
             "commit_message": self.commit_message
         }
-    
-class ActionReview(IluminaOpenAIResponseModel):
-    """Model for structured action review results"""
-    parameter_issues: List[str] = Field(default_factory=list)
-    validation_issues: List[str] = Field(default_factory=list)
-    state_change_issues: List[str] = Field(default_factory=list)
-    security_issues: List[str] = Field(default_factory=list)
-    improvement_suggestions: List[str] = Field(default_factory=list)
-    overall_assessment: str
+
+class Review(BaseModel):
+    line_number: Optional[int] = Field(
+        None, 
+        description="The line number in the code where the issue occurs"
+    )
+    description: str = Field(
+        ...,
+        description="Detailed description of the issue found"
+    )
+    severity: Literal["low", "medium", "high"] = Field(
+        "medium",
+        description="How critical this issue is"
+    )
+    category: str = Field(
+        ...,
+        description="Type of issue: validation|parameter|logic"
+    )
+    suggested_fix: Optional[str] = Field(
+        None,
+        description="Concrete suggestion for how to fix the issue"
+    )
+
+class ActionReview(BaseModel):
+    missing_validations: List[ ] = Field(
+        default_factory=list,
+        description="Validations that should exist but are missing"
+    )
+    errors_in_existing_validations: List[Review] = Field(
+        default_factory=list,
+        description="Problems with existing validation logic"
+    )
+    errors_in_parameter_generation: List[Review] = Field(
+        default_factory=list,
+        description="Issues with how parameters are generated"
+    )
+    errors_in_execution_logic: List[Review] = Field(
+        default_factory=list,
+        description="Problems with the core execution logic"
+    )
+    overall_assessment: List[str] = Field(
+        default_factory=list,
+        description="High-level summary of the review findings"
+    )
 
     def to_dict(self):
         return {
-            "parameter_issues": self.parameter_issues,
-            "validation_issues": self.validation_issues,
-            "state_change_issues": self.state_change_issues,
-            "security_issues": self.security_issues,
-            "improvement_suggestions": self.improvement_suggestions,
+            "missing_validations": [r.dict() for r in self.missing_validations],
+            "errors_in_existing_validations": [r.dict() for r in self.errors_in_existing_validations],
+            "errors_in_parameter_generation": [r.dict() for r in self.errors_in_parameter_generation],
+            "errors_in_execution_logic": [r.dict() for r in self.errors_in_execution_logic],
             "overall_assessment": self.overall_assessment
         }
