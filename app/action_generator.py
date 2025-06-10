@@ -112,9 +112,11 @@ class ActionGenerator:
         context: RunContext,
         actor: Actor,
         currentSnapshot: Snapshot
-    ): Promise<[any, Record<string, any>]>;```
+    ): Promise<[boolean, any, Record<string, any>]>;```
 
-    The initialize function should return a tuple, where the first element is the action parameters, and the second element is the new identifiers that are created.
+    The initialize function should return a tuple, where the first element is a boolean indicating this action can be executed, second one being the action parameters(if this action can be executed) or empty, and the third element is the new identifiers that are created.
+    The function should decide whether the action can be executed based on the available snapshots. For example: whether there is any required balance in the account, etc.
+    The parameters generated should be valid for the transaction.
 
     The implementation of `execute` should call the contract function with the parameters generated in `initialize` and will be passed as `actionParams`.
     It should execute using actor.account.value cast as Hardhat signer object.
@@ -133,7 +135,8 @@ class ActionGenerator:
         actor: Actor,
         previousSnapshot: Snapshot,
         newSnapshot: Snapshot,
-        actionParams: any
+        actionParams: any,
+        executionReceipt: ExecutionReceipt
     ): Promise<boolean>;```
 
         1. RunContext is a context that provides the following:
@@ -145,9 +148,11 @@ class ActionGenerator:
         3. Snapshot instances contain  has the following structure:
         ```typescript 
            {snapshot_structure}
-        4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
+        4. The action should import the required dependencies.
+            Action, Actor, Snapshot from "@svylabs/ilumina";
+            import type RunContext, ExecutionReceipt from "@svylabs/ilumina";
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
-        6. Use BigInt inplace of Number for any numeric values.
+        6. Use BigInt in place of Number for any numeric values.
         7. ETH Balances can be accessed using accountSnapshot
         8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
         ```
