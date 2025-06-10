@@ -1,6 +1,5 @@
 import os
 import json
-from datetime import datetime
 from typing import Optional
 from .models import ActionReview, Review
 from .context import RunContext
@@ -53,7 +52,6 @@ class ActionReviewer:
             numbered_code = self._number_code_lines(action_code)
             print("5. Code lines numbered")
 
-
             review_prompt = self._create_review_prompt(
                 contract_name,
                 function_name,
@@ -62,34 +60,25 @@ class ActionReviewer:
                 numbered_code
             )
             print("6. Review prompt created")
+            print(f"review_prompt:\n{review_prompt}\n")
 
-            # Debug prompt size
-            print(f"Prompt size: {len(review_prompt)} characters")
-            if len(review_prompt) > 32000:
-                review_prompt = review_prompt[:32000] + "\n\n[TRUNCATED]"
-                print("Prompt truncated to 32000 chars")
-
-            # Get the review from LLM with proper error handling
+            # Get the review from LLM
             analyzer = ThreeStageAnalyzer(ActionReview)
             print("7. Analyzer initialized")
-            
-            review = analyzer.ask_llm(
-                review_prompt,
-                guidelines=[
-                    "Be specific about line numbers",
-                    "Categorize issues precisely (validation|parameter|logic)",
-                    "Provide concrete suggestions",
-                    "Avoid vague language",
-                    "Format response as valid JSON"
-                ]
-            )
+
+            review = analyzer.ask_llm(review_prompt, guidelines=[
+                "Be specific about line numbers",
+                "Categorize issues precisely",
+                "Provide concrete suggestions",
+                "Avoid vague language"
+            ])
             print("8. LLM analysis completed")
 
             # Validate the review before saving
             if not isinstance(review, ActionReview):
                 raise ValueError("LLM returned invalid review format")
             print("9. Review validated")
-                
+
             # Save the review
             self._save_review_file(contract_name, function_name, review)
             print("10. Review saved successfully")
@@ -97,17 +86,7 @@ class ActionReviewer:
             return review
 
         except Exception as e:
-            # error_msg = f"Action review failed for {contract_name}.{function_name}: {str(e)}"
-            error_msg = f"Action review failed at step {getattr(e, 'step', '?')}: {str(e)}"
-            print(error_msg)
-            self._log_error(error_msg)
-            raise Exception(error_msg) from e
-
-    def _log_error(self, message: str):
-        """Log errors to a file for debugging"""
-        error_log = os.path.join(self.reviews_dir, "error_log.txt")
-        with open(error_log, 'a') as f:
-            f.write(f"{datetime.now().isoformat()}: {message}\n")
+            raise Exception(f"Action review failed: {str(e)}")
 
     def _get_action(self, contract_name: str, function_name: str) -> Action:
         """Retrieve the action definition"""
@@ -158,49 +137,31 @@ class ActionReviewer:
         lines = code.split('\n')
         return '\n'.join(f"{i+1}: {line}" for i, line in enumerate(lines))
 
-
-    def _create_review_prompt(self, contract_name: str, function_name: str, 
-                             action_summary: dict, contract_code: str, 
-                             numbered_action_code: str) -> str:
-        # Truncate code sections while preserving structure
-        def safe_truncate(text, max_len):
-            if len(text) > max_len:
-                return text[:max_len-100] + "\n\n...[TRUNCATED]..." + text[-100:]
-            return text
-
-        contract_code = safe_truncate(contract_code, 15000)
-        numbered_action_code = safe_truncate(numbered_action_code, 15000)
-
+    def _create_review_prompt(
+        self,
+        contract_name: str,
+        function_name: str,
+        action_summary: dict,
+        contract_code: str,
+        numbered_action_code: str
+    ) -> str:
+        """Create the detailed review prompt for LLM"""
         return f"""
-Please analyze this smart contract action and provide a code review in EXACTLY this JSON format:
+Conduct a code review for {contract_name}.{function_name} action implementation.
 
-{{
-  "missing_validations": ["list", "of", "missing", "validations"],
-  "errors_in_existing_validations": [
-    {{
-      "line_number": 123,
-      "description": "specific issue found",
-      "severity": "low/medium/high",
-      "category": "validation/parameter/logic",
-      "suggested_fix": "concrete suggestion"
-    }}
-  ],
-  "errors_in_parameter_generation": [
-    // same structure as above
-  ],
-  "errors_in_execution_logic": [
-    // same structure as above  
-  ],
-  "overall_assessment": ["summary", "points"]
-}}
+Requirements:
+1. Identify missing validations (should exist but don't)
+2. Find errors in existing validations
+3. Check parameter generation logic
+4. Analyze execution flow
 
-Review Requirements:
-1. Focus on {contract_name}.{function_name}
-2. Reference line numbers from the numbered code
-3. Categorize each finding precisely
-4. Provide actionable suggestions
+For each issue:
+- Specify exact line number
+- Categorize (validation|parameter|logic)
+- Describe clearly
+- Suggest concrete fix
 
-Action Context:
+Action Summary:
 {json.dumps(action_summary, indent=2)}
 
 Original Contract:
@@ -208,8 +169,6 @@ Original Contract:
 
 Action Implementation (with line numbers):
 {numbered_action_code}
-
-IMPORTANT: Respond ONLY with valid JSON in the exact structure shown above.
 """
 
     def _save_review_file(
