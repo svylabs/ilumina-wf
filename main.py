@@ -13,7 +13,7 @@ import sys
 from app.analyse import Analyzer
 from app.scaffold import Scaffolder
 from app.action_generator import ActionGenerator
-from app.context import prepare_context, prepare_context_lazy
+from app.context import prepare_context, prepare_context_lazy, clean_context
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
@@ -353,6 +353,7 @@ def analyze():
 @inject_analysis_params
 def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_project", "in_progress", user_prompt=user_prompt)
@@ -391,12 +392,15 @@ def analyze_project(submission, request_context, user_prompt):
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_project", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/analyze_actors', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_actors", "in_progress")
@@ -433,13 +437,16 @@ def analyze_actors(submission, request_context, user_prompt):
     except Exception as e:
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/scaffold', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def scaffold(submission, request_context, user_prompt):
     """Generate action files for identified actors"""
+    context = None
     try:
         request_data = request.get_json()
         # Get the current context using prepare_context
@@ -466,12 +473,15 @@ def scaffold(submission, request_context, user_prompt):
             "log": traceback.format_exc()
         })
         return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_action', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_action(submission, request_context, user_prompt):
     """Generate a single action file for a specific actor and action (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         contract_name = data.get('contract_name')
@@ -522,6 +532,8 @@ def implement_action(submission, request_context, user_prompt):
             "error"
         )
         return jsonify({"error": traceback.format_exc(e)}), 500
+    finally:
+        clean_context(context)
     
     
 @app.route('/api/analyze_snapshot', methods=['POST'])
@@ -529,6 +541,7 @@ def implement_action(submission, request_context, user_prompt):
 @inject_analysis_params
 def analyze_snapshot(submission, request_context, user_prompt):
     """Analyze/generate snapshot data structure for a single contract (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         contract_name = data.get("contract_name")
@@ -567,12 +580,15 @@ def analyze_snapshot(submission, request_context, user_prompt):
             "error"
         )
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_snapshots', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_snapshots(submission, request_context, user_prompt):
     """Generate snapshot code for all or specific contracts (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         update_analysis_status(
@@ -615,12 +631,15 @@ def implement_snapshots(submission, request_context, user_prompt):
             metadata={"message": str(e)}
         )
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_all_actions(submission, request_context, user_prompt):
     """Enqueue implement_action for all actions (parallel workspace)."""
+    context = None
     try:
         context = prepare_context(submission, needs_parallel_workspace=False)
         actors = context.actor_summary()
@@ -650,12 +669,15 @@ def implement_all_actions(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in implement_all_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_deployment", "in_progress")
@@ -692,11 +714,14 @@ def analyze_deployment(submission, request_context, user_prompt):
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_deployment_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
+    context = None
     try:
         update_analysis_status(
             submission["submission_id"],
@@ -730,6 +755,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             metadata={"message": str(e)}
         )
         return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -775,6 +802,7 @@ app.register_blueprint(storage_blueprint)
 @inject_analysis_params
 def verify_deploy_script(submission, request_context, user_prompt):
     """Verify the deployment script without executing it."""
+    context = None
     try:
         update_analysis_status(
             submission["submission_id"],
@@ -836,11 +864,14 @@ def verify_deploy_script(submission, request_context, user_prompt):
             "success": False,
             "log":   [-1, {}, "", str(e)]  # stderr or error message
         }), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/debug_deploy_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def debug_deploy_script(submission, request_context, user_prompt):
+    context = None
     """Debug endpoint to provide detailed information about the submission and context."""
     try:
         update_analysis_status(
@@ -891,6 +922,8 @@ def debug_deploy_script(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in debug endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 
 @app.route('/api/submission/<submission_id>/simulations/new', methods=['POST'])
@@ -1216,6 +1249,7 @@ def _get_step_metadata(log):
 @inject_analysis_params
 def analyze_action(submission, request_context, user_prompt):
     """Analyze a specific action for a given contract (with parallel workspace)."""
+    context = None
     try:
         # Get parameters from request
         data = request.get_json()
@@ -1265,12 +1299,16 @@ def analyze_action(submission, request_context, user_prompt):
             "message": str(e)
         })
         return jsonify({"error": str(e)}), 200
+    finally:
+        # Clean up context
+        clean_context(context)
 
 @app.route('/api/analyze_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_all_actions(submission, request_context, user_prompt):
     """Analyze all actions for a submission by creating tasks for each action"""
+    context = None
     try:
         # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
@@ -1317,12 +1355,15 @@ def analyze_all_actions(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
     
 @app.route('/api/analyze_all_snapshots', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_all_snapshots(submission, request_context, user_prompt):
     """Analyze all actions for a submission by creating tasks for each action"""
+    context = None
     try:
         # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
@@ -1364,6 +1405,8 @@ def analyze_all_snapshots(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in analyze_all_snapshot endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/submission/<submission_id>/actions', methods=['GET'])
 @authenticate
@@ -1526,6 +1569,7 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
 @inject_analysis_params
 def review_action(submission, request_context, user_prompt):
     """Review and validate an action implementation against its validation rules and code"""
+    context = None
     try:
         # Parse request
         data = request.get_json()
@@ -1550,11 +1594,14 @@ def review_action(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in review_action endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_review_comments', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_review_comments_api(submission, request_context, user_prompt):
+    context = None
     """API endpoint to implement review comments for an action"""
     try:
         data = request.get_json()
@@ -1614,6 +1661,8 @@ def implement_review_comments_api(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in implement_review_comments_api", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
     
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
