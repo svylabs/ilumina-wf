@@ -421,18 +421,37 @@ class ContractReferences(IluminaOpenAIResponseModel):
     def load(cls, data):
         return cls(**data)
     
+class Constant(IluminaOpenAIResponseModel):
+    name: str
+    value: str
+    type: str  # e.g., "uint256", "address", etc.
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "value": self.value,
+            "type": self.type
+        }
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "value": self.value,
+            "type": self.type
+        }
 
 class ContractContext(IluminaOpenAIResponseModel):
     contract_name: str
     code_snippet: str
     references: ContractReferences
+    constants: list[Constant]
 
     def to_dict(self):
         return {
             "contract_name": self.contract_name,
             "code_snippet": self.code_snippet,
-            "references": self.references.to_dict()
+            "references": self.references.to_dict(),
+            "constants": [c.to_dict() for c in self.constants]
         }
     
     @classmethod

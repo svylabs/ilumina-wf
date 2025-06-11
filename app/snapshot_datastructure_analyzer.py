@@ -63,7 +63,7 @@ class SnapshotDataStructureAnalyzer:
 
         The snapshot should have two fields, the list of attributes and the datastructure defined in typescript.
 
-        1. Include constants.
+        1. Don't include constants in snapshot.
         2. Include public state variables and view functions, any function that does state changes should not be included in snapshot.
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
