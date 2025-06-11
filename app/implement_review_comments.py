@@ -127,8 +127,6 @@ def implement_review_comments(submission, contract_name: str, function_name: str
 
         return {
             "status": "success",
-            "applied_changes": implemented_changes,
-            "total_changes": len(implemented_changes),
             "code_file": code_file,
             "message": f"Successfully implemented {len(implemented_changes)} review comments"
         }

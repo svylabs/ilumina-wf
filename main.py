@@ -1554,14 +1554,6 @@ def implement_review_comments_api(submission, request_context, user_prompt):
             function_name
         )
 
-        # Sanitize applied_changes for Datastore (remove 'code' field to avoid exceeding 1500 bytes limit)
-        sanitized_changes = []
-        for change in result.get("applied_changes", []):
-            sanitized = dict(change)
-            if "code" in sanitized:
-                sanitized.pop("code")
-            sanitized_changes.append(sanitized)
-
         # Handle results
         if result.get("status") == "success":
             update_action_analysis_status(
@@ -1569,11 +1561,7 @@ def implement_review_comments_api(submission, request_context, user_prompt):
                 contract_name,
                 function_name,
                 "implement_review",
-                "success",
-                metadata={
-                    "applied_changes": sanitized_changes,
-                    "total_changes": result.get("total_changes", 0)
-                }
+                "success"
             )
             
             # Optionally trigger another review
