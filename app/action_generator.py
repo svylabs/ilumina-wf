@@ -1,6 +1,6 @@
 from .models import Action, ActionCode, ActionSummary
 from .context import RunContext, prepare_context_lazy
-from .three_stage_llm_call import ThreeStageAnalyzer
+from .three_stage_llm_call import ThreeStageAnalyzer, ThreeStageCodeImplementer
 import re
 import json
 
@@ -67,7 +67,7 @@ class ActionGenerator:
             core_snapshot_structure += "\n\n" + snapshot_interfaces
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
         prompt = self._generate_action_prompt(function_definition, self.action, action_summary, core_snapshot_structure, deployed_contracts)
-        analyzer = ThreeStageAnalyzer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
+        analyzer = ThreeStageCodeImplementer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
         code = analyzer.ask_llm(prompt, guidelines=[
             "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
             "2. Ensure that all state changes are validated based on the previous and current snapshots."
@@ -125,7 +125,7 @@ class ActionGenerator:
         actor: Actor,
         currentSnapshot: Snapshot,
         actionParams: any
-    ): Promise<Record<string, any> | void>;```
+    ): Promise<ExecutionReceipt>;```
 
     // To validate the action
     Validate the action by comparing the previous snapshot with the new snapshot based on validation rules provided in action summary.
@@ -148,9 +148,12 @@ class ActionGenerator:
         3. Snapshot instances contain  has the following structure:
         ```typescript 
            {snapshot_structure}
+           ```
         4. The action should import the required dependencies.
-            Action, Actor, Snapshot from "@svylabs/ilumina";
-            import type RunContext, ExecutionReceipt from "@svylabs/ilumina";
+        ```
+            import {{Action, Actor, Snapshot}} from "@svylabs/ilumina";
+            import type {{RunContext, ExecutionReceipt}} from "@svylabs/ilumina";
+        ```
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
         6. Use BigInt in place of Number for any numeric values.
         7. ETH Balances can be accessed using accountSnapshot

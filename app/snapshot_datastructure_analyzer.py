@@ -37,7 +37,7 @@ class SnapshotDataStructureAnalyzer:
             artifact = json.load(f)
             abi = artifact.get('abi', [])
 
-        analyzer = ThreeStageAnalyzer(SnapshotDataStructure, system_prompt="You are an expert in analyzing smart contracts and generating data structures.")
+        analyzer = ThreeStageAnalyzer(SnapshotDataStructure, system_prompt="You are an expert in analyzing smart contracts and generating data structures to build snapshots for smart contracts.")
         prompt = self._get_prompt_for_snapshot_structure(contract_name, abi, new_identifiers)
         #print(prompt)
         snapshot_data_structure = analyzer.ask_llm(prompt)
@@ -63,12 +63,12 @@ class SnapshotDataStructureAnalyzer:
 
         The snapshot should have two fields, the list of attributes and the datastructure defined in typescript.
 
-        1. Ignore any constants.
-        2. Include only public state variables and view functions, any function that does state changes should not be included in this.
+        1. Include constants.
+        2. Include public state variables and view functions, any function that does state changes should not be included in snapshot.
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
         5. Ignore any state variables that are addresses.
-        6. Any state variable that is a mapping, use the identifier name as the key and the value as the value
+        6. It has to capture the whole state of the contract for all users, not just individual user.
 
         For typescript structure, use the following format:
         1. Use bigint for any uint or int types.

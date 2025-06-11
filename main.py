@@ -1369,7 +1369,6 @@ def get_action_analyses(submission_id):
         # Query all action analyses for this submission
         query = datastore_client.query(kind="SubmissionActionAnalysis")
         query.add_filter("submission_id", "=", submission_id)
-        query.order = ["contract_name", "function_name"]
         
         action_analyses = list(query.fetch())
         
