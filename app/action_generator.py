@@ -156,7 +156,7 @@ class ActionGenerator:
             import type {{RunContext, ExecutionReceipt}} from "@svylabs/ilumina";
         ```
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
-        6. Use BigInt any numeric values.
+        6. Use BigInt for any numeric values, do not use Number
         7. ETH Balances can be accessed using accountSnapshot
         8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
         ```

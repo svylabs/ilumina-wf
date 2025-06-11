@@ -5,6 +5,7 @@ from .models import ActionReview, Review
 from .context import RunContext
 from .three_stage_llm_call import ThreeStageAnalyzer
 from .models import Action
+import re
 
 class ActionReviewer:
     def __init__(self, context: RunContext):
@@ -45,22 +46,21 @@ class ActionReviewer:
             action_code = self._load_action_code(action)
             print("3. Action code loaded")
 
-            contract_code = self._load_contract_code(contract_name)
-            print("4. Contract code loaded")
-
             # Prepare the review
             numbered_code = self._number_code_lines(action_code)
             print("5. Code lines numbered")
+
+            snapshot_structure = self._create_snapshot_structure()
 
             review_prompt = self._create_review_prompt(
                 contract_name,
                 function_name,
                 action_summary,
-                contract_code,
+                snapshot_structure,
                 numbered_code
             )
-            print("6. Review prompt created")
-            print(f"review_prompt:\n{review_prompt}\n")
+            #print("6. Review prompt created")
+            #print(f"review_prompt:\n{review_prompt}\n")
 
             # Get the review from LLM
             analyzer = ThreeStageAnalyzer(ActionReview)
@@ -87,6 +87,39 @@ class ActionReviewer:
 
         except Exception as e:
             raise Exception(f"Action review failed: {str(e)}")
+        
+    def generate_typescript_contract_snapshot_interface(self, ts_file_path):
+        with open(ts_file_path, 'r') as file:
+            content = file.read()
+
+        # Regex to capture: contractSnapshot["key"] = await functionName(
+        pattern = r'contractSnapshot\["(?P<key>\w+)"\]\s*=\s*await\s+(?P<function>\w+)\('
+        matches = re.findall(pattern, content)
+
+        fields = []
+        for key, function_name in matches:
+            # Strip "take" prefix and capitalize the rest
+            if function_name.startswith("take"):
+                typename = function_name[4:]
+            else:
+                typename = function_name
+            typename = typename[0].upper() + typename[1:]
+
+            fields.append(f"  {key}: {typename};")
+
+        # Compose the TypeScript interface
+        interface_code = f"export interface ContractSnapshot {{\n" + "\n".join(fields) + "\n}  \n\n export interface Snapshot {{ contractSnapshot: ContractSnapshot, accountSnapshot: Record<string, bigint> }} \n\n "
+        return interface_code
+        
+    def _create_snapshot_structure(self) -> str:
+        snapshot_structure_path = self.context.snapshot_provider_code_path()
+        core_snapshot_structure = self.generate_typescript_contract_snapshot_interface(snapshot_structure_path)
+        snapshot_interfaces_path = self.context.snapshot_interface_code_path()
+        with open(snapshot_interfaces_path) as f:
+            snapshot_interfaces = f.read()
+            core_snapshot_structure += "\n\n" + snapshot_interfaces
+        print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
+        
 
     def _get_action(self, contract_name: str, function_name: str) -> Action:
         """Retrieve the action definition"""
@@ -142,44 +175,30 @@ class ActionReviewer:
         contract_name: str,
         function_name: str,
         action_summary: dict,
-        contract_code: str,
+        snapshot_structure: str,
         numbered_action_code: str
     ) -> str:
         """Create the detailed review prompt for LLM"""
         return f"""
 Conduct a code review for {contract_name}.{function_name} action implementation.
 
-Requirements:
-1. Identify missing validations (should exist but don't)
-2. Find errors in existing validations
-3. Find errors in parameter generation logic
-4. Identify mistakes or issues in execution logic
-5. Analyze overall execution flow
+Action Implementation (with line numbers):
+{numbered_action_code}
 
-For each issue:
-- Specify exact line number
-- Categorize (validation|parameter|logic)
-- Describe clearly
-- Suggest concrete fix
-
-Output format (only include if applicable):
-- missing_validations: list[str]
-- errors_in_existing_validations: list[Review]
-- errors_in_parameter_generation: list[Review]
-- errors_in_execution_logic: list[Review]
-- overall_assessment: list[str]
-
-Note:
-- If no errors are found for a category, return an empty list or omit it.
+Let's think step by step:
+1. Understand what can go wrong in executing the action by analyzing the code snippets(action_summary.action_context.contract[].code_snippet) that gets executed during the execution of this action.
+2. Check if all dependencies are satisfied for the action to execute successfully(eg: Token Approvals)
+2. Based on this understanding, identify if initialize method is implemented correctly and provide necessary changes.
+3. Based on 1) also check if execute method is implemented correctly and provide necessary changes.
+4. Check if validate method has validations for all state updates as per the action summary and provide necessary changes.
 
 Action Summary:
 {json.dumps(action_summary, indent=2)}
 
-Original Contract:
-{contract_code}
+Contract code snippet is located in summary above, in  action_context.contract.code_snippet
 
-Action Implementation (with line numbers):
-{numbered_action_code}
+Snapshot Structure(for your reference):
+{snapshot_structure}
 """
 
     def _save_review_file(
@@ -189,11 +208,11 @@ Action Implementation (with line numbers):
         review: ActionReview
     ) -> None:
         """Save the review to a JSON file and commit the change using context.commit"""
-        filename = f"{contract_name}_{function_name}_review.json"
+        filename = f"{contract_name.lower()}_{function_name.lower()}.json"
         filepath = os.path.join(self.reviews_dir, filename)
         
         with open(filepath, 'w') as f:
             json.dump(review.to_dict(), f, indent=2)
         # Commit the review file after saving using context.commit
-        commit_message = f"Add review for {contract_name}.{function_name}"
+        commit_message = f"Added review for {contract_name}.{function_name}"
         self.context.commit(commit_message)

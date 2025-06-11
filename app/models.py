@@ -822,30 +822,31 @@ class ActionCode(IluminaOpenAIResponseModel):
 class Review(IluminaOpenAIResponseModel):
     line_number: int
     description: str
-    severity: Literal["low", "medium", "high"]
-    category: str 
+    function_name: Literal['initialize', 'execute', 'validate', 'imports', 'constructor']
     suggested_fix: str
 
     def to_dict(self):
         return {
             "line_number": self.line_number,
             "description": self.description,
-            "severity": self.severity,
-            "category": self.category,
+            "function_name": self.function_name,
             "suggested_fix": self.suggested_fix
         }
 
 class ActionReview(IluminaOpenAIResponseModel):
-    missing_validations: List[str]
-    errors_in_existing_validations: List[Review]
-    # errors_in_parameter_generation: List[Review]
-    # errors_in_execution_logic: List[Review]
+    #errors_in_initialize: List[Review] = []
+    #errors_in_validate: List[Review] = []
+    reviews: List[Review]
+    #errors_in_execute_function: List[Review]
     overall_assessment: List[str]
 
     def to_dict(self):
         return {
-            "missing_validations": self.missing_validations,
-            "errors_in_existing_validations": [r.to_dict() for r in self.errors_in_existing_validations],
+            #"missing_validations": self.missing_validations,
+            #"errors_in_validate": [r.to_dict() for r in self.errors_in_validate],
+            #"errors_in_initialize": [r.to_dict() for r in self.errors_in_initialize],
+            "reviews": [r.to_dict() for r in self.reviews],
+            #"errors_in_execute_function": [r.to_dict() for r in self.errors_in_execute_function],
             # "errors_in_parameter_generation": [r.to_dict() for r in self.errors_in_parameter_generation],
             # "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
             "overall_assessment": self.overall_assessment
