@@ -152,14 +152,25 @@ Conduct a code review for {contract_name}.{function_name} action implementation.
 Requirements:
 1. Identify missing validations (should exist but don't)
 2. Find errors in existing validations
-3. Check parameter generation logic
-4. Analyze execution flow
+3. Find errors in parameter generation logic
+4. Identify mistakes or issues in execution logic
+5. Analyze overall execution flow
 
 For each issue:
 - Specify exact line number
 - Categorize (validation|parameter|logic)
 - Describe clearly
 - Suggest concrete fix
+
+Output format (only include if applicable):
+- missing_validations: list[str]
+- errors_in_existing_validations: list[Review]
+- errors_in_parameter_generation: list[Review]
+- errors_in_execution_logic: list[Review]
+- overall_assessment: list[str]
+
+Note:
+- If no errors are found for a category, return an empty list or omit it.
 
 Action Summary:
 {json.dumps(action_summary, indent=2)}
