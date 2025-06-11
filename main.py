@@ -46,6 +46,7 @@ from app.submission import (
     UserPromptManager
 )
 from app.action_reviewer import ActionReviewer
+from app.implement_review_comments import implement_review_comments
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -478,6 +479,7 @@ def implement_action(submission, request_context, user_prompt):
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not contract_name or not function_name:
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
+        
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         update_action_analysis_status(
             submission["submission_id"],
@@ -486,10 +488,12 @@ def implement_action(submission, request_context, user_prompt):
             "implement",
             "in_progress"
         )
+
         actors = context.actor_summary()
         action = actors.find_action(contract_name, function_name)
         if not action:
             return jsonify({"error": f"Action {function_name} for contract {contract_name} not found"}), 404
+        
         action_generator = ActionGenerator(action, context)
         action_generator.generate_action()
         update_action_analysis_status(
@@ -1519,6 +1523,74 @@ def review_action(submission, request_context, user_prompt):
 
     except Exception as e:
         app.logger.error("Error in review_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/implement_review_comments', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def implement_review_comments_api(submission, request_context, user_prompt):
+    """API endpoint to implement review comments for an action"""
+    try:
+        data = request.get_json()
+        contract_name = data.get('contract_name')
+        function_name = data.get('function_name')
+        
+        if not contract_name or not function_name:
+            return jsonify({"error": "Both contract_name and function_name are required"}), 400
+
+        # Update status to in_progress
+        update_action_analysis_status(
+            submission["submission_id"],
+            contract_name,
+            function_name,
+            "implement_review",
+            "in_progress"
+        )
+
+        # Call the implementation logic
+        result = implement_review_comments(
+            submission,
+            contract_name,
+            function_name
+        )
+
+        # Handle results
+        if result.get("status") == "success":
+            update_action_analysis_status(
+                submission["submission_id"],
+                contract_name,
+                function_name,
+                "implement_review",
+                "success",
+                metadata={
+                    "applied_changes": result.get("applied_changes", []),
+                    "total_changes": result.get("total_changes", 0)
+                }
+            )
+            
+            # Optionally trigger another review
+            if request_context == "bg":
+                create_task({
+                    "submission_id": submission["submission_id"],
+                    "contract_name": contract_name,
+                    "function_name": function_name,
+                    "step": "review_action"
+                })
+            
+            return jsonify(result), 200
+        else:
+            update_action_analysis_status(
+                submission["submission_id"],
+                contract_name,
+                function_name,
+                "implement_review",
+                "error",
+                metadata={"message": result.get("message")}
+            )
+            return jsonify(result), 500
+
+    except Exception as e:
+        app.logger.error("Error in implement_review_comments_api", exc_info=e)
         return jsonify({"error": str(e)}), 500
     
 if __name__ == '__main__':
