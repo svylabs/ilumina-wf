@@ -177,9 +177,12 @@ Action Implementation (with line numbers):
         function_name: str,
         review: ActionReview
     ) -> None:
-        """Save the review to a JSON file"""
+        """Save the review to a JSON file and commit the change using context.commit"""
         filename = f"{contract_name}_{function_name}_review.json"
         filepath = os.path.join(self.reviews_dir, filename)
         
         with open(filepath, 'w') as f:
             json.dump(review.to_dict(), f, indent=2)
+        # Commit the review file after saving using context.commit
+        commit_message = f"Add review for {contract_name}.{function_name}"
+        self.context.commit(commit_message)
