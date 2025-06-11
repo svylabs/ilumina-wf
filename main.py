@@ -1413,6 +1413,7 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
         actions = list(query.fetch())
         # Check if all actions are analyzed (status == 'success')
         all_analyzed = all(a.get("status") == "success" for a in actions)
+        any_error = any(a.get("status") == "error" for a in actions)
         if all_analyzed and len(actions) > 0:
             update_analysis_status(
                 submission_id,
@@ -1425,6 +1426,14 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
                 "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
+        elif any_error:
+            update_analysis_status(
+                submission_id,
+                "analyze_all_actions",
+                "error",
+                metadata={"message": "Some actions analysis failed"}
+            )
+            return jsonify({"message": f"Some actions failed to analyze."}), 200
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
@@ -1445,6 +1454,7 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
         actions = list(query.fetch())
         # Check if all actions are analyzed (status == 'success')
         all_implemented = all(a.get("status") == "success" for a in actions)
+        any_error = any(a.get("status") == "error" for a in actions)
         if all_implemented and actions:
             update_analysis_status(
                 submission_id,
@@ -1456,6 +1466,14 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
                 "submission_id": submission_id,
             })
             return jsonify({"message": f"All actions implemented."}), 200
+        elif any_error:
+            update_analysis_status(
+                submission_id,
+                "implement_all_actions",
+                "error",
+                metadata={"message": "Some actions implementation failed"}
+            )
+            return jsonify({"message": f"Some actions failed to implement."}), 200
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
@@ -1489,6 +1507,14 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
                 "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
+        elif any(s.get("status") == "error" for s in snapshots):
+            update_analysis_status(
+                submission_id,
+                "analyze_all_snapshots",
+                "error",
+                metadata={"message": "Some snapshots analysis failed"}
+            )
+            return jsonify({"message": f"Some snapshots failed to analyze."}), 200
         else:
             return jsonify({"message": f"Not all snapshots are analyzed."}), 200
     except Exception as e:
