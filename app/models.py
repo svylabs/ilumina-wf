@@ -838,15 +838,15 @@ class Review(IluminaOpenAIResponseModel):
 class ActionReview(IluminaOpenAIResponseModel):
     missing_validations: List[str]
     errors_in_existing_validations: List[Review]
-    errors_in_parameter_generation: List[Review]
-    errors_in_execution_logic: List[Review]
+    # errors_in_parameter_generation: List[Review]
+    # errors_in_execution_logic: List[Review]
     overall_assessment: List[str]
 
     def to_dict(self):
         return {
             "missing_validations": self.missing_validations,
             "errors_in_existing_validations": [r.to_dict() for r in self.errors_in_existing_validations],
-            "errors_in_parameter_generation": [r.to_dict() for r in self.errors_in_parameter_generation],
-            "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
+            # "errors_in_parameter_generation": [r.to_dict() for r in self.errors_in_parameter_generation],
+            # "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
             "overall_assessment": self.overall_assessment
         }
