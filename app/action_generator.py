@@ -69,12 +69,13 @@ class ActionGenerator:
         prompt = self._generate_action_prompt(function_definition, self.action, action_summary, core_snapshot_structure, deployed_contracts)
         analyzer = ThreeStageCodeImplementer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
         code = analyzer.ask_llm(prompt, guidelines=[
-            "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
+            "1. Ensure that actionParams are initialized based on the bounds from the snapshots for a given actor and action",
             "2. Ensure that all state changes are validated based on the previous and current snapshots."
             "3. Ensure that state changes across all affected contracts are validated."
             "4. Ensure that no assumptions are made about the parameters. They should be initialized randomly based on the snapshot data",
-            "5. Ensure that we use the contract passed in the constructor to call the contraction functions and no arbitrary contract is imported.",
-            "6. Double check the parameters generated to ensure they are valid and within bounds based on the values from snapshots."
+            "5. Ensure that actions are implemented for the actor, not randomly for any actor."
+            "6. Ensure that we use the contract passed in the constructor to call the contract functions and no arbitrary contract is imported.",
+            "7. If any other contracts are needed, they should be accessed through context.contracts.<contract_reference>"
         ])
         with open(self.context.action_code_path(self.action), 'w') as f:
             f.write(code.typescript_code)
@@ -145,7 +146,7 @@ class ActionGenerator:
         2. actor: Actor is an object that represents the actor performing the action. It has the following properties:
             account - and account.address gives the address and account.value gives the HardHat signer object.
             identifiers - can be accessed using getIdentifiers()
-        3. Snapshot instances contain  has the following structure:
+        3. Snapshot instances  has the following structure:
         ```typescript 
            {snapshot_structure}
            ```
@@ -155,7 +156,7 @@ class ActionGenerator:
             import type {{RunContext, ExecutionReceipt}} from "@svylabs/ilumina";
         ```
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
-        6. Use BigInt in place of Number for any numeric values.
+        6. Use BigInt any numeric values.
         7. ETH Balances can be accessed using accountSnapshot
         8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
         ```
