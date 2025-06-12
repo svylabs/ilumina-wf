@@ -1312,6 +1312,9 @@ def analyze_all_actions(submission, request_context, user_prompt):
     try:
         # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+
+        print(f"Submission status: {submission['status']}, step: {submission['step']}")
+
         update_analysis_status(
             submission["submission_id"],
             "analyze_all_actions",
@@ -1326,26 +1329,47 @@ def analyze_all_actions(submission, request_context, user_prompt):
             }), 400
         # For each actor and action, create a task
         count = 0
-        for actor in actors.actors:
-            for action in actor.actions:
-                parallel_workspace_id = str(uuid.uuid4())
-                # Create analyze_action task with parallel_workspace
+        query = datastore_client.query(kind="SubmissionActionAnalysis")
+        query.add_filter("submission_id", "=", submission["submission_id"])
+        error_actions = [a for a in query.fetch() if a['status'] == "error"]
+        print (f"Found {len(error_actions)} actions with error status")
+        if len(error_actions) > 0:
+            for action in error_actions:
                 update_action_analysis_status(
                     submission["submission_id"],
-                    action.contract_name,
-                    action.function_name,
+                    action["contract_name"],
+                    action["function_name"],
                     "analyze",
                     "scheduled"
                 )
                 create_task({
                     "submission_id": submission["submission_id"],
-                    "contract_name": getattr(action, "contract_name", None),
-                    "function_name": getattr(action, "function_name", None),
-                    "step": "analyze_action",
-                    "parallel_workspace": True,
-                    "parallel_workspace_id": parallel_workspace_id
+                    "contract_name": action["contract_name"],
+                    "function_name": action["function_name"],
+                    "step": "analyze_action"
                 })
                 count += 1
+        else:
+            for actor in actors.actors:
+                for action in actor.actions:
+                    parallel_workspace_id = str(uuid.uuid4())
+                    # Create analyze_action task with parallel_workspace
+                    update_action_analysis_status(
+                        submission["submission_id"],
+                        action.contract_name,
+                        action.function_name,
+                        "analyze",
+                        "scheduled"
+                    )
+                    create_task({
+                        "submission_id": submission["submission_id"],
+                        "contract_name": getattr(action, "contract_name", None),
+                        "function_name": getattr(action, "function_name", None),
+                        "step": "analyze_action",
+                        "parallel_workspace": True,
+                        "parallel_workspace_id": parallel_workspace_id
+                    })
+                    count += 1
         
         return jsonify({
             "message": f"Created tasks for analyzing {count} actions",

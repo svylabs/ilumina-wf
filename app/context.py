@@ -58,6 +58,8 @@ def clean_context(context):
     """Clean up the context by removing the workspace directory"""
     if context is None:
         return
+    if os.getenv("CLEAN_WORKSPACE", "false") == "false":
+        return
     if os.path.exists(context.cwd()):
         try:
             subprocess.run(["rm", "-rf", context.cwd()], check=True)
