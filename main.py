@@ -1660,7 +1660,6 @@ def implement_review_comments_api(submission, request_context, user_prompt):
                 "implement_review",
                 "success"
             )
-            
             # Optionally trigger another review
             if request_context == "bg":
                 create_task({
@@ -1669,7 +1668,6 @@ def implement_review_comments_api(submission, request_context, user_prompt):
                     "function_name": function_name,
                     "step": "review_action"
                 })
-            
             return jsonify(result), 200
         else:
             update_action_analysis_status(
@@ -1677,8 +1675,7 @@ def implement_review_comments_api(submission, request_context, user_prompt):
                 contract_name,
                 function_name,
                 "implement_review",
-                "error",
-                metadata={"message": result.get("message")}
+                "error"
             )
             return jsonify(result), 500
 
@@ -1687,6 +1684,6 @@ def implement_review_comments_api(submission, request_context, user_prompt):
         return jsonify({"error": str(e)}), 500
     finally:
         clean_context(context)
-    
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
