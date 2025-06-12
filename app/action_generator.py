@@ -161,6 +161,8 @@ class ActionGenerator:
         6. Use BigInt for any numeric values, do not use Number
         7. ETH Balances can be accessed using accountSnapshot
         8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
+        9. When calculating ETH balances, take into account the gas fees paid for the transaction.
+        10. Use exact matches for assertions, don't use gte, lte, etc.
         ```
             """
         pass
