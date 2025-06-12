@@ -31,7 +31,7 @@ def ask_openai(user_input, type, task="generate", conversations=None):
     response = client.beta.chat.completions.parse(model=model,
         messages=conversations,
         response_format=type,
-        timeout=30)
+        timeout=60)
         #print(response)
     value = response.choices[0].message.parsed
         #conversation.append({"role": "assistant", "content": contract})
