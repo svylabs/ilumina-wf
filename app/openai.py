@@ -24,7 +24,8 @@ def ask_openai(user_input, type, task="generate", conversations=None):
         model = "o3-mini"
     elif task == "understand":
         model = "o3-mini" """
-    model = "gemini-2.0-flash"
+    #model = "gemini-2.0-flash"
+    model = "gemini-2.5-flash-preview-05-20"
 
     # Get response
     response = client.beta.chat.completions.parse(model=model,
