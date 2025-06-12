@@ -131,6 +131,7 @@ class ActionGenerator:
     // To validate the action
     Validate the action by comparing the previous snapshot with the new snapshot based on validation rules provided in action summary.
     In addition, the validation should also be made for account balances, token balances for affected contracts and accounts. Contract address can be accessed using contract.target
+    Validate action should also validate the events.
     ```async function validate(
         context: RunContext,
         actor: Actor,

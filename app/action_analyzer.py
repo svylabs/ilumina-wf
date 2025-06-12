@@ -353,7 +353,8 @@ Contracts Involved:
 Generate:
 1. Parameter generation rules for executing the action.
 2. Categorize the state updates into multiple categories and provide a list of updates per category.
-3. Validation rules to validate the proper execution of the action by validating the state.
+3. Validation rules to validate the proper execution of the action by validating the state, and validate the events emitted.
+
 """
     
     # def analyze(self):
