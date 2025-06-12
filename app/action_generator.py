@@ -145,7 +145,8 @@ class ActionGenerator:
             b. context.contracts: A typescript Record<string, any> that contains the ethers.js contract instances for the deployed contracts.
         2. actor: Actor is an object that represents the actor performing the action. It has the following properties:
             account - and account.address gives the address and account.value gives the HardHat signer object.
-            identifiers - can be accessed using getIdentifiers()
+            identifiers - can be accessed using getIdentifiers().
+            The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values. If the action needs only one identifier, you can choose the identifier randomly if the identifier is an array.
         3. Snapshot instances  has the following structure:
         ```typescript 
            {snapshot_structure}

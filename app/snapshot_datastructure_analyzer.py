@@ -68,7 +68,7 @@ class SnapshotDataStructureAnalyzer:
         3. Have proper names(nouns) for the attributes.
         4. In reference attribute for parameter, use the identifier name as value, and it has to be from the list of identifiers.
         5. Ignore any state variables that are addresses.
-        6. It has to capture the whole state of the contract for all users, not just individual user.
+        6. It has to capture the whole state of the contract for all individual actors.
 
         For typescript structure, use the following format:
         1. Use bigint for any uint or int types.
