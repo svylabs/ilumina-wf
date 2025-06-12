@@ -24,13 +24,14 @@ def ask_openai(user_input, type, task="generate", conversations=None):
         model = "o3-mini"
     elif task == "understand":
         model = "o3-mini" """
-    model = "gemini-2.0-flash"
+    #model = "gemini-2.0-flash"
+    model = os.getenv("MODEL", "gemini-2.0-flash")
 
     # Get response
     response = client.beta.chat.completions.parse(model=model,
         messages=conversations,
         response_format=type,
-        timeout=30)
+        timeout=120)
         #print(response)
     value = response.choices[0].message.parsed
         #conversation.append({"role": "assistant", "content": contract})

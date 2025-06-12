@@ -85,7 +85,13 @@ def update_action_analysis_status(submission_id, contract_name, function_name, s
     entity.exclude_from_indexes = ["completed_steps"]
     if "completed_steps" not in entity:
         entity["completed_steps"] = []
-    if status == "success":
+    found = False
+    for completed_step in entity["completed_steps"]:
+        if completed_step["step"] == step:
+            completed_step["updated_at"] = datetime.now(timezone.utc)
+            completed_step["status"] = status
+            found = True
+    if not found:
         entity["completed_steps"].append({
             "step": step,
             "updated_at": datetime.now(timezone.utc),

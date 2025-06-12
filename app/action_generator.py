@@ -1,6 +1,6 @@
 from .models import Action, ActionCode, ActionSummary
 from .context import RunContext, prepare_context_lazy
-from .three_stage_llm_call import ThreeStageAnalyzer
+from .three_stage_llm_call import ThreeStageAnalyzer, ThreeStageCodeImplementer
 import re
 import json
 
@@ -67,14 +67,15 @@ class ActionGenerator:
             core_snapshot_structure += "\n\n" + snapshot_interfaces
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
         prompt = self._generate_action_prompt(function_definition, self.action, action_summary, core_snapshot_structure, deployed_contracts)
-        analyzer = ThreeStageAnalyzer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
+        analyzer = ThreeStageCodeImplementer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
         code = analyzer.ask_llm(prompt, guidelines=[
-            "1. Ensure that actionParams are initialized based on the bounds from the snapshots.",
+            "1. Ensure that actionParams are initialized based on the bounds from the snapshots for a given actor and action",
             "2. Ensure that all state changes are validated based on the previous and current snapshots."
             "3. Ensure that state changes across all affected contracts are validated."
             "4. Ensure that no assumptions are made about the parameters. They should be initialized randomly based on the snapshot data",
-            "5. Ensure that we use the contract passed in the constructor to call the contraction functions and no arbitrary contract is imported.",
-            "6. Double check the parameters generated to ensure they are valid and within bounds based on the values from snapshots."
+            "5. Ensure that actions are implemented for the actor, not randomly for any actor."
+            "6. Ensure that we use the contract passed in the constructor to call the contract functions and no arbitrary contract is imported.",
+            "7. If any other contracts are needed, they should be accessed through context.contracts.<contract_reference>"
         ])
         with open(self.context.action_code_path(self.action), 'w') as f:
             f.write(code.typescript_code)
@@ -112,9 +113,11 @@ class ActionGenerator:
         context: RunContext,
         actor: Actor,
         currentSnapshot: Snapshot
-    ): Promise<[any, Record<string, any>]>;```
+    ): Promise<[boolean, any, Record<string, any>]>;```
 
-    The initialize function should return a tuple, where the first element is the action parameters, and the second element is the new identifiers that are created.
+    The initialize function should return a tuple, where the first element is a boolean indicating this action can be executed, second one being the action parameters(if this action can be executed) or empty, and the third element is the new identifiers that are created.
+    The function should decide whether the action can be executed based on the available snapshots. For example: whether there is any required balance in the account, etc.
+    The parameters generated should be valid for the transaction.
 
     The implementation of `execute` should call the contract function with the parameters generated in `initialize` and will be passed as `actionParams`.
     It should execute using actor.account.value cast as Hardhat signer object.
@@ -123,17 +126,19 @@ class ActionGenerator:
         actor: Actor,
         currentSnapshot: Snapshot,
         actionParams: any
-    ): Promise<Record<string, any> | void>;```
+    ): Promise<ExecutionReceipt>;```
 
     // To validate the action
     Validate the action by comparing the previous snapshot with the new snapshot based on validation rules provided in action summary.
     In addition, the validation should also be made for account balances, token balances for affected contracts and accounts. Contract address can be accessed using contract.target
+    Validate action should also validate the events.
     ```async function validate(
         context: RunContext,
         actor: Actor,
         previousSnapshot: Snapshot,
         newSnapshot: Snapshot,
-        actionParams: any
+        actionParams: any,
+        executionReceipt: ExecutionReceipt
     ): Promise<boolean>;```
 
         1. RunContext is a context that provides the following:
@@ -141,15 +146,23 @@ class ActionGenerator:
             b. context.contracts: A typescript Record<string, any> that contains the ethers.js contract instances for the deployed contracts.
         2. actor: Actor is an object that represents the actor performing the action. It has the following properties:
             account - and account.address gives the address and account.value gives the HardHat signer object.
-            identifiers - can be accessed using getIdentifiers()
-        3. Snapshot instances contain  has the following structure:
+            identifiers - can be accessed using getIdentifiers().
+            The identifiers is a javascript object, with key being the identifier name, and value will be a single value or an array of values. If the action needs only one identifier, you can choose the identifier randomly if the identifier is an array.
+        3. Snapshot instances  has the following structure:
         ```typescript 
            {snapshot_structure}
-        4. The action should import the required dependencies from @svylabs/ilumia(Actor, RunContext, Snapshot, Account, Action).
+           ```
+        4. The action should import the required dependencies.
+        ```
+            import {{Action, Actor, Snapshot}} from "@svylabs/ilumina";
+            import type {{RunContext, ExecutionReceipt}} from "@svylabs/ilumina";
+        ```
         5. Use expect from 'chai' for assertions in the validate method and also import these correctly.
-        6. Use BigInt inplace of Number for any numeric values.
+        6. Use BigInt for any numeric values, do not use Number
         7. ETH Balances can be accessed using accountSnapshot
         8. Token balances for contracts can be accessed the same way from snapshots using the contract address(contract.target) using one of the snapshots.
+        9. When calculating ETH balances, take into account the gas fees paid for the transaction.
+        10. Use exact matches for assertions, don't use gte, lte, etc.
         ```
             """
         pass

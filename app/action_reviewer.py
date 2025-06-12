@@ -1,0 +1,218 @@
+import os
+import json
+from typing import Optional
+from .models import ActionReview, Review
+from .context import RunContext
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .models import Action
+import re
+
+class ActionReviewer:
+    def __init__(self, context: RunContext):
+        self.context = context
+        # Create reviews directory if it doesn't exist
+        self.reviews_dir = os.path.join(
+            context.simulation_path(), 
+            "reviews", 
+            "actions"
+        )
+        os.makedirs(self.reviews_dir, exist_ok=True)
+
+    def review_action(
+        self, 
+        contract_name: str, 
+        function_name: str
+    ) -> ActionReview:
+        """
+        Conduct a thorough code review of an action implementation.
+        
+        Args:
+            contract_name: Name of the contract
+            function_name: Name of the function being reviewed
+            
+        Returns:
+            ActionReview containing all findings
+        """
+        try:
+            print(f"Starting review for {contract_name}.{function_name}")
+
+            # Load all required components
+            action = self._get_action(contract_name, function_name)
+            print("1. Action loaded successfully")
+
+            action_summary = self._load_action_summary(action)
+            print("2. Action summary loaded")
+
+            action_code = self._load_action_code(action)
+            print("3. Action code loaded")
+
+            # Prepare the review
+            numbered_code = self._number_code_lines(action_code)
+            print("5. Code lines numbered")
+
+            snapshot_structure = self._create_snapshot_structure()
+
+            review_prompt = self._create_review_prompt(
+                contract_name,
+                function_name,
+                action_summary,
+                snapshot_structure,
+                numbered_code
+            )
+            #print("6. Review prompt created")
+            #print(f"review_prompt:\n{review_prompt}\n")
+
+            # Get the review from LLM
+            analyzer = ThreeStageAnalyzer(ActionReview)
+            print("7. Analyzer initialized")
+
+            review = analyzer.ask_llm(review_prompt, guidelines=[
+                "Be specific about line numbers",
+                "Categorize issues precisely",
+                "Provide concrete suggestions",
+                "Avoid vague language"
+            ])
+            print("8. LLM analysis completed")
+
+            # Validate the review before saving
+            if not isinstance(review, ActionReview):
+                raise ValueError("LLM returned invalid review format")
+            print("9. Review validated")
+
+            # Save the review
+            self._save_review_file(contract_name, function_name, review)
+            print("10. Review saved successfully")
+            
+            return review
+
+        except Exception as e:
+            raise Exception(f"Action review failed: {str(e)}")
+        
+    def generate_typescript_contract_snapshot_interface(self, ts_file_path):
+        with open(ts_file_path, 'r') as file:
+            content = file.read()
+
+        # Regex to capture: contractSnapshot["key"] = await functionName(
+        pattern = r'contractSnapshot\["(?P<key>\w+)"\]\s*=\s*await\s+(?P<function>\w+)\('
+        matches = re.findall(pattern, content)
+
+        fields = []
+        for key, function_name in matches:
+            # Strip "take" prefix and capitalize the rest
+            if function_name.startswith("take"):
+                typename = function_name[4:]
+            else:
+                typename = function_name
+            typename = typename[0].upper() + typename[1:]
+
+            fields.append(f"  {key}: {typename};")
+
+        # Compose the TypeScript interface
+        interface_code = f"export interface ContractSnapshot {{\n" + "\n".join(fields) + "\n}  \n\n export interface Snapshot {{ contractSnapshot: ContractSnapshot, accountSnapshot: Record<string, bigint> }} \n\n "
+        return interface_code
+        
+    def _create_snapshot_structure(self) -> str:
+        snapshot_structure_path = self.context.snapshot_provider_code_path()
+        core_snapshot_structure = self.generate_typescript_contract_snapshot_interface(snapshot_structure_path)
+        snapshot_interfaces_path = self.context.snapshot_interface_code_path()
+        with open(snapshot_interfaces_path) as f:
+            snapshot_interfaces = f.read()
+            core_snapshot_structure += "\n\n" + snapshot_interfaces
+        print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
+        
+
+    def _get_action(self, contract_name: str, function_name: str) -> Action:
+        """Retrieve the action definition"""
+        actors = self.context.actor_summary()
+        if not actors:
+            raise ValueError("No actors summary available")
+        action = actors.find_action(contract_name, function_name)
+        if not action:
+            raise ValueError(f"Action {contract_name}.{function_name} not found")
+        return action
+
+    def _load_action_summary(self, action: Action) -> dict:
+        """Load the action analysis summary"""
+        summary_path = self.context.action_summary_path(action)
+        if not os.path.exists(summary_path):
+            raise FileNotFoundError(f"Action summary not found at {summary_path}")
+        with open(summary_path, 'r') as f:
+            return json.load(f)
+
+    def _load_action_code(self, action: Action) -> str:
+        """Load the action implementation code"""
+        code_path = self.context.action_code_path(action)
+        if not os.path.exists(code_path):
+            raise FileNotFoundError(f"Action code not found at {code_path}")
+        with open(code_path, 'r') as f:
+            return f.read()
+
+    def _load_contract_code(self, contract_name: str) -> str:
+        """Load the original contract code"""
+        contract_path = os.path.join(self.context.cws(), f"{contract_name}.sol")
+        if os.path.exists(contract_path):
+            with open(contract_path, "r") as f:
+                return f.read()
+        
+        # Search through all .sol files if not found directly
+        for root, _, files in os.walk(self.context.cws()):
+            for file in files:
+                if file.endswith(".sol"):
+                    with open(os.path.join(root, file), "r") as f:
+                        content = f.read()
+                        if f"contract {contract_name}" in content:
+                            return content
+        
+        raise FileNotFoundError(f"Contract {contract_name} not found")
+
+    def _number_code_lines(self, code: str) -> str:
+        """Add line numbers to code for precise referencing"""
+        lines = code.split('\n')
+        return '\n'.join(f"{i+1}: {line}" for i, line in enumerate(lines))
+
+    def _create_review_prompt(
+        self,
+        contract_name: str,
+        function_name: str,
+        action_summary: dict,
+        snapshot_structure: str,
+        numbered_action_code: str
+    ) -> str:
+        """Create the detailed review prompt for LLM"""
+        return f"""
+Conduct a code review for {contract_name}.{function_name} action implementation.
+
+Action Implementation (with line numbers):
+{numbered_action_code}
+
+Let's think step by step:
+1. Understand what can go wrong in executing the action by analyzing the code snippets(action_summary.action_context.contract[].code_snippet) that gets executed during the execution of this action.
+2. Check if all dependencies are satisfied for the action to execute successfully(eg: Token Approvals)
+2. Based on this understanding, identify if initialize method is implemented correctly and provide necessary changes.
+3. Based on 1) also check if execute method is implemented correctly and provide necessary changes.
+4. Check if validate method has validations for all state updates as per the action summary and provide necessary changes.
+
+Action Summary:
+{json.dumps(action_summary, indent=2)}
+
+Contract code snippet is located in summary above, in  action_context.contract.code_snippet
+
+Snapshot Structure(for your reference):
+{snapshot_structure}
+"""
+
+    def _save_review_file(
+        self,
+        contract_name: str,
+        function_name: str,
+        review: ActionReview
+    ) -> None:
+        """Save the review to a JSON file and commit the change using context.commit"""
+        filename = f"{contract_name.lower()}_{function_name.lower()}.json"
+        filepath = os.path.join(self.reviews_dir, filename)
+        
+        with open(filepath, 'w') as f:
+            json.dump(review.to_dict(), f, indent=2)
+        # Commit the review file after saving using context.commit
+        commit_message = f"Added review for {contract_name}.{function_name}"
+        self.context.commit(commit_message)

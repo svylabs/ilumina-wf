@@ -5,7 +5,7 @@ import re
 dotenv.load_dotenv()
 from .models import SnapshotDataStructure, DeploymentInstruction, SnapshotCode, ActionSummary
 from .context import RunContext, prepare_context_lazy
-from .three_stage_llm_call import ThreeStageAnalyzer
+from .three_stage_llm_call import ThreeStageAnalyzer, ThreeStageCodeImplementer
 from typing import Dict, List
 
 from jinja2 import FileSystemLoader, Environment
@@ -146,7 +146,7 @@ class SnapshotCodeGenerator:
         self.context.commit("Snapshot interfaces and functions generated successfully.")
 
     def _generate_snapshot_logic(self, interfaces_created, contract_name: str, ref_name: str, snapshot_data: SnapshotDataStructure, identifiers) -> str:
-        analyzer = ThreeStageAnalyzer(SnapshotCode, system_prompt="You are a TypeScript code generator specialized in generating code to take snapshots for smart contracts using ethers")
+        analyzer = ThreeStageCodeImplementer(SnapshotCode, system_prompt="You are a TypeScript code generator specialized in generating code to take snapshots for smart contracts using ethers")
         """
         Generate TypeScript functions to take contract and user snapshots
         """

@@ -54,6 +54,21 @@ def compile_contracts(context):
     if compile_process.returncode != 0:
         raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
 
+def clean_context(context):
+    """Clean up the context by removing the workspace directory"""
+    if context is None:
+        return
+    if os.getenv("CLEAN_WORKSPACE", "false") == "false":
+        return
+    if os.path.exists(context.cwd()):
+        try:
+            subprocess.run(["rm", "-rf", context.cwd()], check=True)
+            print(f"Workspace {context.cwd()} cleaned up successfully.")
+        except subprocess.CalledProcessError as e:
+            pass
+    else:
+        print(f"Workspace {context.cwd()} does not exist, nothing to clean.")
+
 def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_workspace=False, parallel_workspace_id=None):
     run_id = data["run_id"]
     submission_id = data["submission_id"]

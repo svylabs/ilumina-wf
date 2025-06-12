@@ -1,5 +1,5 @@
 import { Action, Actor } from "@svylabs/ilumina";
-import type { RunContext } from "@svylabs/ilumina";
+import type { RunContext, ExecutionReceipt } from "@svylabs/ilumina";
 import { Snapshot } from "@svylabs/ilumina";
 
 export class {{action_name}}Action extends Action {
@@ -8,19 +8,19 @@ export class {{action_name}}Action extends Action {
         super("{{ action_name }}");
     }
 
-    async initialize(context: RunContext, actor: Actor, currentSnapshot: Snapshot): Promise<[any, Record<string, any>]> {
+    async initialize(context: RunContext, actor: Actor, currentSnapshot: Snapshot): Promise<[boolean, any, Record<string, any>]> {
         actor.log("Generating execution parameters for {{action_name}} action..");
         // Here you can generate any parameters needed for the action
         const params = { }; // Example parameter
-        return [params, {}]; // Return parameters and an empty object for additional data
+        return [true, params, {}]; // Return parameters and an empty object for additional data
     }
 
-    async execute(context: RunContext, actor: Actor, currentSnapshot: any, actionParams: any): Promise<any> {
+    async execute(context: RunContext, actor: Actor, currentSnapshot: any, actionParams: any): Promise<ExecutionReceipt> {
         actor.log("Execution {{action_name}}");
-        return { };
+        return { receipt: {} };
     }
 
-    async validate(context: RunContext, actor: Actor, previousSnapshot: any, newSnapshot: any, actionParams: any): Promise<boolean> {
+    async validate(context: RunContext, actor: Actor, previousSnapshot: any, newSnapshot: any, actionParams: any, receipt: ExecutionReceipt): Promise<boolean> {
         actor.log("Validating {{action_name}}...");
         return true; // Always succeeds
     }

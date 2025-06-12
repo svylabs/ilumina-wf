@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from .models import Action
+from .models import Action, Constant
 load_dotenv()
 import json
 from slither.slither import Slither
@@ -17,6 +17,7 @@ class ActionAnalyzer:
     def __init__(self, action, context: RunContext):
         self.action = action
         self.context = context
+        self.slither = None
 
     def _get_contract_code(self, contract_name: str) -> str:
         """Get full source code for a contract"""
@@ -24,8 +25,28 @@ class ActionAnalyzer:
         with open(contract_path, "r") as f:
             return f.read()
         
+    def _extract_constants(self, deployed_contracts, contract_name) -> dict:
+        """Extract constants from a contract"""
+        constants = []
+        for contract in deployed_contracts:
+            if contract.name != contract_name:
+                continue
+            
+            for var in contract.state_variables:
+                if var.is_constant:
+                    constants.append(
+                        Constant(
+                            name=var.name,
+                            value=str(var.expression) if var.expression else None,
+                            type=var.type.name
+                        )
+                    )
+            
+            return constants
+        
     def extract_local_function_tree(self, project_path: str, contract_name: str, entry_func_full_name: str) -> dict:
         slither = Slither(project_path)
+        self.slither = slither
         local_root = os.path.abspath(project_path if os.path.isdir(project_path) else os.path.dirname(project_path))
         print(f"Local root: {local_root}")
 
@@ -44,6 +65,7 @@ class ActionAnalyzer:
         contract_references_by_contract = {}
         
         result = {} # A mapping of contract_name and list of functions called by the entry function
+        deployed = []
 
         for contract in slither.contracts:
             if contract.is_interface:
@@ -53,6 +75,7 @@ class ActionAnalyzer:
                 if item.type == 'deploy' and contract.name == item.contract:
                     contract_references = contract_reference_analyzer.analyze(deployment_instructions, contract.name)
                     contract_references_by_contract[contract.name] = contract_references
+                    deployed.append(contract)
                     break
             for func in contract.functions:
                 src_path = func.source_mapping.filename.absolute
@@ -112,7 +135,7 @@ class ActionAnalyzer:
                         """
 
         visit(contract_name, all_funcs[contract_name + "_" + entry_func_full_name])
-        return result, contract_references_by_contract
+        return result, deployed, contract_references_by_contract
     
     def resolve_contract(self, func: Function, var_name: str, contract_references: ContractReferences, depth=0, max_depth=10):
         """
@@ -172,7 +195,7 @@ class ActionAnalyzer:
                 if item.get("type") == "function" and item.get("name") == action.function_name:
                     full_function_name = item.get("name") + "(" + ",".join([param["type"] for param in item.get("inputs", [])]) + ")"
                     break
-        call_tree, contract_references_by_contract = self._get_function_call_tree(
+        call_tree, deployed, contract_references_by_contract = self._get_function_call_tree(
             action.contract_name,
             full_function_name
         )
@@ -218,12 +241,12 @@ class ActionAnalyzer:
                 "function": action.function_name
             },
             "contracts": contract_contexts
-        }
+        }, deployed
     
     def analyze(self, action: Action):
         """Main analysis workflow"""
         # Step 1: Build complete context
-        context = self._build_action_context(action)
+        context, deployed = self._build_action_context(action)
         
         # Step 2: Generate LLM prompt for state changes
         prompt = self._generate_state_change_prompt(context)
@@ -255,10 +278,12 @@ class ActionAnalyzer:
                         )
                         for ref in c['references']['references']
                     ]
-                )
+                ),
+                constants=self._extract_constants(deployed, c['name']),
             )
             for c in context['contracts']
         ]
+
 
         # Step 5: Generate action summary
         action_context= ActionContext(
@@ -328,7 +353,8 @@ Contracts Involved:
 Generate:
 1. Parameter generation rules for executing the action.
 2. Categorize the state updates into multiple categories and provide a list of updates per category.
-3. Validation rules to validate the proper execution of the action by validating the state.
+3. Validation rules to validate the proper execution of the action by validating the state, and validate the events emitted.
+
 """
     
     # def analyze(self):
