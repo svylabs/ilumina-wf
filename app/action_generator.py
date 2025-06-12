@@ -120,6 +120,7 @@ class ActionGenerator:
     The parameters generated should be valid for the transaction.
 
     The implementation of `execute` should call the contract function with the parameters generated in `initialize` and will be passed as `actionParams`.
+    Any dependent transactions should also be executed in this method(for example: if an action requires token allowance to be approved, it should be done here)
     It should execute using actor.account.value cast as Hardhat signer object.
     ```async function execute(
         context: RunContext,
@@ -132,6 +133,7 @@ class ActionGenerator:
     Validate the action by comparing the previous snapshot with the new snapshot based on validation rules provided in action summary.
     In addition, the validation should also be made for account balances, token balances for affected contracts and accounts. Contract address can be accessed using contract.target
     Validate action should also validate the events.
+    Validation of affected user state should be done as well. For example: If an action distributes fee in O(1) time, fee distribution should check all users O(n) to see if the expected fee is distributed correctly in addition to the cumulative states.
     ```async function validate(
         context: RunContext,
         actor: Actor,
