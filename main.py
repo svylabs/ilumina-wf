@@ -1685,5 +1685,53 @@ def implement_review_comments_api(submission, request_context, user_prompt):
     finally:
         clean_context(context)
 
+@app.route('/api/submission/<submission_id>/action/contract/<contract_name>/function/<function_name>', methods=['GET'])
+@authenticate
+def get_action_detail(submission_id, contract_name, function_name):
+    """Get detailed analysis for a specific action"""
+    try:
+        # Construct the Datastore key
+        key = datastore_client.key(
+            "SubmissionActionAnalysis", 
+            f"{submission_id}_{contract_name}_{function_name}"
+        )
+        
+        # Fetch the entity
+        action_analysis = datastore_client.get(key)
+        
+        if not action_analysis:
+            return jsonify({
+                "error": f"Action analysis not found for contract {contract_name} and function {function_name}"
+            }), 404
+        
+        # Transform the entity to a dictionary
+        result = {
+            "submission_id": action_analysis.get("submission_id"),
+            "contract_name": action_analysis.get("contract_name"),
+            "function_name": action_analysis.get("function_name"),
+            "status": action_analysis.get("status"),
+            "step": action_analysis.get("step"),
+            "created_at": action_analysis.get("created_at"),
+            "updated_at": action_analysis.get("updated_at"),
+            "completed_steps": action_analysis.get("completed_steps", []),
+            "metadata": {k: v for k, v in action_analysis.items() 
+                        if k not in [
+                            "submission_id", 
+                            "contract_name", 
+                            "function_name",
+                            "status",
+                            "step",
+                            "created_at",
+                            "updated_at",
+                            "completed_steps"
+                        ]}
+        }
+        
+        return jsonify(result), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_action_detail endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
