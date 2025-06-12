@@ -12,7 +12,7 @@ def implement_review_comments(submission, contract_name: str, function_name: str
         
         # Path setup
         reviews_dir = os.path.join(context.simulation_path(), "reviews", "actions")
-        review_file = os.path.join(reviews_dir, f"{contract_name}_{function_name}_review.json")
+        review_file = os.path.join(reviews_dir, f"{contract_name}_{function_name}.json")
         code_file = os.path.join(context.simulation_path(), "simulation", "actions", 
                                f"{contract_name}_{function_name}.ts")
         
@@ -44,91 +44,41 @@ def implement_review_comments(submission, contract_name: str, function_name: str
 
         implemented_changes = []
         current_code = original_code
-        
-        # Process missing validations
-        for validation in review.missing_validations:
+
+        # Process all review comments in a single list
+        for review_item in getattr(review, 'reviews', []):
             user_prompt = f"""
-            Add missing validation for: {validation}
-            
+            Review comment for function '{review_item.function_name}' at line {review_item.line_number}:
+            Description: {review_item.description}
+            Suggested fix: {review_item.suggested_fix}
+
             Original code:
             {current_code}
-            
+
             Requirements:
-            1. Add the validation logic
-            2. Include appropriate error handling
-            3. Add comments explaining the validation
+            1. Apply the suggested fix and address the review comment
+            2. Add comments explaining the change
+            3. Preserve the original functionality
             4. Return the complete updated code
             """
-            # Initialize ThreeStageAnalyzer
             analyzer = ThreeStageAnalyzer(Code, system_prompt=system_prompt)
-
-            # Get the fix from LLM
-            fixed_code = analyzer.ask_llm(
-                prompt=user_prompt
-            )
-            
+            fixed_code = analyzer.ask_llm(prompt=user_prompt)
             if fixed_code and isinstance(fixed_code, Code):
                 implemented_changes.append({
-                    "type": "missing_validation",
-                    "validation": validation,
+                    "line_number": review_item.line_number,
+                    "function_name": review_item.function_name,
+                    "description": review_item.description,
                     "change_summary": fixed_code.change_summary,
                     "code": fixed_code.code
                 })
                 current_code = fixed_code.code  # Update with the fixed code
 
-        # Process validation errors
-        for error in review.errors_in_existing_validations:
-            user_prompt = f"""
-            Fix validation error at line {error.line_number}:
-            Error: {error.description}
-            Suggested fix: {error.suggested_fix}
-            
-            Original code:
-            {current_code}
-            
-            Requirements:
-            1. Correct the validation logic
-            2. Preserve surrounding functionality
-            3. Add comments explaining the fix
-            4. Return the complete updated code
-            """
-            
-            # Get the fix from LLM
-            fixed_code = analyzer.ask_llm(
-                prompt=user_prompt
-            )
-            
-            if fixed_code and isinstance(fixed_code, Code):
-                implemented_changes.append({
-                    "type": "validation_fix",
-                    "line_number": error.line_number,
-                    "error": error.description,
-                    "change_summary": fixed_code.change_summary,
-                    "code": fixed_code.code
-                })
-                current_code = fixed_code.code  # Update with the fixed code
-
-        # Write the modified code back
-        with open(code_file, "w") as f:
-            f.write(current_code)
-
-        # Commit changes
-        commit_message = f"Implemented review comments for {contract_name}.{function_name}"
-        context.commit(commit_message)
-
-        # Update status if callback provided
-        if update_status_fn:
-            update_status_fn(
-                submission["submission_id"],
-                contract_name,
-                function_name,
-                "implement_review"
-            )
-
+        # Only return the updated code and the change summary
         return {
             "status": "success",
-            "code_file": code_file,
-            "message": f"Successfully implemented {len(implemented_changes)} review comments"
+            "code": current_code,
+            "implemented_changes": implemented_changes,
+            "message": f"Successfully implemented {len(implemented_changes)} review comments (not saved, only returned)"
         }
 
     except Exception as e:
