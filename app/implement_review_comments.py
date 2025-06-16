@@ -2,9 +2,9 @@
 import os
 import json
 from typing import Dict, List, Optional
-from app.models import ActionReview, Review, Code
-from app.three_stage_llm_call import ThreeStageAnalyzer
-from app.context import prepare_context
+from .models import ActionReview, Review, Code
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .context import prepare_context
 
 def implement_review_comments(
     submission, 
