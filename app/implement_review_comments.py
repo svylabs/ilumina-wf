@@ -65,7 +65,7 @@ def implement_review_comments(
         6. Return the complete updated code with your changes implemented"""
 
         analyzer = ThreeStageAnalyzer(Code, system_prompt=system_prompt)
-        implemented_changes = []
+        # implemented_changes = []
         current_code = original_code
         
         # Process each review item
@@ -93,23 +93,22 @@ def implement_review_comments(
             fixed_code = analyzer.ask_llm(prompt=user_prompt)
             
             if fixed_code and isinstance(fixed_code, Code):
-                implemented_changes.append({
-                    "function": review.function_name,
-                    "line_number": review.line_number,
-                    "issue": review.description,
-                    "suggested_fix": review.suggested_fix,
-                    "change_summary": fixed_code.change_summary,
-                    "code_diff": _generate_diff(current_code, fixed_code.code)
-                })
+                # implemented_changes.append({
+                #     "function": review.function_name,
+                #     "line_number": review.line_number,
+                #     "issue": review.description,
+                #     "suggested_fix": review.suggested_fix,
+                #     "change_summary": fixed_code.change_summary,
+                # })
                 current_code = fixed_code.code  # Update with the fixed code
 
         return {
             "status": "success",
-            "original_code": original_code,
-            "modified_code": current_code,
-            "changes": implemented_changes,
-            "message": f"Successfully processed {len(implemented_changes)} review comments",
-            "overall_assessment": action_review.overall_assessment
+            "fixed_code": current_code
+            # "original_code": original_code,
+            # "changes": implemented_changes,
+            # "message": f"Successfully processed {len(implemented_changes)} review comments",
+            # "overall_assessment": action_review.overall_assessment
         }
 
     except json.JSONDecodeError as e:
@@ -123,21 +122,3 @@ def implement_review_comments(
             "message": str(e),
             "error_details": str(e)
         }
-
-def _generate_diff(old_code: str, new_code: str) -> str:
-    """
-    Generate a simple diff between old and new code.
-    For a real implementation, you might want to use a proper diff library.
-    """
-    old_lines = old_code.split('\n')
-    new_lines = new_code.split('\n')
-    
-    diff = []
-    for i, (old_line, new_line) in enumerate(zip(old_lines, new_lines)):
-        if old_line != new_line:
-            diff.append(f"Line {i+1}:")
-            diff.append(f"- {old_line}")
-            diff.append(f"+ {new_line}")
-            diff.append("")
-    
-    return '\n'.join(diff)
