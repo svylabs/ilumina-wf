@@ -1631,10 +1631,15 @@ def implement_review_comments_api(submission, request_context, user_prompt):
         data = request.get_json()
         contract_name = data.get('contract_name')
         function_name = data.get('function_name')
-        
+        user_reviews = data.get('user_reviews', None)
+        parallel_workspace_id = data.get('parallel_workspace_id')
+        run_id = data.get('run_id')
+        submission_id = data.get('submission_id')
+        repo = data.get('github_repository_url')
+
         if not contract_name or not function_name:
             return jsonify({"error": "Both contract_name and function_name are required"}), 400
-
+        
         # Update status to in_progress
         update_action_analysis_status(
             submission["submission_id"],
@@ -1644,11 +1649,19 @@ def implement_review_comments_api(submission, request_context, user_prompt):
             "in_progress"
         )
 
-        # Call the implementation logic
+        # Prepare context in a lazy way (no repo cloning, just object construction)
+        context = prepare_context_lazy({
+            "run_id": run_id or submission.get("run_id"),
+            "submission_id": submission_id or submission.get("submission_id"),
+            "github_repository_url": repo or submission.get("github_repository_url")
+        }, needs_parallel_workspace=bool(parallel_workspace_id), parallel_workspace_id=parallel_workspace_id)
+
+        # Call the implementation logic, passing context and user_reviews
         result = implement_review_comments(
-            submission,
+            context,
             contract_name,
-            function_name
+            function_name,
+            user_reviews=user_reviews
         )
 
         # Handle results

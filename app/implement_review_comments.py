@@ -4,16 +4,14 @@ import json
 from typing import Dict, List, Optional
 from .models import ActionReview, Review, Code
 from .three_stage_llm_call import ThreeStageAnalyzer
-from .context import prepare_context
 
 def implement_review_comments(
-    submission, 
-    contract_name: str, 
-    function_name: str
+    context,
+    contract_name: str,
+    function_name: str,
+    user_reviews: Optional[list] = None
 ) -> Dict:
     try:
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-        
         # Path setup for review file
         reviews_dir = os.path.join(context.simulation_path(), "reviews", "actions")
         review_file = os.path.join(reviews_dir, f"{contract_name}_{function_name}.json")
@@ -43,6 +41,10 @@ def implement_review_comments(
                 review_data["reviews"] = []
             if "overall_assessment" not in review_data:
                 review_data["overall_assessment"] = []
+
+            # Append user reviews if provided
+            if user_reviews:
+                review_data["reviews"].extend(user_reviews)
                 
             action_review = ActionReview(**review_data)
 
