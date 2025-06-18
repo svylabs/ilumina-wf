@@ -47,7 +47,6 @@ from app.submission import (
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
-from app.action_validation_analyzer import DynamicActionValidator
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1698,41 +1697,10 @@ def implement_review_comments_api(submission, request_context, user_prompt):
         return jsonify({"error": str(e)}), 500
     finally:
         clean_context(context)
+    
+# @app.route('/api/submission/contract/<contract_name>/function/<function_name>/validate', methods=['POST'])
+# @authenticate
 
-@app.route('/api/validate_action', methods=['POST'])
-@authenticate
-@inject_analysis_params
-def validate_action(submission, request_context, user_prompt):
-    """Validate a specific action using dynamic validation"""
-    try:
-        data = request.get_json()
-        contract_name = data.get('contract_name')
-        function_name = data.get('function_name')
-        
-        if not contract_name or not function_name:
-            return jsonify({"error": "Both contract_name and function_name are required"}), 400
-
-        # Get context
-        context = prepare_context(submission, needs_parallel_workspace=False)
-        
-        # Find the action
-        actors = context.actor_summary()
-        action = actors.find_action(contract_name, function_name)
-        if not action:
-            return jsonify({"error": f"Action {function_name} not found in contract {contract_name}"}), 404
-
-        # Validate the action
-        validator = DynamicActionValidator(context)
-        result = validator.validate_action(action)
-        
-        return jsonify({
-            "action": f"{contract_name}.{function_name}",
-            "validation_result": result.to_dict(),
-            "status": "success"
-        }), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
     
 @app.route('/api/submission/<submission_id>/action/contract/<contract_name>/function/<function_name>', methods=['GET'])
 @authenticate
