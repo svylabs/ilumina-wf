@@ -14,8 +14,8 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
     else:
         sequence = sequence_input
 
-    # Get the path to validate_action.ts from the context's simulation directory
-    script_path = os.path.join(context.simulation_path(), "scripts", "validate_action.ts")
+    # Get the path to validate_action.ts using the context method
+    script_path = context.validate_action_script_path()
     
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Validation script not found at {script_path}")

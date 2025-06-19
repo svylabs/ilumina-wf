@@ -491,6 +491,10 @@ class RunContext:
         """Get the path to the snapshots directory"""
         return os.path.join(self.simulation_path(), "simulation", "snapshots")
     
+    def validate_action_script_path(self):
+        """Returns the full path to the validate_action.ts script"""
+        return os.path.join(self.simulation_path(), "scripts", "validate_action.ts")
+    
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces", needs_parallel_workspace=False),
     RunContext("s2", "2", "https://github.com/svylabs/stablebase", "/tmp/workspaces", needs_parallel_workspace=False),
