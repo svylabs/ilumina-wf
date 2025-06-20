@@ -14,8 +14,9 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
     else:
         sequence = sequence_input
 
-    # Get the path to validate_action.ts using the context method
+    # Get paths using context methods
     script_path = context.validate_action_script_path()
+    log_path = context.validate_action_log_path()
     
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Validation script not found at {script_path}")
@@ -26,7 +27,7 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
         tmpfile_path = tmpfile.name
 
     command = [
-        "npx", "ts-node", script_path, tmpfile_path
+        "npx", "ts-node", "--skip-project", script_path, tmpfile_path
     ]
 
     try:
@@ -39,9 +40,8 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
             text=True,
             check=False  # Don't raise on non-zero exit
         )
-        
-        # Read the log file if it was created
-        log_path = os.path.join(context.simulation_path(), "validation_run.log")
+
+        # Read the log file
         log_content = None
         if os.path.exists(log_path):
             with open(log_path, "r") as f:
@@ -49,15 +49,24 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
                 
         # Clean up temp file
         os.unlink(tmpfile_path)
-        
+
+        # Determine status based on exit code
+        status = "success" if result.returncode == 0 else "error"
+
         return {
+            "status": status,
+            "exit_code": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
-            "exit_code": result.returncode,
-            "log": log_content
+            "log": log_content,
+            "log_path": log_path
         }
+    
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 def generate_validation_sequence(context, actor_name, action_name, contract_name, actor_index=0, params=None, out_path=None):
     """
