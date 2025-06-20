@@ -1757,18 +1757,16 @@ def api_validate_action(submission, request_context, user_prompt):
             sequence = get_latest_validation_sequence(context)
         
         result = run_action_validation(sequence, context)
-        
-        if "error" in result:
-            return jsonify({
-                "error": result["error"],
-                "status": "error"
-            }), 400
-        
+
+        # Use the status from the validation result
         return jsonify({
-            "result": result,
-            "status": "success",
-            "log_path": os.path.join(context.simulation_path(), "validation_run.log")
-        }), 200
+            "status": result["status"],
+            "exit_code": result.get("exit_code"),
+            "log": result.get("log"),
+            "log_path": result.get("log_path"),
+            "error": result.get("error"),
+            "stderr": result.get("stderr")
+        }), 200 if result["status"] == "success" else 400
         
     except Exception as e:
         return jsonify({
