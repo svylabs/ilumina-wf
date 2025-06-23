@@ -27,6 +27,7 @@ def ask_openai(user_input, type, task="generate", conversations=None, options=No
     else:
         model = os.getenv("FREE_MODEL", "gemini-2.0-flash")
 
+    print(f"Using model: {model} for plan: {plan}")
     # Get response
     response = client.beta.chat.completions.parse(model=model,
         messages=conversations,
