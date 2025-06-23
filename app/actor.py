@@ -43,7 +43,7 @@ class ActorAnalyzer:
         {user_prompt if user_prompt else "None"}
         """
 
-    def identify_actors(self, user_prompt=None):
+    def identify_actors(self, user_prompt=None, options=None):
         existing_actors = None
         refine = False
         if os.path.exists(self.context.actor_summary_path()):
@@ -63,8 +63,8 @@ class ActorAnalyzer:
                 project_summary=self.project_summary,
                 user_prompt=user_prompt
             )
-
-        analyzer = ThreeStageAnalyzer(Actors)
+        plan = options.get("plan", "free") if options else "free"
+        analyzer = ThreeStageAnalyzer(Actors, plan=plan)
         actors = analyzer.ask_llm(prompt)
         self.actors = actors
         return self.actors
@@ -73,8 +73,8 @@ class ActorAnalyzer:
     def prepare(self):
         pass
 
-    def analyze(self, user_prompt=None):
-        self.identify_actors(user_prompt=user_prompt)
+    def analyze(self, user_prompt=None, options=None):
+        self.identify_actors(user_prompt=user_prompt, options=options)
         self.save()
         return self.actors
 
