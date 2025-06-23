@@ -29,7 +29,7 @@ from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
-from app.submission import UserPromptManager
+# from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
@@ -207,6 +207,7 @@ def begin_analysis():
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
     data["step"] = "begin_analysis"
     data["status"] = "success"
+    data["plan"] = data.get("plan", "free")  # Default to free plan if not specified
 
     store_analysis_metadata(data)
     task_name = create_task(data)
@@ -216,7 +217,35 @@ def begin_analysis():
         "message": "Analysis started",
         "task_name": task_name,
         "submission_id": data["submission_id"],
-        "run_id": data["run_id"]
+        "run_id": data["run_id"],
+        "plan": data["plan"]
+    }), 200
+
+@app.route('/api/submission/<submission_id>/upgrade_plan', methods=['POST'])
+@authenticate
+def upgrade_submission_plan(submission_id):
+    """Upgrade the plan for a submission"""
+    data = request.get_json()
+    new_plan = data.get("plan")
+    
+    if not new_plan or new_plan not in ["free", "paid"]:
+        return jsonify({"error": "Invalid plan specified"}), 400
+
+    # Fetch the submission
+    key = datastore_client.key("Submission", submission_id)
+    submission = datastore_client.get(key)
+    
+    if not submission:
+        return jsonify({"error": "Submission not found"}), 404
+
+    # Update the plan
+    submission["plan"] = new_plan
+    datastore_client.put(submission)
+
+    return jsonify({
+        "message": f"Plan updated to {new_plan}",
+        "submission_id": submission_id,
+        "new_plan": new_plan
     }), 200
 
 # Modify the APIs to use prepare_context for creating RunContext

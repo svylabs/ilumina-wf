@@ -15,7 +15,8 @@ def store_analysis_metadata(data):
         "step": "begin_analysis",
         "status": "completed",
         "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc)
+        "updated_at": datetime.now(timezone.utc),
+        "plan": data.get("plan", "free")  # Store plan, default to free
     })
     datastore_client.put(entity)
 
