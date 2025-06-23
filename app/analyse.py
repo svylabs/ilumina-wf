@@ -13,6 +13,9 @@ class Analyzer:
     def __init__(self, context):
         self.context = context
         self.current_step = None
+        # Get plan from submission (default to free if not specified)
+        submission = context.get_submission()
+        self.plan = submission.get("plan", "free")
 
     def not_done(self):
         if self.current_step != "done":
@@ -24,14 +27,14 @@ class Analyzer:
         downloader.download()
 
     def summarize(self, user_prompt=None):
-        summarizer = ProjectSummarizer(self.context)
+        summarizer = ProjectSummarizer(self.context, plan=self.plan)
         return summarizer.summarize(user_prompt=user_prompt)
 
     def identify_actors(self, user_prompt=None):
         project_summary = None
         with open(self.context.summary_path(), 'r') as f:
             project_summary = Project.load(json.loads(f.read()))
-        actor_analyzer = ActorAnalyzer(self.context, project_summary)
+        actor_analyzer = ActorAnalyzer(self.context, project_summary, plan=self.plan)
         return actor_analyzer.analyze(user_prompt=user_prompt)
     
     def step(self):
@@ -75,9 +78,8 @@ class Analyzer:
             print("Analysis complete")
 
     def generate_deployment_instructions(self, user_prompt=None):
-        deployment_analyzer = DeploymentAnalyzer(self.context)
+        deployment_analyzer = DeploymentAnalyzer(self.context, plan=self.plan)
         instructions = deployment_analyzer.analyze(user_prompt=user_prompt)
-
         return instructions
 
 if __name__ == "__main__":
