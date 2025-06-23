@@ -27,15 +27,16 @@ class Analyzer:
         downloader.download()
 
     def summarize(self, user_prompt=None):
-        summarizer = ProjectSummarizer(self.context, plan=self.plan)
-        return summarizer.summarize(user_prompt=user_prompt)
+        summarizer = ProjectSummarizer(self.context)
+        # Pass plan as options to ask_openai via summarizer
+        return summarizer.summarize(user_prompt=user_prompt, options={"plan": self.plan})
 
     def identify_actors(self, user_prompt=None):
         project_summary = None
         with open(self.context.summary_path(), 'r') as f:
             project_summary = Project.load(json.loads(f.read()))
-        actor_analyzer = ActorAnalyzer(self.context, project_summary, plan=self.plan)
-        return actor_analyzer.analyze(user_prompt=user_prompt)
+        actor_analyzer = ActorAnalyzer(self.context, project_summary)
+        return actor_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.plan})
     
     def step(self):
         print("Running step " + str(self.current_step))
@@ -78,8 +79,8 @@ class Analyzer:
             print("Analysis complete")
 
     def generate_deployment_instructions(self, user_prompt=None):
-        deployment_analyzer = DeploymentAnalyzer(self.context, plan=self.plan)
-        instructions = deployment_analyzer.analyze(user_prompt=user_prompt)
+        deployment_analyzer = DeploymentAnalyzer(self.context)
+        instructions = deployment_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.plan})
         return instructions
 
 if __name__ == "__main__":
