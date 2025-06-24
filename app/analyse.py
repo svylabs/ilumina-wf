@@ -13,9 +13,6 @@ class Analyzer:
     def __init__(self, context):
         self.context = context
         self.current_step = None
-        # Get plan from submission (default to free if not specified)
-        submission = context.get_submission()
-        self.plan = submission.get("plan", "free")
 
     def not_done(self):
         if self.current_step != "done":
@@ -29,14 +26,14 @@ class Analyzer:
     def summarize(self, user_prompt=None):
         summarizer = ProjectSummarizer(self.context)
         # Pass plan as options to ask_openai via summarizer
-        return summarizer.summarize(user_prompt=user_prompt, options={"plan": self.plan})
+        return summarizer.summarize(user_prompt=user_prompt, options={"plan": self.context.plan})
 
     def identify_actors(self, user_prompt=None):
         project_summary = None
         with open(self.context.summary_path(), 'r') as f:
             project_summary = Project.load(json.loads(f.read()))
         actor_analyzer = ActorAnalyzer(self.context, project_summary)
-        return actor_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.plan})
+        return actor_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.context.plan})
     
     def step(self):
         print("Running step " + str(self.current_step))
@@ -80,7 +77,7 @@ class Analyzer:
 
     def generate_deployment_instructions(self, user_prompt=None):
         deployment_analyzer = DeploymentAnalyzer(self.context)
-        instructions = deployment_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.plan})
+        instructions = deployment_analyzer.analyze(user_prompt=user_prompt, options={"plan": self.context.plan})
         return instructions
 
 if __name__ == "__main__":
