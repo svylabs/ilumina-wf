@@ -24,12 +24,10 @@ from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client, storage_client
-# from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
-# from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
@@ -43,7 +41,9 @@ from app.submission import (
     update_action_analysis_status,
     get_action_analyses,
     update_snapshot_analysis_status,
-    UserPromptManager
+    UserPromptManager,
+    get_submission_plan,
+    update_submission_plan
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
@@ -193,6 +193,7 @@ def get_submission(submission_id):
         "latest_prompts": latest_prompts,
         "step_metadata": step_metadata,
         "actor_config": submission.get("actor_config", {}),
+        "plan": submission.get("plan", "free")
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -204,10 +205,15 @@ def begin_analysis():
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
 
+    # Use plan from request, or from existing submission, or default to "free"
+    plan = data.get("plan")
+    if not plan:
+        plan = get_submission_plan(data["submission_id"])
+    data["plan"] = plan
+
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
     data["step"] = "begin_analysis"
     data["status"] = "success"
-    data["plan"] = data.get("plan", "free")  # Default to free plan if not specified
 
     store_analysis_metadata(data)
     task_name = create_task(data)
@@ -231,16 +237,8 @@ def upgrade_submission_plan(submission_id):
     if not new_plan or new_plan not in ["free", "paid"]:
         return jsonify({"error": "Invalid plan specified"}), 400
 
-    # Fetch the submission
-    key = datastore_client.key("Submission", submission_id)
-    submission = datastore_client.get(key)
-    
-    if not submission:
-        return jsonify({"error": "Submission not found"}), 404
-
-    # Update the plan
-    submission["plan"] = new_plan
-    datastore_client.put(submission)
+    # Update the plan using utility method
+    update_submission_plan(submission_id, new_plan)
 
     return jsonify({
         "message": f"Plan updated to {new_plan}",
