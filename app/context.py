@@ -231,6 +231,10 @@ class RunContext:
         """Get the parallel workspace ID (None if not in parallel mode)"""
         return self._parallel_workspace_id
 
+    @property
+    def plan(self):
+        return self.submission.get("plan", "free")
+
     def cwd(self):
         base_path = os.path.join(self.workspace, self.submission_id)
         if self._parallel_workspace_id:
