@@ -146,7 +146,7 @@ class SnapshotCodeGenerator:
         self.context.commit("Snapshot interfaces and functions generated successfully.")
 
     def _generate_snapshot_logic(self, interfaces_created, contract_name: str, ref_name: str, snapshot_data: SnapshotDataStructure, identifiers) -> str:
-        analyzer = ThreeStageCodeImplementer(SnapshotCode, system_prompt="You are a TypeScript code generator specialized in generating code to take snapshots for smart contracts using ethers")
+        analyzer = ThreeStageCodeImplementer(SnapshotCode, system_prompt="You are a TypeScript code generator specialized in generating code to take snapshots for smart contracts using ethers", plan=self.context.plan)
         """
         Generate TypeScript functions to take contract and user snapshots
         """

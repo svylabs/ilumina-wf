@@ -37,7 +37,7 @@ class SnapshotDataStructureAnalyzer:
             artifact = json.load(f)
             abi = artifact.get('abi', [])
 
-        analyzer = ThreeStageAnalyzer(SnapshotDataStructure, system_prompt="You are an expert in analyzing smart contracts and generating data structures to build snapshots for smart contracts.")
+        analyzer = ThreeStageAnalyzer(SnapshotDataStructure, system_prompt="You are an expert in analyzing smart contracts and generating data structures to build snapshots for smart contracts.", plan=self.context.plan)
         prompt = self._get_prompt_for_snapshot_structure(contract_name, abi, new_identifiers)
         #print(prompt)
         snapshot_data_structure = analyzer.ask_llm(prompt)

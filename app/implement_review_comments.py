@@ -64,7 +64,7 @@ def implement_review_comments(
         5. Make minimal necessary changes
         6. Return the complete updated code with your changes implemented"""
 
-        analyzer = ThreeStageAnalyzer(Code, system_prompt=system_prompt)
+        analyzer = ThreeStageAnalyzer(Code, system_prompt=system_prompt, plan=context.plan)
         # implemented_changes = []
         current_code = original_code
         

@@ -67,7 +67,11 @@ class ActionGenerator:
             core_snapshot_structure += "\n\n" + snapshot_interfaces
         print (f"Core Snapshot Structure:\n{core_snapshot_structure}")
         prompt = self._generate_action_prompt(function_definition, self.action, action_summary, core_snapshot_structure, deployed_contracts)
-        analyzer = ThreeStageCodeImplementer(ActionCode, system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.")
+        analyzer = ThreeStageCodeImplementer(
+            ActionCode,
+            system_prompt="You are an expert in generating structured typescript code using ethers.js to interact with smart contract based on the structure provided in the context.",
+            plan=self.context.plan
+        )
         code = analyzer.ask_llm(prompt, guidelines=[
             "1. Ensure that actionParams are initialized based on the bounds from the snapshots for a given actor and action",
             "2. Ensure that all state changes are validated based on the previous and current snapshots."

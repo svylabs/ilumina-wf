@@ -92,7 +92,7 @@ class ContractReferenceAnalyzer:
         # Step 2: Call LLM to resolve contract references based on deployment instructions:
         prompt = self._construct_prompt(contract_name, references_to_resolve, deployment_instructions)
         #print(f"Constructed prompt for LLM:\n{prompt}")
-        llm = ThreeStageAnalyzer(ContractReferences)
+        llm = ThreeStageAnalyzer(ContractReferences, plan=self.context.plan)
         result = llm.ask_llm(prompt)
         for ref in contract_references:
             result.references.append(ref)

@@ -63,7 +63,7 @@ class ActionReviewer:
             #print(f"review_prompt:\n{review_prompt}\n")
 
             # Get the review from LLM
-            analyzer = ThreeStageAnalyzer(ActionReview)
+            analyzer = ThreeStageAnalyzer(ActionReview, plan=self.context.plan)
             print("7. Analyzer initialized")
 
             review = analyzer.ask_llm(review_prompt, guidelines=[
