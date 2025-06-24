@@ -43,7 +43,7 @@ class ActorAnalyzer:
         {user_prompt if user_prompt else "None"}
         """
 
-    def identify_actors(self, user_prompt=None, options=None):
+    def identify_actors(self, user_prompt=None):
         existing_actors = None
         refine = False
         if os.path.exists(self.context.actor_summary_path()):
@@ -72,8 +72,8 @@ class ActorAnalyzer:
     def prepare(self):
         pass
 
-    def analyze(self, user_prompt=None, options=None):
-        self.identify_actors(user_prompt=user_prompt, options=options)
+    def analyze(self, user_prompt=None):
+        self.identify_actors(user_prompt=user_prompt)
         self.save()
         return self.actors
 

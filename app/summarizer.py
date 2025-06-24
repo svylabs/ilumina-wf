@@ -123,7 +123,7 @@ class ProjectSummarizer:
             base_prompt += f"\n\nAdditional user requirements:\n{user_prompt}"
         return base_prompt
 
-    def summarize(self, user_prompt=None, options=None):
+    def summarize(self, user_prompt=None):
         self.prepare()
         print("Analyzing the contracts")
         if self.summary_exists():

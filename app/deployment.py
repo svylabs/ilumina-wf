@@ -121,7 +121,7 @@ class DeploymentAnalyzer:
         """
 
 
-    def analyze(self, user_prompt=None, options=None):
+    def analyze(self, user_prompt=None):
         project_summary = self.context.project_summary()
 
         self.context.deployment_instructions_path()
@@ -442,7 +442,7 @@ class DeploymentAnalyzer:
             ]
             print(guidelines)
             print(self.get_artifact_imports())
-            llm = ThreeStageAnalyzer(Code)
+            llm = ThreeStageAnalyzer(Code, plan=self.context.plan)
             new_code = llm.ask_llm(
                 f"""
                 Here is the code for the deployment module:
