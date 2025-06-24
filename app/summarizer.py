@@ -123,13 +123,14 @@ class ProjectSummarizer:
             base_prompt += f"\n\nAdditional user requirements:\n{user_prompt}"
         return base_prompt
 
-    def summarize(self, user_prompt=None):
+    def summarize(self, user_prompt=None, options=None):
         self.prepare()
         print("Analyzing the contracts")
+        plan = options.get("plan", "free") if options else "free"
         if self.summary_exists():
             existing_summary = self.load_summary()
             prompt = self.get_prompt_for_refinement(existing_summary, user_prompt)
-            analyzer = ThreeStageAnalyzer(Project)
+            analyzer = ThreeStageAnalyzer(Project, plan=plan)
             project_summary = analyzer.ask_llm(prompt)
             self.project_summary = project_summary
             self.save()
@@ -139,8 +140,7 @@ class ProjectSummarizer:
         prompt = base_prompt
         if (self.readme != ""):
             prompt_with_readme = prompt + f"\n\n Project Readme:\n\n {self.readme}"
-            # Add user prompt if provided
-            analyzer = ThreeStageAnalyzer(Project)
+            analyzer = ThreeStageAnalyzer(Project, plan=plan)
             project_from_readme = analyzer.ask_llm(prompt_with_readme)
             project_from_readme.clear_contracts()
             print("Project summary from README")
@@ -152,7 +152,7 @@ class ProjectSummarizer:
                 "name": contract["name"]
             })
         prompt_with_contracts = prompt + f"\n\n Project Contracts:\n\n {json.dumps(contracts_summary)}"
-        analyzer = ThreeStageAnalyzer(Project)
+        analyzer = ThreeStageAnalyzer(Project, plan=plan)
         project_from_contracts = analyzer.ask_llm(prompt_with_contracts)
         project_summary = project_from_contracts
         print("Project summary from contract names")

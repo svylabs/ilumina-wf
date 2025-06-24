@@ -121,8 +121,7 @@ class DeploymentAnalyzer:
         """
 
 
-    def analyze(self, user_prompt=None):
-        #deployable_contracts = self.identify_deployable_contracts()
+    def analyze(self, user_prompt=None, options=None):
         project_summary = self.context.project_summary()
 
         self.context.deployment_instructions_path()
@@ -145,11 +144,9 @@ class DeploymentAnalyzer:
                 project_summary=project_summary,
                 user_prompt=user_prompt
             )
-
-        #print(f"{prompt}")
-
+        plan = options.get("plan", "free") if options else "free"
         try:
-            analyzer = ThreeStageAnalyzer(DeploymentInstruction)
+            analyzer = ThreeStageAnalyzer(DeploymentInstruction, plan=plan)
             deployment_instructions = analyzer.ask_llm(prompt)
             #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
@@ -502,5 +499,4 @@ class DeploymentAnalyzer:
                     addresses[name] = address
         return addresses
 
-        
-        
+
