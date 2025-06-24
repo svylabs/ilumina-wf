@@ -144,9 +144,8 @@ class DeploymentAnalyzer:
                 project_summary=project_summary,
                 user_prompt=user_prompt
             )
-        plan = options.get("plan", "free") if options else "free"
         try:
-            analyzer = ThreeStageAnalyzer(DeploymentInstruction, plan=plan)
+            analyzer = ThreeStageAnalyzer(DeploymentInstruction, plan=self.context.plan)
             deployment_instructions = analyzer.ask_llm(prompt)
             #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
@@ -266,7 +265,7 @@ class DeploymentAnalyzer:
             "7. Log the deployment addresses in the console after deployment of each contract.",
         ]
 
-        llm = ThreeStageAnalyzer(Code)
+        llm = ThreeStageAnalyzer(Code, plan=self.context.plan)
         new_code = llm.ask_llm(
             prompt,
             guidelines=guidelines
