@@ -206,9 +206,7 @@ def begin_analysis():
         return jsonify({"error": "Invalid data format"}), 400
 
     # Use plan from request, or from existing submission, or default to "free"
-    plan = data.get("plan")
-    if not plan:
-        plan = get_submission_plan(data["submission_id"])
+    plan = data.get("plan", "free")
     data["plan"] = plan
 
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
