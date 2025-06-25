@@ -205,7 +205,7 @@ def begin_analysis():
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
 
-    # Use plan from request, or from existing submission, or default to "free"
+    # Use the plan from request data, default to "free" if not provided, and store it back in data
     plan = data.get("plan", "free")
     data["plan"] = plan
 
