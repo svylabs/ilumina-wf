@@ -1801,6 +1801,56 @@ def api_validate_action(submission, request_context, user_prompt):
     finally:
         clean_context(context)
 
+@app.route('/api/validate_action_async', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def api_validate_action_async(submission, request_context, user_prompt):
+    """Start an async validation task"""
+    try:
+        data = request.get_json() or {}
+        sequence = data.get("sequence")
+        
+        # Create a validation task
+        task_data = {
+            "submission_id": submission["submission_id"],
+            "step": "run_action_validation",
+            "sequence": sequence
+        }
+        task_name = create_task(task_data)
+        
+        return jsonify({
+            "status": "queued",
+            "task_name": task_name,
+            "message": "Validation started in background"
+        }), 202
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
+
+@app.route('/api/validate_action_status/<task_id>', methods=['GET'])
+@authenticate
+def api_validate_action_status(task_id):
+    """Check status of async validation"""
+    try:
+        # Get task status from Datastore
+        key = datastore_client.key("ValidationTask", task_id)
+        task = datastore_client.get(key)
+        
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+            
+        return jsonify({
+            "status": task.get("status", "pending"),
+            "result": task.get("result"),
+            "log_path": task.get("log_path")
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/submission/<submission_id>/action/contract/<contract_name>/function/<function_name>', methods=['GET'])
 @authenticate
 def get_action_detail(submission_id, contract_name, function_name):
