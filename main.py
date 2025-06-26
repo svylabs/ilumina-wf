@@ -47,7 +47,7 @@ from app.submission import (
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
-from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence
+from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence, run_action_validation_async
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1850,6 +1850,29 @@ def api_validate_action_status(task_id):
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/api/run_action_validation', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def run_action_validation_task(submission, request_context, user_prompt):
+    """Background task handler for action validation"""
+    try:
+        data = request.get_json()
+        sequence = data.get("sequence")
+        
+        context = prepare_context_lazy(submission)
+        task_id = run_action_validation_async(sequence, context, data.get("task_id"))
+        
+        return jsonify({
+            "status": "success",
+            "task_id": task_id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
 
 @app.route('/api/submission/<submission_id>/action/contract/<contract_name>/function/<function_name>', methods=['GET'])
 @authenticate
