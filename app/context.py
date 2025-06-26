@@ -9,6 +9,7 @@ from .filesystem_utils import ensure_directory_exists, clone_repo
 from .models import Project, Actors, DeploymentInstruction, Action
 from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import json
+import shutil
 
 APP_VERSION = "v1"
 
@@ -193,6 +194,10 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
 
     # Set the origin of the simulation repo to the GitHub repo and push if not already set
     set_github_repo_origin_and_push(simulation_repo_path, github_repo_url)
+
+    # Sync validate_action.ts from template to simulation repo
+    template_dir = os.getenv("SIMULATION_TEMPLATE_REPO_LOCAL", "../ilumina-scaffolded-template")
+    sync_validate_action_script(template_dir, simulation_repo_path)
 
     # Compile the contracts to generate ABIs
     if optimize == False:
@@ -495,10 +500,24 @@ class RunContext:
         """Get the path to the snapshots directory"""
         return os.path.join(self.simulation_path(), "simulation", "snapshots")
     
+    def validate_action_log_path(self):
+        """Returns the full path to the validation_run.log file for action validation"""
+        return os.path.join(self.simulation_path(), "validation_run.log")
+    
     def validate_action_script_path(self):
         """Returns the full path to the validate_action.ts script"""
         return os.path.join(self.simulation_path(), "scripts", "validate_action.ts")
-    
+
+def sync_validate_action_script(template_dir, simulation_dir):
+    """Copy validate_action.ts from template to simulation repo"""
+    src = os.path.join(template_dir, "scripts", "validate_action.ts")
+    dst = os.path.join(simulation_dir, "scripts", "validate_action.ts")
+    if os.path.exists(src):
+        shutil.copy2(src, dst)
+        print(f"Copied {src} to {dst}")
+    else:
+        print(f"Template validate_action.ts not found at {src}")
+
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces", needs_parallel_workspace=False),
     RunContext("s2", "2", "https://github.com/svylabs/stablebase", "/tmp/workspaces", needs_parallel_workspace=False),

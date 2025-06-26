@@ -47,7 +47,8 @@ from app.submission import (
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
-from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence, run_action_validation_async
+# from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence, run_action_validation_async
+from app.action_validation_analyzer import run_action_validation_async
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1727,79 +1728,79 @@ def implement_review_comments_api(submission, request_context, user_prompt):
 # @app.route('/api/submission/contract/<contract_name>/function/<function_name>/validate', methods=['POST'])
 # @authenticate
 
-@app.route('/api/generate_validation_sequence', methods=['POST'])
-@authenticate
-@inject_analysis_params
-def api_generate_validation_sequence(submission, request_context, user_prompt):
-    context = None
-    try:
-        data = request.get_json()
-        actor_name = data.get("actor_name")
-        action_name = data.get("action_name")
-        contract_name = data.get("contract_name")
-        actor_index = data.get("actor_index", 0)
-        params = data.get("params", {})
+# @app.route('/api/generate_validation_sequence', methods=['POST'])
+# @authenticate
+# @inject_analysis_params
+# def api_generate_validation_sequence(submission, request_context, user_prompt):
+#     context = None
+#     try:
+#         data = request.get_json()
+#         actor_name = data.get("actor_name")
+#         action_name = data.get("action_name")
+#         contract_name = data.get("contract_name")
+#         actor_index = data.get("actor_index", 0)
+#         params = data.get("params", {})
         
-        if not all([actor_name, action_name, contract_name]):
-            return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
+#         if not all([actor_name, action_name, contract_name]):
+#             return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
         
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-        out_path = generate_validation_sequence(
-            context, 
-            actor_name, 
-            action_name, 
-            contract_name, 
-            actor_index, 
-            params
-        )
+#         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+#         out_path = generate_validation_sequence(
+#             context, 
+#             actor_name, 
+#             action_name, 
+#             contract_name, 
+#             actor_index, 
+#             params
+#         )
         
-        return jsonify({
-            "message": "Validation sequence generated",
-            "path": out_path,
-            "status": "success"
-        }), 200
+#         return jsonify({
+#             "message": "Validation sequence generated",
+#             "path": out_path,
+#             "status": "success"
+#         }), 200
         
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "status": "error"
-        }), 500
-    finally:
-        clean_context(context)
+#     except Exception as e:
+#         return jsonify({
+#             "error": str(e),
+#             "status": "error"
+#         }), 500
+#     finally:
+#         clean_context(context)
 
-@app.route('/api/validate_action', methods=['POST'])
-@authenticate
-@inject_analysis_params
-def api_validate_action(submission, request_context, user_prompt):
-    context = None
-    try:
-        data = request.get_json() or {}
-        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+# @app.route('/api/validate_action', methods=['POST'])
+# @authenticate
+# @inject_analysis_params
+# def api_validate_action(submission, request_context, user_prompt):
+#     context = None
+#     try:
+#         data = request.get_json() or {}
+#         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
         
-        # Use provided sequence or load latest from context
-        sequence = data.get("sequence")
-        if sequence is None:
-            sequence = get_latest_validation_sequence(context)
+#         # Use provided sequence or load latest from context
+#         sequence = data.get("sequence")
+#         if sequence is None:
+#             sequence = get_latest_validation_sequence(context)
         
-        result = run_action_validation(sequence, context)
+#         result = run_action_validation(sequence, context)
 
-        # Use the status from the validation result
-        return jsonify({
-            "status": result["status"],
-            "exit_code": result.get("exit_code"),
-            "log": result.get("log"),
-            "log_path": result.get("log_path"),
-            "error": result.get("error"),
-            "stderr": result.get("stderr")
-        }), 200 if result["status"] == "success" else 400
+#         # Use the status from the validation result
+#         return jsonify({
+#             "status": result["status"],
+#             "exit_code": result.get("exit_code"),
+#             "log": result.get("log"),
+#             "log_path": result.get("log_path"),
+#             "error": result.get("error"),
+#             "stderr": result.get("stderr")
+#         }), 200 if result["status"] == "success" else 400
         
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "status": "error"
-        }), 500
-    finally:
-        clean_context(context)
+#     except Exception as e:
+#         return jsonify({
+#             "error": str(e),
+#             "status": "error"
+#         }), 500
+#     finally:
+#         clean_context(context)
 
 @app.route('/api/validate_action_async', methods=['POST'])
 @authenticate
@@ -1817,10 +1818,14 @@ def api_validate_action_async(submission, request_context, user_prompt):
             "sequence": sequence
         }
         task_name = create_task(task_data)
+
+        # Extract task_id from the task_name
+        task_id = task_name.split("/")[-1] if task_name else None
         
         return jsonify({
             "status": "queued",
             "task_name": task_name,
+            "task_id": task_id,
             "message": "Validation started in background"
         }), 202
         

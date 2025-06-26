@@ -28,19 +28,29 @@ def run_action_validation_async(sequence_input: dict, context=None, task_id=None
         # Run validation in background
         result = run_action_validation(sequence_input, context)
         
-        # Update task with results
+        # Update task with results (store large fields as unindexed)
         task.update({
             "status": result["status"],
             "completed_at": datetime.utcnow(),
-            "result": result,
+            "result": {k: v for k, v in result.items() if k not in ["stdout", "stderr", "log"]},
             "log_path": result.get("log_path")
         })
+        if "stdout" in result:
+            task["stdout"] = result["stdout"]
+            task.exclude_from_indexes.add("stdout")
+        if "stderr" in result:
+            task["stderr"] = result["stderr"]
+            task.exclude_from_indexes.add("stderr")
+        if "log" in result:
+            task["log"] = result["log"]
+            task.exclude_from_indexes.add("log")
         datastore_client.put(task)
         
-        return task.id
+        # Return the string task id (for both string and int keys)
+        return task.key.name or task.id
         
     except Exception as e:
-        if task:
+        if 'task' in locals():
             task.update({
                 "status": "error",
                 "error": str(e)
