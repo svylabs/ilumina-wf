@@ -48,7 +48,7 @@ from app.submission import (
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
 # from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence, run_action_validation_async
-from app.action_validation_analyzer import run_action_validation_async
+from app.action_validation_analyzer import generate_validation_sequence, run_action_validation_async
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1728,45 +1728,45 @@ def implement_review_comments_api(submission, request_context, user_prompt):
 # @app.route('/api/submission/contract/<contract_name>/function/<function_name>/validate', methods=['POST'])
 # @authenticate
 
-# @app.route('/api/generate_validation_sequence', methods=['POST'])
-# @authenticate
-# @inject_analysis_params
-# def api_generate_validation_sequence(submission, request_context, user_prompt):
-#     context = None
-#     try:
-#         data = request.get_json()
-#         actor_name = data.get("actor_name")
-#         action_name = data.get("action_name")
-#         contract_name = data.get("contract_name")
-#         actor_index = data.get("actor_index", 0)
-#         params = data.get("params", {})
+@app.route('/api/generate_validation_sequence', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def api_generate_validation_sequence(submission, request_context, user_prompt):
+    context = None
+    try:
+        data = request.get_json()
+        actor_name = data.get("actor_name")
+        action_name = data.get("action_name")
+        contract_name = data.get("contract_name")
+        actor_index = data.get("actor_index", 0)
+        params = data.get("params", {})
         
-#         if not all([actor_name, action_name, contract_name]):
-#             return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
+        if not all([actor_name, action_name, contract_name]):
+            return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
         
-#         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-#         out_path = generate_validation_sequence(
-#             context, 
-#             actor_name, 
-#             action_name, 
-#             contract_name, 
-#             actor_index, 
-#             params
-#         )
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        out_path = generate_validation_sequence(
+            context, 
+            actor_name, 
+            action_name, 
+            contract_name, 
+            actor_index, 
+            params
+        )
         
-#         return jsonify({
-#             "message": "Validation sequence generated",
-#             "path": out_path,
-#             "status": "success"
-#         }), 200
+        return jsonify({
+            "message": "Validation sequence generated",
+            "path": out_path,
+            "status": "success"
+        }), 200
         
-#     except Exception as e:
-#         return jsonify({
-#             "error": str(e),
-#             "status": "error"
-#         }), 500
-#     finally:
-#         clean_context(context)
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
+    finally:
+        clean_context(context)
 
 # @app.route('/api/validate_action', methods=['POST'])
 # @authenticate

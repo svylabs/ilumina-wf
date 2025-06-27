@@ -112,7 +112,44 @@ def run_action_validation(sequence_input: dict, context=None) -> dict:
             "status": "error",
             "error": str(e)
         }
-    
+
+def generate_validation_sequence(context, actor_name, action_name, contract_name, actor_index=0, params=None, out_path=None):
+    """
+    Generate a validation sequence JSON for a given action and store it.
+    """
+    # Load actor summary
+    actors = context.actor_summary()
+    actor = next((a for a in actors.actors if a.name == actor_name), None)
+    if not actor:
+        raise ValueError(f"Actor '{actor_name}' not found in actor_summary.json")
+    action = next((a for a in actor.actions if a.name == action_name), None)
+    if not action:
+        raise ValueError(f"Action '{action_name}' not found for actor '{actor_name}'")
+
+    # Build the sequence step
+    step = {
+        "action_name": getattr(action, "class_name", f"{action_name}Action"),
+        "actor_index": actor_index,
+        "contract_name": contract_name,
+        "params": params or {}
+    }
+    sequence = {
+        "description": f"Validation sequence for {actor_name}.{action_name} on {contract_name}",
+        "sequence": [step]
+    }
+
+    # Store the sequence
+    if not out_path:
+        out_path = os.path.join(context.simulation_path(), "validation_sequence.json")
+    with open(out_path, "w") as f:
+        json.dump(sequence, f, indent=2)
+    # Commit the new validation sequence to the simulation repo
+    try:
+        context.commit(f"Add validation sequence for {actor_name}.{action_name} on {contract_name}")
+    except Exception as e:
+        print(f"[generate_validation_sequence] Commit failed: {e}")
+    return out_path
+
 def get_latest_validation_sequence(context):
     """
     Loads the latest validation sequence from the default path for the given context.
