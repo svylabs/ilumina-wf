@@ -1,116 +1,53 @@
 #action_validation_analyzer.py
 import os
+import dotenv
+dotenv.load_dotenv()
+    
 import tempfile
 import subprocess
 import json
+from .three_stage_llm_call import ThreeStageAnalyzer
+from .models import Action, ActionValidation
 
-def run_action_validation(sequence_input: dict, context=None) -> dict:
-    # If context is provided and sequence_input is None, load the latest sequence
-    if context is not None and (sequence_input is None or sequence_input == {}):
-        sequence = get_latest_validation_sequence(context)
-    # Accept both {sequence: {...}} and {...}
-    elif isinstance(sequence_input, dict) and 'sequence' in sequence_input and isinstance(sequence_input['sequence'], dict):
-        sequence = sequence_input['sequence']
-    else:
-        sequence = sequence_input
+class ActionValidationAnalyzer:
+    def __init__(self, context):
+        self.context = context
 
-    # Get paths using context methods
-    script_path = context.validate_action_script_path()
-    log_path = context.validate_action_log_path()
-    
-    if not os.path.exists(script_path):
-        raise FileNotFoundError(f"Validation script not found at {script_path}")
+    def analyze(self, actor, action, actors):
+        '''
+        Analyze the action validation logic for the given action in the contract.
+        '''
+        prompt = f"""
+        You are an expert in understanding smart contract actions and create a smoke test plan for validating the actions.
 
-    # Write the sequence to a temporary file
-    with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmpfile:
-        json.dump(sequence, tmpfile)
-        tmpfile_path = tmpfile.name
+        An action is a self contained client side atomic operation - that can generate required parameters, call the smart contract function, and validate the state changes made by the smart contract function.
+        
+        Here is the summary of all actors and their actions.
+        {json.dumps(actors.to_dict(), indent=2)}
 
-    command = [
-        "npx", "ts-node", "--skip-project", script_path, tmpfile_path
-    ]
+        and you are analysing the action by the actor: {actor.name} and the action is: {action.name}
 
-    try:
-        # Run the script from the simulation directory
-        result = subprocess.run(
-            command,
-            cwd=context.simulation_path(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False  # Don't raise on non-zero exit
-        )
+        Please provide the sequence of steps(from among the list of actions above) to perform a smoke test of this particular action. One action may be dependent on other actions or there could be no dependency in the base case.
+        1. Calling correct actions to set up state prior to executing the action being tested ({action.name})
+        2. Calling the action that is being tested ({action.name})
+        3. Assume that executions of each action already validates state changes of that action. So no extra steps are needed to validate state changes made by an action.
 
-        # Read the log file
-        log_content = None
-        if os.path.exists(log_path):
-            with open(log_path, "r") as f:
-                log_content = f.read()
-                
-        # Clean up temp file
-        os.unlink(tmpfile_path)
+        Note:
+        1. The smoke test sequence must be self contained, meaning it must not assume any prior state or actions outside of the sequence. So any state changes (eg: oracle updates) must be in the sequence of steps.
 
-        # Determine status based on exit code
-        status = "success" if result.returncode == 0 else "error"
+        """
+        validation_sequence = ThreeStageAnalyzer(ActionValidation, system_prompt="You are an expert in analyzing smart contract actions and creating smoke test plans.", plan=self.context.plan).ask_llm(prompt)
+        return validation_sequence
 
-        return {
-            "status": status,
-            "exit_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "log": log_content,
-            "log_path": log_path
-        }
-    
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
-
-def generate_validation_sequence(context, actor_name, action_name, contract_name, actor_index=0, params=None, out_path=None):
-    """
-    Generate a validation sequence JSON for a given action and store it.
-    """
-    # Load actor summary
+if __name__ == "__main__":
+    from app.context import prepare_context
+    context = prepare_context({
+        "run_id": "1747743579",
+        "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
+        "github_repository_url": "https://github.com/svylabs/stablebase",
+        "plan": "paid"
+    }, needs_parallel_workspace=False)
+    analyzer = ActionValidationAnalyzer(context)
     actors = context.actor_summary()
-    actor = next((a for a in actors.actors if a.name == actor_name), None)
-    if not actor:
-        raise ValueError(f"Actor '{actor_name}' not found in actor_summary.json")
-    action = next((a for a in actor.actions if a.name == action_name), None)
-    if not action:
-        raise ValueError(f"Action '{action_name}' not found for actor '{actor_name}'")
-
-    # Build the sequence step
-    step = {
-        "action_name": getattr(action, "class_name", f"{action_name}Action"),
-        "actor_index": actor_index,
-        "contract_name": contract_name,
-        "params": params or {}
-    }
-    sequence = {
-        "description": f"Validation sequence for {actor_name}.{action_name} on {contract_name}",
-        "sequence": [step]
-    }
-
-    # Store the sequence
-    if not out_path:
-        out_path = os.path.join(context.simulation_path(), "validation_sequence.json")
-    with open(out_path, "w") as f:
-        json.dump(sequence, f, indent=2)
-    # Commit the new validation sequence to the simulation repo
-    try:
-        context.commit(f"Add validation sequence for {actor_name}.{action_name} on {contract_name}")
-    except Exception as e:
-        print(f"[generate_validation_sequence] Commit failed: {e}")
-    return out_path
-
-def get_latest_validation_sequence(context):
-    """
-    Loads the latest validation sequence from the default path for the given context.
-    """
-    path = os.path.join(context.simulation_path(), "validation_sequence.json")
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"No validation sequence found at {path}")
-    with open(path, "r") as f:
-        return json.load(f)
+    result = analyzer.analyze(actors.actors[0], actors.actors[0].actions[6], actors)
+    print(json.dumps(result.to_dict(), indent=2))     

@@ -22,8 +22,8 @@ def ask_openai(user_input, type, task="generate", conversations=None, options=No
     plan = options.get("plan", "free") if options else "free"
 
     if plan == "paid":
-        model = os.getenv("PAID_MODEL", "gemini-2.0-flash")
-        # model = os.getenv("PAID_MODEL", "gemini-2.0-pro")
+        #model = os.getenv("PAID_MODEL", "gemini-2.0-flash")
+        model = os.getenv("PAID_MODEL", "gemini-2.5-pro")
     else:
         model = os.getenv("FREE_MODEL", "gemini-2.0-flash")
 

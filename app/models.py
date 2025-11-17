@@ -870,3 +870,33 @@ class ActionReview(IluminaOpenAIResponseModel):
             # "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
             "overall_assessment": self.overall_assessment
         }
+    
+class ActionValidationStep(IluminaOpenAIResponseModel):
+    description: str
+    actor: str
+    action_name: str
+    contract_name: str
+    function_name: str
+
+    def to_dict(self):
+        return {
+            "description": self.description,
+            "actor": self.actor,
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name
+        }
+    
+class ActionValidation(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    function_name: str
+    smoke_test_sequence: list[ActionValidationStep]
+
+    def to_dict(self):
+        return {
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "smoke_test_sequence": [step.to_dict() for step in self.smoke_test_sequence]
+        }
