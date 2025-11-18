@@ -45,7 +45,7 @@ if __name__ == "__main__":
         "run_id": "1747743579",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase",
-        "plan": "paid"
+        "plan": "free"
     }, needs_parallel_workspace=False)
     analyzer = ActionValidationAnalyzer(context)
     actors = context.actor_summary()

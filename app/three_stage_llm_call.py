@@ -43,6 +43,7 @@ class ThreeStageAnalyzer:
         self.model_class = model_class
         self.draft = None
         self.plan = plan
+        self.use_verification = (plan == "paid")
         base_system_prompt = "You are an AI assistant and will use a workflow draft-verify-correct to create the final output necessary for the task, and optionally followed by checks to see if guidelines by users are met with regard to the output."
         if system_prompt != "":
             base_system_prompt += f"\n\n{system_prompt}"
@@ -60,6 +61,8 @@ class ThreeStageAnalyzer:
         # response = ask_openai("Step 1: Create draft\n\n" + prompt, self.model_class, task="analyze", options={"plan": self.plan})
         response = ask_openai("Step 1: Create draft\n\n" + prompt, self.model_class, task="analyze", conversations=self.conversations, options={"plan": self.plan})
         self.draft = response[1]
+        if not self.use_verification:
+            return self.draft
         self.verification_result = self.verify_draft()
         print("Verification result:", self.verification_result.to_dict())
         if len(guidelines) == 0:
