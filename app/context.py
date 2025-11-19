@@ -85,6 +85,8 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
 
     # Clone the main repository
     clone_repo(repo, context.cws(), branch=contract_branch)
+    if (os.path.exists(context.specs_path()) == False):
+            os.makedirs(context.specs_path())
 
     # Install dependencies based on project type
     project_type = context.project_type()
