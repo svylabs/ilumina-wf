@@ -34,6 +34,7 @@ class ActionValidationAnalyzer:
 
         Note:
         1. The smoke test sequence must be self contained, meaning it must not assume any prior state or actions outside of the sequence. So any state changes (eg: oracle updates) must be in the sequence of steps.
+        2. User index field should be numbered starting from 1, and incremented for each new user needed in the sequence. Some steps may be performed by the same user.
 
         """
         validation_sequence = ThreeStageAnalyzer(ActionValidation, system_prompt="You are an expert in analyzing smart contract actions and creating smoke test plans.", plan=self.context.plan).ask_llm(prompt)
@@ -45,7 +46,7 @@ if __name__ == "__main__":
         "run_id": "1747743579",
         "submission_id": "b2467fc4-e77a-4529-bcea-09c31cb2e8fe",
         "github_repository_url": "https://github.com/svylabs/stablebase",
-        "plan": "free"
+        "plan": "paid"
     }, needs_parallel_workspace=False)
     analyzer = ActionValidationAnalyzer(context)
     actors = context.actor_summary()

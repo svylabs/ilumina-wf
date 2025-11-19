@@ -877,6 +877,7 @@ class ActionValidationStep(IluminaOpenAIResponseModel):
     action_name: str
     contract_name: str
     function_name: str
+    user_index: int
 
     def to_dict(self):
         return {
@@ -884,7 +885,8 @@ class ActionValidationStep(IluminaOpenAIResponseModel):
             "actor": self.actor,
             "action_name": self.action_name,
             "contract_name": self.contract_name,
-            "function_name": self.function_name
+            "function_name": self.function_name,
+            "user_index": self.user_index
         }
     
 class ActionValidation(IluminaOpenAIResponseModel):

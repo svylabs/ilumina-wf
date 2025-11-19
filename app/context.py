@@ -253,6 +253,9 @@ class RunContext:
     def simulation_path(self):
         return self.cwd() + "/" + self.name + "-simulation-" + self.run_id
     
+    def specs_path(self):
+        return os.path.join(self.simulation_path(), "ilumina-specs")
+    
     def code(self, code_path):
         """Returns path to simulation code"""
         with open(os.path.join(self.simulation_path(), code_path)) as f:
@@ -309,10 +312,10 @@ class RunContext:
         return self.cwd() + "/context.json"
     
     def summary_path(self):
-        return self.simulation_path() + "/summary.json"
+        return os.path.join(self.simulation_path(), "ilumina-specs",  "summary.json")
     
     def actor_summary_path(self):
-        return self.simulation_path() + "/actor_summary.json"
+        return os.path.join(self.simulation_path(), "ilumina-specs", "actor_summary.json")
     
     def compiled_contracts_path(self):
         """Returns path to compiled contracts JSON file"""
@@ -390,7 +393,7 @@ class RunContext:
         return f"summaries/{self.submission_id}/deployment_instructions/{version}.json"
     
     def deployment_instructions_path(self):
-        return self.simulation_path() + "/deployment_instructions.json"
+        return self.specs_path() + "/deployment_instructions.json"
     
     def simulation_log_path(self, simulation_id):
         return os.path.join(self.simulation_path(), "logs", f"{simulation_id}.log")
@@ -433,7 +436,7 @@ class RunContext:
         
     def action_summary_path(self, action: Action):
         summary_file = action.contract_name.lower() + "_" + action.function_name.lower() + ".json"
-        return os.path.join(self.simulation_path(), "simulation", "actions", summary_file)
+        return os.path.join(self.simulation_path(), "ilumina-specs", "simulation", "actions", summary_file)
     
     def action_code_path(self, action: Action):
         """Returns path to action code file"""
@@ -469,7 +472,7 @@ class RunContext:
     
     def snapshot_data_structure_path(self, contract_name):
         """Returns path to snapshot data structure file"""
-        return os.path.join(self.simulation_path(), "simulation", "contracts", f"{contract_name}_snapshot.json")
+        return os.path.join(self.simulation_path(), "ilumina-specs","simulation", "contracts", f"{contract_name}_snapshot.json")
     
     def snapshot_interface_code_path(self):
         """Returns path to snapshot interface code file"""
