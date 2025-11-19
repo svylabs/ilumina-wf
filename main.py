@@ -47,7 +47,8 @@ from app.submission import (
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
-from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence
+#from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence
+from app.action_validation_analyzer import ActionValidationAnalyzer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -1744,14 +1745,8 @@ def api_generate_validation_sequence(submission, request_context, user_prompt):
             return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
         
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
-        out_path = generate_validation_sequence(
-            context, 
-            actor_name, 
-            action_name, 
-            contract_name, 
-            actor_index, 
-            params
-        )
+        analyzer = ActionValidationAnalyzer(context)
+        
         
         return jsonify({
             "message": "Validation sequence generated",
@@ -1778,10 +1773,9 @@ def api_validate_action(submission, request_context, user_prompt):
         
         # Use provided sequence or load latest from context
         sequence = data.get("sequence")
-        if sequence is None:
-            sequence = get_latest_validation_sequence(context)
         
-        result = run_action_validation(sequence, context)
+        #result = run_action_validation(sequence, context)
+        result = {}
 
         # Use the status from the validation result
         return jsonify({

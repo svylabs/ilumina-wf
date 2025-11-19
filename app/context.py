@@ -85,9 +85,7 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
 
     # Clone the main repository
     clone_repo(repo, context.cws(), branch=contract_branch)
-    if (os.path.exists(context.specs_path()) == False):
-            os.makedirs(context.specs_path())
-
+    
     # Install dependencies based on project type
     project_type = context.project_type()
 
@@ -173,6 +171,10 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
     else:
         print(f"Creating new GitHub repository {github_repo_url} for simulation.")
         clone_repo(simulation_template_repo, simulation_repo_path, branch="main")
+
+    if (os.path.exists(context.specs_path()) == False):
+        os.makedirs(context.specs_path())
+
 
     # Install dependencies for SIMULATION project (always uses Hardhat)
     try:
