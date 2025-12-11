@@ -6,7 +6,7 @@ dotenv.load_dotenv()
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
-from .models import Project, Actors, DeploymentInstruction, Action
+from .models import Project, Actors, DeploymentInstruction, Action, ActionValidation
 from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import json
 
@@ -455,6 +455,13 @@ class RunContext:
 
     def project_summary(self):
         return Project.load_summary(self.summary_path())
+    
+    def action_validation_summary_path(self, action: Action):
+        summary_file = action.contract_name.lower() + "_" + action.function_name.lower() + "_validation.json"
+        return os.path.join(self.specs_path(), "simulation", "action_validations", summary_file)
+    
+    def action_validation_summary(self, action: Action):
+        return ActionValidation.load_summary(self.action_validation_summary_path(action))
         
     def actor_summary(self):
         # return Actors.load_summary(self.actor_summary_path())

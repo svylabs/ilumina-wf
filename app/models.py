@@ -902,3 +902,15 @@ class ActionValidation(IluminaOpenAIResponseModel):
             "function_name": self.function_name,
             "smoke_test_sequence": [step.to_dict() for step in self.smoke_test_sequence]
         }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    def load_summary(cls, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionValidation.load(content)
+        return None
