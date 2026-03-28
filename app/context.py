@@ -512,6 +512,13 @@ class RunContext:
     def validate_action_script_path(self):
         """Returns the full path to the validate_action.ts script"""
         return os.path.join(self.simulation_path(), "scripts", "validate_action.ts")
+        
+    def validations_directory(self):
+        """Get the path to the validations directory"""
+        path = os.path.join(self.simulation_path(), "validations")
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return path
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces", needs_parallel_workspace=False),

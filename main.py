@@ -47,6 +47,7 @@ from app.submission import (
 )
 from app.action_reviewer import ActionReviewer
 from app.implement_review_comments import implement_review_comments
+from app.action_verification import create_verification_run, execute_verify_action_background, get_latest_verification_run
 #from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence
 from app.action_validation_analyzer import ActionValidationAnalyzer
 
@@ -1843,5 +1844,108 @@ def get_action_detail(submission_id, contract_name, function_name):
         app.logger.error("Error in get_action_detail endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/verify_action', methods=['POST'])
+@authenticate
+def api_verify_action():
+    try:
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        actor_name = data.get('actor_name')
+        action_name = data.get('action_name')
+        
+        if not all([submission_id, actor_name, action_name]):
+            return jsonify({"error": "Missing submission_id, actor_name, or action_name"}), 400
+            
+        tracking_id = create_verification_run(submission_id, actor_name, action_name)
+        
+        url = TASK_HANDLER_URL + "/run_verify_action_background"
+        task = {
+            "http_request": {
+                "http_method": "POST",
+                "url": url,
+                "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
+                "body": json.dumps({
+                    "tracking_id": tracking_id,
+                    "submission_id": submission_id,
+                    "actor_name": actor_name,
+                    "action_name": action_name
+                }).encode()
+            }
+        }
+        tasks_client.create_task(request={"parent": parent, "task": task})
+        
+        return jsonify({"id": tracking_id, "message": "Verification started"}), 200
+    except Exception as e:
+        app.logger.error("Error in verify_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/run_verify_action_background', methods=['POST'])
+@authenticate
+def api_run_verify_action_background():
+    try:
+        data = request.get_json()
+        execute_verify_action_background(
+            data["tracking_id"], data["submission_id"], data["actor_name"], data["action_name"]
+        )
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        app.logger.error("Error in run_verify_action_background", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify_action/<tracking_id>', methods=['GET'])
+@authenticate
+def api_get_verify_action_status(tracking_id):
+    try:
+        key = datastore_client.key("ActionVerificationRun", tracking_id)
+        entity = datastore_client.get(key)
+        if not entity:
+            return jsonify({"error": "Verification run not found"}), 404
+            
+        result = entity.get("result")
+        if result and isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                pass
+                
+        return jsonify({
+            "id": tracking_id,
+            "status": entity.get("status"),
+            "result": result
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify_action/latest', methods=['GET'])
+@authenticate
+def api_get_latest_verify_action():
+    try:
+        submission_id = request.args.get('submission_id')
+        actor_name = request.args.get('actor_name')
+        action_name = request.args.get('action_name')
+        
+        if not all([submission_id, actor_name, action_name]):
+            return jsonify({"error": "Missing query mapping parameters"}), 400
+            
+        latest_run = get_latest_verification_run(submission_id, actor_name, action_name)
+        if not latest_run:
+            return jsonify({"error": "No verification runs found"}), 404
+            
+        result = latest_run.get("result")
+        if result and isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                pass
+                
+        return jsonify({
+            "id": latest_run.get("tracking_id", latest_run.key.name if latest_run.key else None),
+            "status": latest_run.get("status"),
+            "created_at": latest_run.get("created_at"),
+            "result": result
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in get_latest_verify_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
