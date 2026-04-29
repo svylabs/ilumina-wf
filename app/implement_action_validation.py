@@ -88,10 +88,14 @@ if __name__ == "__main__":
     from app.action_validation_analyzer import ActionValidationAnalyzer
     analyzer = ActionValidationAnalyzer(context)
     actors = context.actor_summary()
+    if not actors or not actors.actors:
+        print(f"Failed to load actors from {context.actor_summary_path()}, please ensure the workspace is fully scaffolded before running this test script!")
+        import sys
+        sys.exit(1)
     
     # Pick a sample action
     actor = actors.actors[0]
-    action = actor.actions[6]
+    action = actor.actions[6] if len(actor.actions) > 6 else actor.actions[0]
     
     # Get the validation sequence for it
     validation_sequence = analyzer.analyze(actor, action, actors)
