@@ -257,7 +257,7 @@ class ActionGenerator:
         )
         
         try:
-            analyzer = ThreeStageAnalyzer(ActionInstruction)
+            analyzer = ThreeStageAnalyzer(ActionInstruction, plan=self.context.plan)
             action_instructions = analyzer.ask_llm(prompt)
             code = action_instructions.to_dict()["content"]
             code = self._clean_generated_code(code)

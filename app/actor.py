@@ -63,8 +63,7 @@ class ActorAnalyzer:
                 project_summary=self.project_summary,
                 user_prompt=user_prompt
             )
-
-        analyzer = ThreeStageAnalyzer(Actors)
+        analyzer = ThreeStageAnalyzer(Actors, plan=self.context.plan)
         actors = analyzer.ask_llm(prompt)
         self.actors = actors
         return self.actors

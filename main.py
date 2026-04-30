@@ -13,23 +13,21 @@ import sys
 from app.analyse import Analyzer
 from app.scaffold import Scaffolder
 from app.action_generator import ActionGenerator
-from app.context import prepare_context, prepare_context_lazy
+from app.context import prepare_context, prepare_context_lazy, clean_context
 from app.storage import GCSStorage, storage_blueprint, upload_to_gcs
 from app.github import GitHubAPI
 from app.summarizer import ProjectSummarizer
-from app.models import Project
+from app.models import Project, ActionReview
 from app.deployment import DeploymentAnalyzer
 from app.deployer import ContractDeployer
 from app.actor import ActorAnalyzer
 from app.git_utils import GitUtils
 import shutil
 from app.clients import datastore_client, tasks_client, storage_client
-# from app.submission import store_analysis_metadata, update_analysis_status
 from app.tools import authenticate
 import uuid
 import traceback
 from google.protobuf import timestamp_pb2
-from app.submission import UserPromptManager
 from app.hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import subprocess
 from app.simulation_runner import SimulationRunner, SimulationRun
@@ -43,8 +41,15 @@ from app.submission import (
     update_action_analysis_status,
     get_action_analyses,
     update_snapshot_analysis_status,
-    UserPromptManager
+    UserPromptManager,
+    get_submission_plan,
+    update_submission_plan
 )
+from app.action_reviewer import ActionReviewer
+from app.implement_review_comments import implement_review_comments
+from app.action_verification import create_verification_run, execute_verify_action_background, get_latest_verification_run
+#from app.action_validation_analyzer import run_action_validation, generate_validation_sequence, get_latest_validation_sequence
+from app.action_validation_analyzer import ActionValidationAnalyzer
 
 # Ensure logs are written to stdout
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -190,6 +195,7 @@ def get_submission(submission_id):
         "latest_prompts": latest_prompts,
         "step_metadata": step_metadata,
         "actor_config": submission.get("actor_config", {}),
+        "plan": submission.get("plan", "free")
     }), 200
 
 @app.route('/api/begin_analysis', methods=['POST'])
@@ -200,6 +206,10 @@ def begin_analysis():
 
     if not data or "github_repository_url" not in data or "submission_id" not in data:
         return jsonify({"error": "Invalid data format"}), 400
+
+    # Use the plan from request data, default to "free" if not provided, and store it back in data
+    plan = data.get("plan", "free")
+    data["plan"] = plan
 
     data["run_id"] = data.get("run_id", str(int(datetime.datetime.now().timestamp())))
     data["step"] = "begin_analysis"
@@ -213,7 +223,27 @@ def begin_analysis():
         "message": "Analysis started",
         "task_name": task_name,
         "submission_id": data["submission_id"],
-        "run_id": data["run_id"]
+        "run_id": data["run_id"],
+        "plan": data["plan"]
+    }), 200
+
+@app.route('/api/submission/<submission_id>/upgrade_plan', methods=['POST'])
+@authenticate
+def upgrade_submission_plan(submission_id):
+    """Upgrade the plan for a submission"""
+    data = request.get_json()
+    new_plan = data.get("plan")
+    
+    if not new_plan or new_plan not in ["free", "paid"]:
+        return jsonify({"error": "Invalid plan specified"}), 400
+
+    # Update the plan using utility method
+    update_submission_plan(submission_id, new_plan)
+
+    return jsonify({
+        "message": f"Plan updated to {new_plan}",
+        "submission_id": submission_id,
+        "new_plan": new_plan
     }), 200
 
 # Modify the APIs to use prepare_context for creating RunContext
@@ -351,6 +381,7 @@ def analyze():
 @inject_analysis_params
 def analyze_project(submission, request_context, user_prompt):
     """Perform the project analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_project", "in_progress", user_prompt=user_prompt)
@@ -389,12 +420,15 @@ def analyze_project(submission, request_context, user_prompt):
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_project", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/analyze_actors', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_actors(submission, request_context, user_prompt):
     """Perform the actor analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_actors", "in_progress")
@@ -431,13 +465,16 @@ def analyze_actors(submission, request_context, user_prompt):
     except Exception as e:
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_actors", "error", metadata={"message": str(e)})
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/scaffold', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def scaffold(submission, request_context, user_prompt):
     """Generate action files for identified actors"""
+    context = None
     try:
         request_data = request.get_json()
         # Get the current context using prepare_context
@@ -464,12 +501,15 @@ def scaffold(submission, request_context, user_prompt):
             "log": traceback.format_exc()
         })
         return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_action', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_action(submission, request_context, user_prompt):
     """Generate a single action file for a specific actor and action (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         contract_name = data.get('contract_name')
@@ -477,6 +517,7 @@ def implement_action(submission, request_context, user_prompt):
         parallel_workspace_id = data.get("parallel_workspace_id") or str(uuid.uuid4())
         if not contract_name or not function_name:
             return jsonify({"error": "Both actor_name and action_name are required"}), 400
+        
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=True, parallel_workspace_id=parallel_workspace_id)
         update_action_analysis_status(
             submission["submission_id"],
@@ -485,10 +526,12 @@ def implement_action(submission, request_context, user_prompt):
             "implement",
             "in_progress"
         )
+
         actors = context.actor_summary()
         action = actors.find_action(contract_name, function_name)
         if not action:
             return jsonify({"error": f"Action {function_name} for contract {contract_name} not found"}), 404
+        
         action_generator = ActionGenerator(action, context)
         action_generator.generate_action()
         update_action_analysis_status(
@@ -517,6 +560,8 @@ def implement_action(submission, request_context, user_prompt):
             "error"
         )
         return jsonify({"error": traceback.format_exc(e)}), 500
+    finally:
+        clean_context(context)
     
     
 @app.route('/api/analyze_snapshot', methods=['POST'])
@@ -524,6 +569,7 @@ def implement_action(submission, request_context, user_prompt):
 @inject_analysis_params
 def analyze_snapshot(submission, request_context, user_prompt):
     """Analyze/generate snapshot data structure for a single contract (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         contract_name = data.get("contract_name")
@@ -562,12 +608,15 @@ def analyze_snapshot(submission, request_context, user_prompt):
             "error"
         )
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_snapshots', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_snapshots(submission, request_context, user_prompt):
     """Generate snapshot code for all or specific contracts (with parallel workspace)."""
+    context = None
     try:
         data = request.get_json()
         update_analysis_status(
@@ -610,12 +659,15 @@ def implement_snapshots(submission, request_context, user_prompt):
             metadata={"message": str(e)}
         )
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_all_actions(submission, request_context, user_prompt):
     """Enqueue implement_action for all actions (parallel workspace)."""
+    context = None
     try:
         context = prepare_context(submission, needs_parallel_workspace=False)
         actors = context.actor_summary()
@@ -645,12 +697,15 @@ def implement_all_actions(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in implement_all_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/analyze_deployment', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_deployment(submission, request_context, user_prompt):
     """Perform the deployment analysis step"""
+    context = None
     try:
         # Update status to in_progress
         update_analysis_status(submission["submission_id"], "analyze_deployment", "in_progress")
@@ -687,11 +742,14 @@ def analyze_deployment(submission, request_context, user_prompt):
         # Update status to error
         update_analysis_status(submission["submission_id"], "analyze_deployment", "error", metadata={"message": str(e)})
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/implement_deployment_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def implement_deployment_script(submission, request_context, user_prompt):
+    context = None
     try:
         update_analysis_status(
             submission["submission_id"],
@@ -725,6 +783,8 @@ def implement_deployment_script(submission, request_context, user_prompt):
             metadata={"message": str(e)}
         )
         return jsonify({"error": str(e)}), 200
+    finally:
+        clean_context(context)
     
 def _extract_error_details(stderr, stdout):
     """Extract meaningful error details from deployment output"""
@@ -770,6 +830,7 @@ app.register_blueprint(storage_blueprint)
 @inject_analysis_params
 def verify_deploy_script(submission, request_context, user_prompt):
     """Verify the deployment script without executing it."""
+    context = None
     try:
         update_analysis_status(
             submission["submission_id"],
@@ -831,11 +892,14 @@ def verify_deploy_script(submission, request_context, user_prompt):
             "success": False,
             "log":   [-1, {}, "", str(e)]  # stderr or error message
         }), 200
+    finally:
+        clean_context(context)
 
 @app.route('/api/debug_deploy_script', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def debug_deploy_script(submission, request_context, user_prompt):
+    context = None
     """Debug endpoint to provide detailed information about the submission and context."""
     try:
         update_analysis_status(
@@ -886,6 +950,8 @@ def debug_deploy_script(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in debug endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 
 @app.route('/api/submission/<submission_id>/simulations/new', methods=['POST'])
@@ -1211,6 +1277,7 @@ def _get_step_metadata(log):
 @inject_analysis_params
 def analyze_action(submission, request_context, user_prompt):
     """Analyze a specific action for a given contract (with parallel workspace)."""
+    context = None
     try:
         # Get parameters from request
         data = request.get_json()
@@ -1260,15 +1327,22 @@ def analyze_action(submission, request_context, user_prompt):
             "message": str(e)
         })
         return jsonify({"error": str(e)}), 200
+    finally:
+        # Clean up context
+        clean_context(context)
 
 @app.route('/api/analyze_all_actions', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_all_actions(submission, request_context, user_prompt):
     """Analyze all actions for a submission by creating tasks for each action"""
+    context = None
     try:
         # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+
+        print(f"Submission status: {submission['status']}, step: {submission['step']}")
+
         update_analysis_status(
             submission["submission_id"],
             "analyze_all_actions",
@@ -1283,26 +1357,47 @@ def analyze_all_actions(submission, request_context, user_prompt):
             }), 400
         # For each actor and action, create a task
         count = 0
-        for actor in actors.actors:
-            for action in actor.actions:
-                parallel_workspace_id = str(uuid.uuid4())
-                # Create analyze_action task with parallel_workspace
+        query = datastore_client.query(kind="SubmissionActionAnalysis")
+        query.add_filter("submission_id", "=", submission["submission_id"])
+        error_actions = [a for a in query.fetch() if a['status'] == "error"]
+        print (f"Found {len(error_actions)} actions with error status")
+        if len(error_actions) > 0:
+            for action in error_actions:
                 update_action_analysis_status(
                     submission["submission_id"],
-                    action.contract_name,
-                    action.function_name,
+                    action["contract_name"],
+                    action["function_name"],
                     "analyze",
                     "scheduled"
                 )
                 create_task({
                     "submission_id": submission["submission_id"],
-                    "contract_name": getattr(action, "contract_name", None),
-                    "function_name": getattr(action, "function_name", None),
-                    "step": "analyze_action",
-                    "parallel_workspace": True,
-                    "parallel_workspace_id": parallel_workspace_id
+                    "contract_name": action["contract_name"],
+                    "function_name": action["function_name"],
+                    "step": "analyze_action"
                 })
                 count += 1
+        else:
+            for actor in actors.actors:
+                for action in actor.actions:
+                    parallel_workspace_id = str(uuid.uuid4())
+                    # Create analyze_action task with parallel_workspace
+                    update_action_analysis_status(
+                        submission["submission_id"],
+                        action.contract_name,
+                        action.function_name,
+                        "analyze",
+                        "scheduled"
+                    )
+                    create_task({
+                        "submission_id": submission["submission_id"],
+                        "contract_name": getattr(action, "contract_name", None),
+                        "function_name": getattr(action, "function_name", None),
+                        "step": "analyze_action",
+                        "parallel_workspace": True,
+                        "parallel_workspace_id": parallel_workspace_id
+                    })
+                    count += 1
         
         return jsonify({
             "message": f"Created tasks for analyzing {count} actions",
@@ -1312,12 +1407,15 @@ def analyze_all_actions(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in analyze_all_actions endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
     
 @app.route('/api/analyze_all_snapshots', methods=['POST'])
 @authenticate
 @inject_analysis_params
 def analyze_all_snapshots(submission, request_context, user_prompt):
     """Analyze all actions for a submission by creating tasks for each action"""
+    context = None
     try:
         # Get the current context
         context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
@@ -1359,6 +1457,8 @@ def analyze_all_snapshots(submission, request_context, user_prompt):
     except Exception as e:
         app.logger.error("Error in analyze_all_snapshot endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
 
 @app.route('/api/submission/<submission_id>/actions', methods=['GET'])
 @authenticate
@@ -1368,7 +1468,6 @@ def get_action_analyses(submission_id):
         # Query all action analyses for this submission
         query = datastore_client.query(kind="SubmissionActionAnalysis")
         query.add_filter("submission_id", "=", submission_id)
-        query.order = ["contract_name", "function_name"]
         
         action_analyses = list(query.fetch())
         
@@ -1409,6 +1508,7 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
         actions = list(query.fetch())
         # Check if all actions are analyzed (status == 'success')
         all_analyzed = all(a.get("status") == "success" for a in actions)
+        any_error = any(a.get("status") == "error" for a in actions)
         if all_analyzed and len(actions) > 0:
             update_analysis_status(
                 submission_id,
@@ -1421,6 +1521,14 @@ def check_contract_actions_analyzed(submission, request_context, user_prompt):
                 "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
+        elif any_error:
+            update_analysis_status(
+                submission_id,
+                "analyze_all_actions",
+                "error",
+                metadata={"message": "Some actions analysis failed"}
+            )
+            return jsonify({"message": f"Some actions failed to analyze."}), 200
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
@@ -1441,6 +1549,7 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
         actions = list(query.fetch())
         # Check if all actions are analyzed (status == 'success')
         all_implemented = all(a.get("status") == "success" for a in actions)
+        any_error = any(a.get("status") == "error" for a in actions)
         if all_implemented and actions:
             update_analysis_status(
                 submission_id,
@@ -1452,6 +1561,14 @@ def check_contract_actions_implemented(submission, request_context, user_prompt)
                 "submission_id": submission_id,
             })
             return jsonify({"message": f"All actions implemented."}), 200
+        elif any_error:
+            update_analysis_status(
+                submission_id,
+                "implement_all_actions",
+                "error",
+                metadata={"message": "Some actions implementation failed"}
+            )
+            return jsonify({"message": f"Some actions failed to implement."}), 200
         else:
             return jsonify({"message": f"Not all actions analyzed."}), 200
     except Exception as e:
@@ -1485,12 +1602,350 @@ def check_contract_snapshots_analyzed(submission, request_context, user_prompt):
                 "submission_id": submission_id
             })
             return jsonify({"message": f"All actions analyzed. Snapshot task enqueued."}), 200
+        elif any(s.get("status") == "error" for s in snapshots):
+            update_analysis_status(
+                submission_id,
+                "analyze_all_snapshots",
+                "error",
+                metadata={"message": "Some snapshots analysis failed"}
+            )
+            return jsonify({"message": f"Some snapshots failed to analyze."}), 200
         else:
             return jsonify({"message": f"Not all snapshots are analyzed."}), 200
     except Exception as e:
         app.logger.error("Error in check_contract_snapshots_analyzed endpoint", exc_info=e)
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/review_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def review_action(submission, request_context, user_prompt):
+    """Review and validate an action implementation against its validation rules and code"""
+    context = None
+    try:
+        # Parse request
+        data = request.get_json()
+        contract_name = data.get('contract_name')
+        function_name = data.get('function_name')
+        if not contract_name or not function_name:
+            return jsonify({"error": "Both contract_name and function_name are required"}), 400
+
+        # Get context and create reviewer
+        context = prepare_context(submission, needs_parallel_workspace=False)
+        reviewer = ActionReviewer(context)
+
+        # Perform the review
+        review_results = reviewer.review_action(contract_name, function_name)
+
+        return jsonify({
+            "action": f"{contract_name}.{function_name}",
+            "review": review_results.to_dict(),
+            "status": "success"
+        }), 200
+
+    except Exception as e:
+        app.logger.error("Error in review_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
+
+@app.route('/api/implement_review_comments', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def implement_review_comments_api(submission, request_context, user_prompt):
+    context = None
+    """API endpoint to implement review comments for an action"""
+    try:
+        data = request.get_json()
+        contract_name = data.get('contract_name')
+        function_name = data.get('function_name')
+        user_reviews = data.get('user_reviews', None)
+        parallel_workspace_id = data.get('parallel_workspace_id')
+        run_id = data.get('run_id')
+        submission_id = data.get('submission_id')
+        repo = data.get('github_repository_url')
+
+        if not contract_name or not function_name:
+            return jsonify({"error": "Both contract_name and function_name are required"}), 400
+        
+        # Update status to in_progress
+        update_action_analysis_status(
+            submission["submission_id"],
+            contract_name,
+            function_name,
+            "implement_review",
+            "in_progress"
+        )
+
+        # Prepare context in a lazy way (no repo cloning, just object construction)
+        context = prepare_context_lazy({
+            "run_id": run_id or submission.get("run_id"),
+            "submission_id": submission_id or submission.get("submission_id"),
+            "github_repository_url": repo or submission.get("github_repository_url")
+        }, needs_parallel_workspace=bool(parallel_workspace_id), parallel_workspace_id=parallel_workspace_id)
+
+        # Call the implementation logic, passing context and user_reviews
+        result = implement_review_comments(
+            context,
+            contract_name,
+            function_name,
+            user_reviews=user_reviews
+        )
+
+        # Handle results
+        if result.get("status") == "success":
+            update_action_analysis_status(
+                submission["submission_id"],
+                contract_name,
+                function_name,
+                "implement_review",
+                "success"
+            )
+            # Optionally trigger another review
+            if request_context == "bg":
+                create_task({
+                    "submission_id": submission["submission_id"],
+                    "contract_name": contract_name,
+                    "function_name": function_name,
+                    "step": "review_action"
+                })
+            return jsonify(result), 200
+        else:
+            update_action_analysis_status(
+                submission["submission_id"],
+                contract_name,
+                function_name,
+                "implement_review",
+                "error"
+            )
+            return jsonify(result), 500
+
+    except Exception as e:
+        app.logger.error("Error in implement_review_comments_api", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        clean_context(context)
     
+# @app.route('/api/submission/contract/<contract_name>/function/<function_name>/validate', methods=['POST'])
+# @authenticate
+
+@app.route('/api/generate_validation_sequence', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def api_generate_validation_sequence(submission, request_context, user_prompt):
+    context = None
+    try:
+        data = request.get_json()
+        actor_name = data.get("actor_name")
+        action_name = data.get("action_name")
+        contract_name = data.get("contract_name")
+        actor_index = data.get("actor_index", 0)
+        params = data.get("params", {})
+        
+        if not all([actor_name, action_name, contract_name]):
+            return jsonify({"error": "actor_name, action_name, and contract_name are required"}), 400
+        
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        analyzer = ActionValidationAnalyzer(context)
+        
+        
+        return jsonify({
+            "message": "Validation sequence generated",
+            "path": out_path,
+            "status": "success"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
+    finally:
+        clean_context(context)
+
+@app.route('/api/validate_action', methods=['POST'])
+@authenticate
+@inject_analysis_params
+def api_validate_action(submission, request_context, user_prompt):
+    context = None
+    try:
+        data = request.get_json() or {}
+        context = prepare_context(submission, optimize=False, needs_parallel_workspace=False)
+        
+        # Use provided sequence or load latest from context
+        sequence = data.get("sequence")
+        
+        #result = run_action_validation(sequence, context)
+        result = {}
+
+        # Use the status from the validation result
+        return jsonify({
+            "status": result["status"],
+            "exit_code": result.get("exit_code"),
+            "log": result.get("log"),
+            "log_path": result.get("log_path"),
+            "error": result.get("error"),
+            "stderr": result.get("stderr")
+        }), 200 if result["status"] == "success" else 400
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "status": "error"
+        }), 500
+    finally:
+        clean_context(context)
+
+@app.route('/api/submission/<submission_id>/action/contract/<contract_name>/function/<function_name>', methods=['GET'])
+@authenticate
+def get_action_detail(submission_id, contract_name, function_name):
+    """Get detailed analysis for a specific action"""
+    try:
+        # Construct the Datastore key
+        key = datastore_client.key(
+            "SubmissionActionAnalysis", 
+            f"{submission_id}_{contract_name}_{function_name}"
+        )
+        
+        # Fetch the entity
+        action_analysis = datastore_client.get(key)
+        
+        if not action_analysis:
+            return jsonify({
+                "error": f"Action analysis not found for contract {contract_name} and function {function_name}"
+            }), 404
+        
+        # Transform the entity to a dictionary
+        result = {
+            "submission_id": action_analysis.get("submission_id"),
+            "contract_name": action_analysis.get("contract_name"),
+            "function_name": action_analysis.get("function_name"),
+            "status": action_analysis.get("status"),
+            "step": action_analysis.get("step"),
+            "created_at": action_analysis.get("created_at"),
+            "updated_at": action_analysis.get("updated_at"),
+            "completed_steps": action_analysis.get("completed_steps", []),
+            "metadata": {k: v for k, v in action_analysis.items() 
+                        if k not in [
+                            "submission_id", 
+                            "contract_name", 
+                            "function_name",
+                            "status",
+                            "step",
+                            "created_at",
+                            "updated_at",
+                            "completed_steps"
+                        ]}
+        }
+        
+        return jsonify(result), 200
+
+    except Exception as e:
+        app.logger.error("Error in get_action_detail endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify_action', methods=['POST'])
+@authenticate
+def api_verify_action():
+    try:
+        data = request.get_json()
+        submission_id = data.get('submission_id')
+        actor_name = data.get('actor_name')
+        action_name = data.get('action_name')
+        
+        if not all([submission_id, actor_name, action_name]):
+            return jsonify({"error": "Missing submission_id, actor_name, or action_name"}), 400
+            
+        tracking_id = create_verification_run(submission_id, actor_name, action_name)
+        
+        url = TASK_HANDLER_URL + "/run_verify_action_background"
+        task = {
+            "http_request": {
+                "http_method": "POST",
+                "url": url,
+                "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {SECRET_PASSWORD}"},
+                "body": json.dumps({
+                    "tracking_id": tracking_id,
+                    "submission_id": submission_id,
+                    "actor_name": actor_name,
+                    "action_name": action_name
+                }).encode()
+            }
+        }
+        tasks_client.create_task(request={"parent": parent, "task": task})
+        
+        return jsonify({"id": tracking_id, "message": "Verification started"}), 200
+    except Exception as e:
+        app.logger.error("Error in verify_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/run_verify_action_background', methods=['POST'])
+@authenticate
+def api_run_verify_action_background():
+    try:
+        data = request.get_json()
+        execute_verify_action_background(
+            data["tracking_id"], data["submission_id"], data["actor_name"], data["action_name"]
+        )
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        app.logger.error("Error in run_verify_action_background", exc_info=e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify_action/<tracking_id>', methods=['GET'])
+@authenticate
+def api_get_verify_action_status(tracking_id):
+    try:
+        key = datastore_client.key("ActionVerificationRun", tracking_id)
+        entity = datastore_client.get(key)
+        if not entity:
+            return jsonify({"error": "Verification run not found"}), 404
+            
+        result = entity.get("result")
+        if result and isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                pass
+                
+        return jsonify({
+            "id": tracking_id,
+            "status": entity.get("status"),
+            "result": result
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify_action/latest', methods=['GET'])
+@authenticate
+def api_get_latest_verify_action():
+    try:
+        submission_id = request.args.get('submission_id')
+        actor_name = request.args.get('actor_name')
+        action_name = request.args.get('action_name')
+        
+        if not all([submission_id, actor_name, action_name]):
+            return jsonify({"error": "Missing query mapping parameters"}), 400
+            
+        latest_run = get_latest_verification_run(submission_id, actor_name, action_name)
+        if not latest_run:
+            return jsonify({"error": "No verification runs found"}), 404
+            
+        result = latest_run.get("result")
+        if result and isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                pass
+                
+        return jsonify({
+            "id": latest_run.get("tracking_id", latest_run.key.name if latest_run.key else None),
+            "status": latest_run.get("status"),
+            "created_at": latest_run.get("created_at"),
+            "result": result
+        }), 200
+    except Exception as e:
+        app.logger.error("Error in get_latest_verify_action endpoint", exc_info=e)
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

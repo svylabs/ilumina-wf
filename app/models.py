@@ -1,10 +1,9 @@
 import re
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Literal
 from pydantic import BaseModel, Field
 import os
 from enum import Enum
-from typing import Literal
 from abc import ABC, abstractmethod
 import re
 
@@ -422,18 +421,37 @@ class ContractReferences(IluminaOpenAIResponseModel):
     def load(cls, data):
         return cls(**data)
     
+class Constant(IluminaOpenAIResponseModel):
+    name: str
+    value: str
+    type: str  # e.g., "uint256", "address", etc.
 
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "value": self.value,
+            "type": self.type
+        }
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "value": self.value,
+            "type": self.type
+        }
 
 class ContractContext(IluminaOpenAIResponseModel):
     contract_name: str
     code_snippet: str
     references: ContractReferences
+    constants: list[Constant]
 
     def to_dict(self):
         return {
             "contract_name": self.contract_name,
             "code_snippet": self.code_snippet,
-            "references": self.references.to_dict()
+            "references": self.references.to_dict(),
+            "constants": [c.to_dict() for c in self.constants]
         }
     
     @classmethod
@@ -819,3 +837,80 @@ class ActionCode(IluminaOpenAIResponseModel):
             "typescript_code": self.typescript_code,
             "commit_message": self.commit_message
         }
+
+class Review(IluminaOpenAIResponseModel):
+    line_number: int
+    description: str
+    function_name: Literal['initialize', 'execute', 'validate', 'imports', 'constructor']
+    suggested_fix: str
+
+    def to_dict(self):
+        return {
+            "line_number": self.line_number,
+            "description": self.description,
+            "function_name": self.function_name,
+            "suggested_fix": self.suggested_fix
+        }
+
+class ActionReview(IluminaOpenAIResponseModel):
+    #errors_in_initialize: List[Review] = []
+    #errors_in_validate: List[Review] = []
+    reviews: List[Review]
+    #errors_in_execute_function: List[Review]
+    overall_assessment: List[str]
+
+    def to_dict(self):
+        return {
+            #"missing_validations": self.missing_validations,
+            #"errors_in_validate": [r.to_dict() for r in self.errors_in_validate],
+            #"errors_in_initialize": [r.to_dict() for r in self.errors_in_initialize],
+            "reviews": [r.to_dict() for r in self.reviews],
+            #"errors_in_execute_function": [r.to_dict() for r in self.errors_in_execute_function],
+            # "errors_in_parameter_generation": [r.to_dict() for r in self.errors_in_parameter_generation],
+            # "errors_in_execution_logic": [r.to_dict() for r in self.errors_in_execution_logic],
+            "overall_assessment": self.overall_assessment
+        }
+    
+class ActionValidationStep(IluminaOpenAIResponseModel):
+    description: str
+    actor: str
+    action_name: str
+    contract_name: str
+    function_name: str
+    user_index: int
+
+    def to_dict(self):
+        return {
+            "description": self.description,
+            "actor": self.actor,
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "user_index": self.user_index
+        }
+    
+class ActionValidation(IluminaOpenAIResponseModel):
+    action_name: str
+    contract_name: str
+    function_name: str
+    smoke_test_sequence: list[ActionValidationStep]
+
+    def to_dict(self):
+        return {
+            "action_name": self.action_name,
+            "contract_name": self.contract_name,
+            "function_name": self.function_name,
+            "smoke_test_sequence": [step.to_dict() for step in self.smoke_test_sequence]
+        }
+    
+    @classmethod
+    def load(cls, data):
+        return cls(**data)
+    
+    def load_summary(cls, path):
+        if (os.path.exists(path)):
+            with open(path, "r") as f:
+                content = json.loads(f.read())
+                #print(json.dumps(content))
+                return ActionValidation.load(content)
+        return None

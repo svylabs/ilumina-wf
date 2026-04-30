@@ -23,3 +23,7 @@
    - Dockerize the workspace
      - Have a final command ready to run the workspace.
 5. Run Simulation
+
+## RUNNING
+
+`gcloud run deploy ilumina-wf --set-env-vars "MODE=server"`

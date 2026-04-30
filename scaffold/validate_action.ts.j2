@@ -1,0 +1,153 @@
+import fs from 'fs';
+import path from 'path';
+import { ethers } from 'hardhat';
+import { Actor, PRNG } from '@svylabs/ilumina';
+import type { RunContext, SnapshotProvider } from '@svylabs/ilumina';
+import { deployContracts } from '../contracts/deploy';
+import { ContractSnapshotProvider } from '../contracts/snapshot';
+import * as actionsIndex from '../actions';
+
+// IMPORT THE VALIDATION ACTOR
+import { create{{actor_classname}}Actor } from "../actors/{{actor_filename}}";
+
+interface ActionValidationStep {
+  description: string;
+  actor: string;
+  action_name: string;
+  contract_name: string;
+  function_name: string;
+  user_index: number;
+}
+
+interface ActionValidation {
+    action_name: string;
+    contract_name: string;
+    function_name: string;
+    smoke_test_sequence: ActionValidationStep[];
+}
+
+async function executeStep(step: ActionValidationStep, stepIndex: number, context: RunContext, actors: Actor[]) {
+  console.log(`\nStep ${stepIndex + 1}: ${step.action_name} on ${step.contract_name} by actor ${step.user_index}`);
+
+  // Get target contract
+  const targetContract = context.contracts![step.contract_name];
+  if (!targetContract) {
+    throw new Error(`Contract not found: ${step.contract_name}`);
+  }
+
+  // Initialize action with target contract
+  const ActionClass = (actionsIndex as any)[step.action_name];
+  if (!ActionClass) {
+    throw new Error(`Action class not found: ${step.action_name}`);
+  }
+
+  const action = new ActionClass(targetContract);
+
+  // Use the predefined validation actor from the setup
+  const actor = actors[step.user_index];
+
+  // Execute action through actor
+  await actor.executeAction(context, action);
+  return { success: true };
+}
+
+async function main() {
+  const sequencePath = process.env.SEQUENCE_PATH || process.argv[2] || process.argv[process.argv.length - 1]; // Support hardhat run via env
+  if (!sequencePath) {
+    console.error('Usage: SEQUENCE_PATH=path/to/sequence.json npx hardhat run scripts/validate_action.ts');
+    process.exit(1);
+  }
+
+  // Load sequence file
+  const absPath = path.resolve(sequencePath);
+  if (!fs.existsSync(absPath)) {
+    console.error(`Sequence file not found: ${absPath}`);
+    process.exit(1);
+  }
+
+  const sequence: ActionValidation = JSON.parse(fs.readFileSync(absPath, 'utf-8'));
+  console.log(`Executing validation sequence: ${sequence.action_name} on ${sequence.contract_name}`);
+
+  // 1. Setup environment
+  const contracts = await deployContracts();
+  const signers = await ethers.getSigners();
+  
+  // 2. Initialize the specific Validation actors
+  const actors = signers.map((signer: any, index: number) => { 
+      return create{{actor_classname}}Actor(
+        {
+          type: 'key',
+          address: signer.address,
+          value: signer
+        },
+        contracts
+      );
+  });
+  
+  const snapshotProvider = new ContractSnapshotProvider(contracts, actors);
+  const prng = new PRNG('validation-seed');
+
+  const context: RunContext = {
+    snapshotProvider,
+    prng,
+    iter: 0,
+    contracts,
+    allActors: actors,
+  };
+
+  // 3. Validate actor indices
+  const maxActorIndex = sequence.smoke_test_sequence.reduce((max, step) => 
+    Math.max(max, step.user_index), 0);
+  
+  if (maxActorIndex >= signers.length) {
+    console.error(`Error: Sequence requires actor index ${maxActorIndex} but only ${signers.length} signers available`);
+    process.exit(1);
+  }
+
+  // 4. Prepare results
+  const results: any[] = [];
+
+  // 5. Process each step
+  for (const [stepIndex, step] of sequence.smoke_test_sequence.entries()) {
+    try {
+      context.iter = stepIndex + 1;
+      const stepResult = await executeStep(step, stepIndex, context, actors);
+      results.push({
+        step: stepIndex,
+        action: step.action_name,
+        contract: step.contract_name,
+        actor: step.user_index,
+        ...stepResult
+      });
+      console.log(`✔ Action executed successfully`);
+    } catch (error: any) {
+      console.error(`✖ Action failed:`, error.message);
+      results.push({
+        step: stepIndex,
+        action: step.action_name,
+        contract: step.contract_name,
+        actor: step.user_index,
+        error: error.message,
+        success: false
+      });
+      process.exitCode = 1;
+      break; // Stop on first error
+    }
+  }
+
+  // 6. Save results
+  const resultFileName = process.env.RESULT_PATH || 'validation_run.json';
+  const logPath = path.join(process.cwd(), resultFileName);
+  fs.writeFileSync(logPath, JSON.stringify({
+    timestamp: new Date().toISOString(),
+    results
+  }, null, 2));
+
+  console.log(`\nValidation complete. Results saved to ${logPath}`);
+  process.exit(process.exitCode || 0);
+}
+
+main().catch(error => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});

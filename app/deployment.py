@@ -122,7 +122,6 @@ class DeploymentAnalyzer:
 
 
     def analyze(self, user_prompt=None):
-        #deployable_contracts = self.identify_deployable_contracts()
         project_summary = self.context.project_summary()
 
         self.context.deployment_instructions_path()
@@ -145,11 +144,8 @@ class DeploymentAnalyzer:
                 project_summary=project_summary,
                 user_prompt=user_prompt
             )
-
-        #print(f"{prompt}")
-
         try:
-            analyzer = ThreeStageAnalyzer(DeploymentInstruction)
+            analyzer = ThreeStageAnalyzer(DeploymentInstruction, plan=self.context.plan)
             deployment_instructions = analyzer.ask_llm(prompt)
             #print(f"Deployment instructions: {json.dumps(deployment_instructions.to_dict(), indent=2)}")
 
@@ -269,7 +265,7 @@ class DeploymentAnalyzer:
             "7. Log the deployment addresses in the console after deployment of each contract.",
         ]
 
-        llm = ThreeStageAnalyzer(Code)
+        llm = ThreeStageAnalyzer(Code, plan=self.context.plan)
         new_code = llm.ask_llm(
             prompt,
             guidelines=guidelines
@@ -446,7 +442,7 @@ class DeploymentAnalyzer:
             ]
             print(guidelines)
             print(self.get_artifact_imports())
-            llm = ThreeStageAnalyzer(Code)
+            llm = ThreeStageAnalyzer(Code, plan=self.context.plan)
             new_code = llm.ask_llm(
                 f"""
                 Here is the code for the deployment module:
@@ -502,5 +498,4 @@ class DeploymentAnalyzer:
                     addresses[name] = address
         return addresses
 
-        
-        
+

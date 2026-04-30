@@ -6,7 +6,7 @@ dotenv.load_dotenv()
 import subprocess
 from .github_utils import create_github_repo, set_github_repo_origin_and_push
 from .filesystem_utils import ensure_directory_exists, clone_repo
-from .models import Project, Actors, DeploymentInstruction, Action
+from .models import Project, Actors, DeploymentInstruction, Action, ActionValidation
 from .hardhat_config import parse_and_modify_hardhat_config, hardhat_network
 import json
 
@@ -54,6 +54,21 @@ def compile_contracts(context):
     if compile_process.returncode != 0:
         raise RuntimeError(f"Contract compilation failed: {_extract_error_details(compile_stderr, compile_stdout)}")
 
+def clean_context(context):
+    """Clean up the context by removing the workspace directory"""
+    if context is None:
+        return
+    if os.getenv("CLEAN_WORKSPACE", "false") == "false":
+        return
+    if os.path.exists(context.cwd()):
+        try:
+            subprocess.run(["rm", "-rf", context.cwd()], check=True)
+            print(f"Workspace {context.cwd()} cleaned up successfully.")
+        except subprocess.CalledProcessError as e:
+            pass
+    else:
+        print(f"Workspace {context.cwd()} does not exist, nothing to clean.")
+
 def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_workspace=False, parallel_workspace_id=None):
     run_id = data["run_id"]
     submission_id = data["submission_id"]
@@ -70,7 +85,7 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
 
     # Clone the main repository
     clone_repo(repo, context.cws(), branch=contract_branch)
-
+    
     # Install dependencies based on project type
     project_type = context.project_type()
 
@@ -157,6 +172,10 @@ def prepare_context(data, optimize=True, contract_branch="main", needs_parallel_
         print(f"Creating new GitHub repository {github_repo_url} for simulation.")
         clone_repo(simulation_template_repo, simulation_repo_path, branch="main")
 
+    if (os.path.exists(context.specs_path()) == False):
+        os.makedirs(context.specs_path())
+
+
     # Install dependencies for SIMULATION project (always uses Hardhat)
     try:
         # First try clean install
@@ -216,6 +235,10 @@ class RunContext:
         """Get the parallel workspace ID (None if not in parallel mode)"""
         return self._parallel_workspace_id
 
+    @property
+    def plan(self):
+        return self.submission.get("plan", "free")
+
     def cwd(self):
         base_path = os.path.join(self.workspace, self.submission_id)
         if self._parallel_workspace_id:
@@ -233,6 +256,9 @@ class RunContext:
     
     def simulation_path(self):
         return self.cwd() + "/" + self.name + "-simulation-" + self.run_id
+    
+    def specs_path(self):
+        return os.path.join(self.simulation_path(), "ilumina-specs")
     
     def code(self, code_path):
         """Returns path to simulation code"""
@@ -290,10 +316,10 @@ class RunContext:
         return self.cwd() + "/context.json"
     
     def summary_path(self):
-        return self.simulation_path() + "/summary.json"
+        return os.path.join(self.simulation_path(), "ilumina-specs",  "summary.json")
     
     def actor_summary_path(self):
-        return self.simulation_path() + "/actor_summary.json"
+        return os.path.join(self.simulation_path(), "ilumina-specs", "actor_summary.json")
     
     def compiled_contracts_path(self):
         """Returns path to compiled contracts JSON file"""
@@ -371,7 +397,7 @@ class RunContext:
         return f"summaries/{self.submission_id}/deployment_instructions/{version}.json"
     
     def deployment_instructions_path(self):
-        return self.simulation_path() + "/deployment_instructions.json"
+        return self.specs_path() + "/deployment_instructions.json"
     
     def simulation_log_path(self, simulation_id):
         return os.path.join(self.simulation_path(), "logs", f"{simulation_id}.log")
@@ -414,7 +440,7 @@ class RunContext:
         
     def action_summary_path(self, action: Action):
         summary_file = action.contract_name.lower() + "_" + action.function_name.lower() + ".json"
-        return os.path.join(self.simulation_path(), "simulation", "actions", summary_file)
+        return os.path.join(self.simulation_path(), "ilumina-specs", "simulation", "actions", summary_file)
     
     def action_code_path(self, action: Action):
         """Returns path to action code file"""
@@ -429,6 +455,13 @@ class RunContext:
 
     def project_summary(self):
         return Project.load_summary(self.summary_path())
+    
+    def action_validation_summary_path(self, action: Action):
+        summary_file = action.contract_name.lower() + "_" + action.function_name.lower() + "_validation.json"
+        return os.path.join(self.specs_path(), "simulation", "action_validations", summary_file)
+    
+    def action_validation_summary(self, action: Action):
+        return ActionValidation.load_summary(self.action_validation_summary_path(action))
         
     def actor_summary(self):
         # return Actors.load_summary(self.actor_summary_path())
@@ -450,7 +483,7 @@ class RunContext:
     
     def snapshot_data_structure_path(self, contract_name):
         """Returns path to snapshot data structure file"""
-        return os.path.join(self.simulation_path(), "simulation", "contracts", f"{contract_name}_snapshot.json")
+        return os.path.join(self.simulation_path(), "ilumina-specs","simulation", "contracts", f"{contract_name}_snapshot.json")
     
     def snapshot_interface_code_path(self):
         """Returns path to snapshot interface code file"""
@@ -475,6 +508,17 @@ class RunContext:
     def snapshots_directory(self):
         """Get the path to the snapshots directory"""
         return os.path.join(self.simulation_path(), "simulation", "snapshots")
+    
+    def validate_action_script_path(self):
+        """Returns the full path to the validate_action.ts script"""
+        return os.path.join(self.simulation_path(), "scripts", "validate_action.ts")
+        
+    def validations_directory(self):
+        """Get the path to the validations directory"""
+        path = os.path.join(self.simulation_path(), "validations")
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return path
     
 example_contexts = [
     RunContext("s1", "1", "https://github.com/svylabs/predify", "/tmp/workspaces", needs_parallel_workspace=False),

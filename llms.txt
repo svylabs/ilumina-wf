@@ -1,0 +1,64 @@
+# Ilumina Workflow Backend - AI Documentation
+
+This document explains the technical architecture, data structures, and workflow orchestrations of the `ilumina-wf` project. It is intended for consumption by AI agents or LLMs as a definitive reference for the project's design and intent.
+
+## 1. Project Overview
+`ilumina-wf` is a Python Flask backend service that automates the analysis, scaffolding, deployment, and testing simulation of Ethereum Virtual Machine (EVM) smart contract projects (Hardhat or Foundry). The core value proposition is utilizing LLMs to automatically ingest raw Solidity projects, deduce their actors and interactions, generation simulation bot code, and execute simulated test runs against these contracts.
+
+### Core Technologies
+*   **Web Framework:** Flask (handles incoming requests and webhook triggers).
+*   **Task Queue:** Google Cloud Tasks for asynchronous progression of state machine steps.
+*   **Database:** Google Cloud Datastore (tracks submissions and statuses).
+*   **Storage:** Google Cloud Storage (GCS) for persisting generated AI summaries, artifacts, and instructions.
+*   **LLM Integration:** Extensive use of OpenAI to parse EVM contracts into structured metadata.
+*   **Environment Setup:** Heavily relies on `npx hardhat` and `forge` sub-process shells to compile, deploy, and verify smart contracts dynamically inside sandbox workspaces.
+
+## 2. Directory Structure & Key Modules
+The project organizes functionality around the `app` module.
+*   `main.py`: Entry point for the Flask server. Defines REST APIs that trigger steps in the workflow state machine and enqueues Cloud Tasks.
+*   `app/context.py`: Defines the `RunContext` class. Handles setting up an isolated filesystem environment per run by cloning the user's Github repository, deciding if it's a Hardhat or Foundry project, and cloning a standard simulation template repository (`SIMULATION_TEMPLATE_REPO`).
+*   `app/models.py`: Strongly typed Pydantic data schemas representing the knowledge graph of a project, e.g., `Project`, `Contract`, `Actor`, `Action`, `DeploymentInstruction`. LLM responses are coerced into these structures.
+*   `app/analyse.py`: Interacts with LLMs to generate high-level summaries (`Project Summary` and `Actor Identification`).
+*   `app/scaffold.py`: Sets up boilerplate Hardhat configurations and initializes actor logic placeholders.
+*   `app/deployment.py` & `deployer.py`: Analyzes dependencies among `.sol` contracts to orchestrate the topological deploy order and dynamically constructs a `deploy.ts` script.
+*   `app/action_generator.py`: For each recognized `Action` an `Actor` can perform, this synthesizes a typescript function to invoke the target smart contract function correctly.
+*   `app/snapshot_code_generator.py` & `app/snapshot_datastructure_analyzer.py`: Writes code that introspects the state changes of a blockchain before and after an action occurs, summarizing the net differential.
+*   `app/simulation_runner.py`: Wraps `npx hardhat test` or simulation executions.
+
+## 3. Workflow State Machine Orchestration
+The primary driver of `ilumina-wf` is an async pipeline driven by Google Cloud Tasks. Submissions act as a state transitions handled by the `/api/analyze` controller in `main.py`.
+
+The normal linear progression follows these steps:
+1.  **`begin_analysis`**: Creates a submission run ID and kicks off the chain.
+2.  **`analyze_project`**: LLM reads `.sol` contracts and returns a `Project` schema containing identified contracts, types, and ABI function signatures.
+3.  **`analyze_actors`**: Deduces potential `Actors` (e.g., "Admin", "User", "Liquidator") and their likely `Actions` (invoking specific contract functions).
+4.  **`analyze_deployment`**: Resolves how to deploy the protocol (arguments, references).
+5.  **`implement_deployment_script`**: Generates `deploy.ts`.
+6.  **`verify_deployment_script`**: Runs a test execution of the deployment script against a local hardhat node. (On failure -> `debug_deploy_script`).
+7.  **`scaffold`**: Initializes the simulation environment and base test structures.
+8.  **`analyze_all_actions`**: (Placeholder for distributed logic generation).
+9.  **`analyze_all_snapshots`**: Analyzes the data structures needed to capture contract state for each tracked contract.
+10. **`implement_snapshots`**: Emits TypeScript code for snapshots into the simulation workspace.
+11. **`implement_all_actions`**: Iterates through all actors and actions, creating concrete `action_{name}.ts` code files.
+12. **`run_simulation`**: Configures test parameters and launches the generated simulation bot network.
+
+Each successful step signals `/api/analyze` to enqueue a Cloud Task for the subsequent step.
+
+## 4. Key Data Models (`app/models.py`)
+Understanding these models is imperative for generating interacting components:
+*   **Contract**: Represents a parsed `.sol` file. Contains `type` (abstract, contract, interface, library), `constructor`, and a list of `Function` definitions.
+*   **Action**: An action mapped to an Actor. Ties a `contract_name` to a `function_name` along with an estimated `probability` of occurrence.
+*   **DeploymentInstruction**: Defines a sequenced list of `SequenceStep` items (either `deploy` or `call`) to seed a sandbox. Incorporates topological dependency resolution.
+*   **RunContext**: (from `context.py`). Crucial object passed down throughout the lifecycle. Handles directories (`.cwd()`), pathing to simulation scripts, and provides methods like `.abi()` to locate compiled JSON artifacts regardless of underlying dev tools (Hardhat vs Foundry).
+
+## 5. Error Handling and Context Passing
+State transitions rely heavily on checking `status` from Datastore inside `main.py` -> `def analyze(...)`. The decorator `@inject_analysis_params` is used across step routes to inject the `submission` record, the `request_context` (background task vs. distinct client), and `user_prompt` into the execution frame.
+
+## 6. Packaging & Deployment
+The code is packaged using Docker and deployed as a microservice format, primarily meant to run on Google Cloud Platform (Cloud Run or App Engine Flex).
+
+*   **`main.py`**: Serves as the continuous, listening Flask web server that handles incoming webhook requests. When packaged via `Dockerfile`, it is commonly run using `gunicorn` (e.g. `gunicorn -b 0.0.0.0:8080 main:app`), orchestrated by `supervisord.conf`.
+*   **`simulation_runner_job.py`**: A standalone Python entrypoint intended to run parallel worker jobs (like Cloud Run Jobs). Instead of responding to HTTP webhooks, this script loads a `SIMULATION_ID` from the environment, fetches the context via Datastore, and executes computationally heavy Hardhat simulations in isolation.
+*   **`Dockerfile`**: Builds a heavy `python:3.11-slim` container preloaded with `Node.js (v20)`, `npm`, `solc`, Hardhat, and Foundry toolchains. It dynamically configures virtual environments and manages background system dependencies required to clone source code and compile Solidity projects from scratch.
+*   **`app.yaml`**: The deployment manifest specifically for running the platform on Google App Engine Flex environment.
+*   **`supervisord.conf`**: Process control configuration file used to launch and monitor the backend webserver robustly inside the deployed container.

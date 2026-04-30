@@ -77,7 +77,6 @@ class Analyzer:
     def generate_deployment_instructions(self, user_prompt=None):
         deployment_analyzer = DeploymentAnalyzer(self.context)
         instructions = deployment_analyzer.analyze(user_prompt=user_prompt)
-
         return instructions
 
 if __name__ == "__main__":
@@ -91,5 +90,3 @@ if __name__ == "__main__":
     while analyzer.not_done():
         analyzer.step()
         analyzer.print_current_step()
-
-

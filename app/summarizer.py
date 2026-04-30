@@ -69,7 +69,7 @@ class ProjectSummarizer:
                 1. Purpose of the contract based on functions and contract name
                 2. Whether this contract is deployable based on whether the type of the contract is abstract / interface / library / concrete, and populate the is_deployable field
                 """
-                analyzer = ThreeStageAnalyzer(Contract)
+                analyzer = ThreeStageAnalyzer(Contract, plan=self.context.plan)
                 contract_summary = analyzer.ask_llm(prompt)
                 contract_summary.type = contract_detail["type"]
                 contract_summary.path = contract["path"]
@@ -92,7 +92,7 @@ class ProjectSummarizer:
         3. Use a consistent format("None") for empty values for strings.
 
         """
-        analyzer = ThreeStageAnalyzer(Project)
+        analyzer = ThreeStageAnalyzer(Project, plan=self.context.plan)
         summary = analyzer.ask_llm(json.dumps(project_from_readme.to_dict()) + "\n --------- \n" + json.dumps(project_from_contracts.to_dict()) + " \n Does the two summaries conflict each other? Can you merge them into one? Keep the contract list empty")
         return summary
 
@@ -129,7 +129,7 @@ class ProjectSummarizer:
         if self.summary_exists():
             existing_summary = self.load_summary()
             prompt = self.get_prompt_for_refinement(existing_summary, user_prompt)
-            analyzer = ThreeStageAnalyzer(Project)
+            analyzer = ThreeStageAnalyzer(Project, plan=self.context.plan)
             project_summary = analyzer.ask_llm(prompt)
             self.project_summary = project_summary
             self.save()
@@ -139,8 +139,7 @@ class ProjectSummarizer:
         prompt = base_prompt
         if (self.readme != ""):
             prompt_with_readme = prompt + f"\n\n Project Readme:\n\n {self.readme}"
-            # Add user prompt if provided
-            analyzer = ThreeStageAnalyzer(Project)
+            analyzer = ThreeStageAnalyzer(Project, plan=self.context.plan)
             project_from_readme = analyzer.ask_llm(prompt_with_readme)
             project_from_readme.clear_contracts()
             print("Project summary from README")
@@ -152,7 +151,7 @@ class ProjectSummarizer:
                 "name": contract["name"]
             })
         prompt_with_contracts = prompt + f"\n\n Project Contracts:\n\n {json.dumps(contracts_summary)}"
-        analyzer = ThreeStageAnalyzer(Project)
+        analyzer = ThreeStageAnalyzer(Project, plan=self.context.plan)
         project_from_contracts = analyzer.ask_llm(prompt_with_contracts)
         project_summary = project_from_contracts
         print("Project summary from contract names")
